@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.vite/
+
+# Unity generated data
+unity-project/Library/
+unity-project/Logs/
+unity-project/Temp/
+unity-project/Obj/
+unity-project/UserSettings/
+unity-project/Build/
+unity-project/Builds/
+
+# Android generated data
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# Local/editor files
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

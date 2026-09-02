@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Merge Game</string>
+    <string name="title_activity_main">Merge Game</string>
+    <string name="package_name">com.thermalstate.mergegame</string>
+    <string name="custom_url_scheme">com.thermalstate.mergegame</string>
+</resources>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dispenser Vector Preview</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #11100e;
+      }
+
+      body {
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        overflow: auto;
+      }
+
+      #preview-root,
+      #preview-root canvas {
+        width: 430px !important;
+        height: 520px !important;
+        min-width: 430px;
+        min-height: 520px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="preview-root"></div>
+    <script type="module">
+      import Phaser from 'phaser';
+      import { drawSourceBuilding, sourcePalette } from '/src/game/objects/TierIcons.ts';
+      import { getTierDef } from '/src/game/data/chains.ts';
+      import { Theme, materialLighting, hex } from '/src/game/ui/Theme.ts';
+
+      class PreviewScene extends Phaser.Scene {
+        preload() {
+          for (let tier = 1; tier <= 4; tier++) {
+            this.load.svg(`source-glass-${tier}`, `glass-source0${tier}.svg`, { width: 256, height: 256 });
+          }
+          for (let tier = 1; tier <= 5; tier++) {
+            this.load.svg(`source-mineral-${tier}`, `stone-source0${tier}.svg`, { width: 256, height: 256 });
+          }
+        }
+
+        create() {
+          const w = this.scale.width;
+          const h = this.scale.height;
+          const bg = this.add.graphics();
+          bg.fillStyle(0x11100e, 1);
+          bg.fillRect(0, 0, w, h);
+          bg.fillStyle(0x181613, 0.96);
+          bg.fillRoundedRect(18, 44, w - 36, h - 76, 6);
+          bg.lineStyle(1, Theme.borderOnDark, 1);
+          bg.strokeRoundedRect(18, 44, w - 36, h - 76, 6);
+
+          this.add.text(w / 2, 22, 'DISPENSER VECTOR PREVIEW', {
+            fontFamily: Theme.fontHeading,
+            fontSize: '14px',
+            fontStyle: 'bold',
+            color: hex(Theme.textOnDark)
+          }).setOrigin(0.5);
+
+          const families = [
+            ['wood', 'WOOD'],
+            ['mineral', 'STONE'],
+            ['glass', 'GLASS']
+          ];
+          const left = 74;
+          const top = 96;
+          const xGap = (w - 140) / 4;
+          const yGap = 116;
+
+          for (let row = 0; row < families.length; row++) {
+            const [typeId, label] = families[row];
+            this.add.text(28, top + row * yGap, label, {
+              fontFamily: Theme.fontHeading,
+              fontSize: '10px',
+              fontStyle: 'bold',
+              color: hex(Theme.textOnDarkMuted)
+            }).setOrigin(0, 0.5);
+
+            for (let tier = 1; tier <= 5; tier++) {
+              const x = left + (tier - 1) * xGap;
+              const y = top + row * yGap;
+              const plate = this.add.graphics();
+              plate.fillStyle(Theme.bg, 0.55);
+              plate.fillRoundedRect(x - 30, y - 34, 60, 70, 4);
+              plate.lineStyle(1, Theme.borderOnDark, 0.7);
+              plate.strokeRoundedRect(x - 30, y - 34, 60, 70, 4);
+
+              if (typeId === 'mineral' && tier <= 5) {
+                this.add.image(x, y, `source-mineral-${tier}`).setDisplaySize(56, 56);
+              } else if (typeId === 'glass' && tier <= 4) {
+                const size = tier === 1 ? 52 : 56;
+                this.add.image(x, y, `source-glass-${tier}`).setDisplaySize(size, size);
+              } else {
+                const g = this.add.graphics().setPosition(x, y);
+                drawSourceBuilding(g, typeId, tier, 12.5, sourcePalette(typeId), true);
+              }
+
+              this.add.text(x, y + 46, String(tier).padStart(2, '0'), {
+                fontFamily: Theme.fontNumeric,
+                fontSize: '10px',
+                fontStyle: 'bold',
+                color: hex(Theme.textOnDark)
+              }).setOrigin(0.5);
+            }
+          }
+        }
+      }
+
+      const config = {
+        type: Phaser.WEBGL,
+        width: 430,
+        height: 520,
+        parent: 'preview-root',
+        backgroundColor: '#11100e',
+        scene: PreviewScene,
+        render: {
+          antialias: true,
+          antialiasGL: true,
+          pixelArt: false,
+          roundPixels: false,
+          premultipliedAlpha: true,
+          mipmapFilter: 'LINEAR_MIPMAP_LINEAR'
+        },
+        scale: {
+          mode: Phaser.Scale.NONE,
+          autoCenter: Phaser.Scale.CENTER_BOTH
+        }
+      };
+
+      new Phaser.Game(config);
+    </script>
+  </body>
+</html>

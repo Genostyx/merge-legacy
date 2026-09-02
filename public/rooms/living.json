@@ -1,0 +1,191 @@
+{
+  "frame": 1024,
+  "shell": {
+    "0": "shell-raw",
+    "1": "shell"
+  },
+  "items": [
+    {
+      "key": "books",
+      "stage": 4,
+      "label": "Books",
+      "depth": 1.3621,
+      "rect": [
+        0.55693,
+        0.32233,
+        0.15207,
+        0.15334
+      ],
+      "order": 0
+    },
+    {
+      "key": "bookcase",
+      "stage": 3,
+      "label": "Bookcase",
+      "depth": 1.4065,
+      "rect": [
+        0.54221,
+        0.21827,
+        0.22451,
+        0.35688
+      ],
+      "order": 1
+    },
+    {
+      "key": "ceiling",
+      "stage": 3,
+      "label": "Sculpture",
+      "depth": 1.579,
+      "rect": [
+        0.58749,
+        0.23657,
+        0.15298,
+        0.14502
+      ],
+      "order": 2
+    },
+    {
+      "key": "side",
+      "stage": 4,
+      "label": "Side table",
+      "depth": 3.0612,
+      "rect": [
+        0.40338,
+        0.41489,
+        0.21701,
+        0.23225
+      ],
+      "order": 3
+    },
+    {
+      "key": "plantsmall",
+      "stage": 4,
+      "label": "Small plant",
+      "depth": 3.0612,
+      "rect": [
+        0.44407,
+        0.41326,
+        0.13562,
+        0.14618
+      ],
+      "order": 4
+    },
+    {
+      "key": "pillow",
+      "stage": 4,
+      "label": "Cushion",
+      "depth": 3.8759,
+      "rect": [
+        0.37966,
+        0.46008,
+        0.15869,
+        0.16272
+      ],
+      "order": 5
+    },
+    {
+      "key": "sofa",
+      "stage": 2,
+      "label": "Sofa",
+      "depth": 4.4919,
+      "rect": [
+        0.21658,
+        0.39575,
+        0.37875,
+        0.35655
+      ],
+      "order": 6
+    },
+    {
+      "key": "rug",
+      "stage": 2,
+      "label": "Rug",
+      "depth": 5.6,
+      "rect": [
+        0.22823,
+        0.50353,
+        0.56077,
+        0.34509
+      ],
+      "order": 7
+    },
+    {
+      "key": "table",
+      "stage": 2,
+      "label": "Coffee table",
+      "depth": 5.6,
+      "rect": [
+        0.37412,
+        0.53937,
+        0.26898,
+        0.23387
+      ],
+      "order": 8
+    },
+    {
+      "key": "plant",
+      "stage": 4,
+      "label": "Potted plant",
+      "depth": 5.853,
+      "rect": [
+        0.65621,
+        0.53168,
+        0.16077,
+        0.22487
+      ],
+      "order": 9
+    },
+    {
+      "key": "lamp",
+      "stage": 3,
+      "label": "Floor lamp",
+      "depth": 6.0567,
+      "rect": [
+        0.17679,
+        0.47123,
+        0.14726,
+        0.29089
+      ],
+      "order": 10
+    },
+    {
+      "key": "tvunit",
+      "stage": 3,
+      "label": "TV cabinet",
+      "depth": 6.8423,
+      "rect": [
+        0.47446,
+        0.55911,
+        0.30217,
+        0.27799
+      ],
+      "order": 11
+    },
+    {
+      "key": "tv",
+      "stage": 4,
+      "label": "Television",
+      "depth": 6.8623,
+      "rect": [
+        0.51858,
+        0.50919,
+        0.21739,
+        0.2382
+      ],
+      "order": 12
+    },
+    {
+      "key": "chair",
+      "stage": 2,
+      "label": "Lounge chair",
+      "depth": 7.1,
+      "rect": [
+        0.23295,
+        0.56603,
+        0.20682,
+        0.26279
+      ],
+      "order": 13
+    }
+  ]
+}
