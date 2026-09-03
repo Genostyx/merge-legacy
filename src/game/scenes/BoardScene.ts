@@ -926,11 +926,6 @@ export class BoardScene extends Phaser.Scene {
     // crate ring shares the cards' row now, so it costs no height of its own.
     // The order row is lifted 10px below, leaving four pixels between its
     // 68px cards and the board pane while reclaiming that height for cells.
-    // Set before anything reads it. `cellSize` is not known yet on the first
-    // pass, so this runs off the previous value and settles in one frame -
-    // the scene restarts on any real viewport change anyway.
-    this.chromeScale = Phaser.Math.Clamp(this.cellSize / CHROME_BASE_CELL, 1, 1.35);
-    const headerReserve = Math.round(124 * this.chromeScale);
     // The inventory/vault rail and 66px information tray end roughly 82px
     // below the board. The old 116px reserve left unused space underneath;
     // reclaim it for the two additional board rows.
@@ -938,12 +933,21 @@ export class BoardScene extends Phaser.Scene {
     const trayGap = 0;
     const outerReserve = 4;
     const availW = this.scale.width - margin * 2;
-    const availH = this.scale.height - headerReserve - trayReserve - trayGap - outerReserve;
+
+    // TWO passes, because the two sizes depend on each other: the chrome
+    // scales off the cell, and the cell has to fit in what the chrome leaves.
+    // Pass one sizes the cell against the untouched reserve, which fixes the
+    // chrome scale; pass two re-fits the cell inside the scaled reserve, and
+    // only ever shrinks it - on a phone the board is width-limited, so this
+    // changes nothing there.
     const widthCellSize = Math.floor(Math.min(96, availW / COLS));
-    const heightCellSize = Math.floor(availH / ROWS);
-    // Preserve the width-derived board scale whenever the viewport is tall
-    // enough. Only genuinely short/wide windows shrink it to avoid clipping.
-    this.cellSize = Math.max(38, Math.min(widthCellSize, heightCellSize));
+    const cellFor = (header: number): number => Math.max(38, Math.min(
+      widthCellSize,
+      Math.floor((this.scale.height - header - trayReserve - trayGap - outerReserve) / ROWS)
+    ));
+    this.chromeScale = Phaser.Math.Clamp(cellFor(124) / CHROME_BASE_CELL, 1, 1.35);
+    const headerReserve = Math.round(124 * this.chromeScale);
+    this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
 
