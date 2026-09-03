@@ -159,12 +159,14 @@
   - Separate from the max-tier consumer below. Late on, low-tier stock is
     worth so few Credits that selling it is not a real choice - a player wants
     it GONE, and the sell price is not why. This is the disposal route.
-  - Open, and the whole design: what it COSTS. `docs/TODO_DETAILS.md` argues
-    board-space scarcity is what makes the board a strategy game, and a free
-    unlimited shredder removes exactly that. Candidates: it occupies a cell, it
-    shreds on a timer rather than instantly, it has a daily throughput cap, or
-    it pays nothing at all so selling still wins wherever the Credits matter.
-  - Decide that before building it; the rest is small.
+  - It has a METER and a reward, like the max-tier consumer, and that is what
+    keeps it strategic rather than a bin: what you feed it and when is a real
+    choice, because every item put in is progress toward a payout instead of
+    just space reclaimed. Board-space relief is the by-product, not the point.
+  - Open: whether this is one facility with two intakes or two separate ones,
+    and how the value curves compare - a shredder that takes anything has to
+    pay less per unit of work than the max-tier consumer, or finishing a chain
+    stops being worth it.
 
 - [ ] **Add the max-tier consumer** (working name; was "Scrap machine")
   - Accepts MAX-TIER ITEMS ONLY, without spending Energy. Not a shredder: it
