@@ -39,6 +39,8 @@
 
 - [ ] **Build the Settings menu**
   - Make it the prerequisite and container for customization.
+  - PARTIAL: a settings panel exists behind the header gear, holding one
+    setting (fullscreen). It is not yet the container this item describes.
 
 - [ ] **Add a Customization tab to Settings**
   - Requires the Settings menu.
@@ -55,9 +57,12 @@
     vector building, so the family visibly changes material at the top of its
     own ladder.
 
-- [ ] **Deduplicate Wood 06 and Glass 07 artwork**
-  - Replace their shared three-bar asterisk silhouette with clearly different forms.
-  - Remove the repeated sparkle constellation across accent tiers.
+- [x] **Deduplicate Wood 06 and Glass 07 artwork**
+  - Wood tier 7 draws `drawJoineryLattice` (a four-beam woven grid); glass tier
+    7 draws `drawInterlockingCross`. The shared asterisk is gone, and the
+    reasoning is recorded above `drawJoineryLattice`.
+  - The sparkle-constellation half is worth one visual pass across the accent
+    tiers to confirm.
   - A one-tier Blender reference pilot remains optional.
 
 ## Economy and board systems
@@ -102,10 +107,15 @@
     grows while the piece ceiling stays put.
 
 - [x] **Let Gems skip a sealed supply crate's remaining wait**
-  - The natural companion to the delay, and already specified for event
-    crates under Deferred. Price by tier and by time remaining.
+  - Moot for supply crates: the sealed-on-the-board timer was removed in
+    favour of a restock cooldown, so there is no wait left to skip. Gems skip
+    a DISPENSER recharge (`rushCostGems`), and event crates carry their own
+    skip.
 
 - [x] **Replace the living room's drawn art with rendered art**
+  - SUPERSEDED: the room is now real 3D (`RoomView3D`, `living-room.glb`) with
+    a movable camera, not the five pre-rendered stage PNGs described below.
+    The pipeline notes are kept because the Blender scene still feeds it.
   - Five stage renders in `public/rooms/living-0..4.png`, composited from a
     Blender scene at the board's own isometric projection. See
     `docs/ROOM_ART_PIPELINE.md`.
@@ -133,7 +143,10 @@
   - Award a crate when the meter fills.
   - Present it as a facility and an alternative item sink, not a replacement for selling.
 
-- [ ] **Add an automatic no-Energy material dispenser**
+- [x] **Add an automatic no-Energy material dispenser**
+  - BUILT. `chains.ts` carries the 12-tier water chain; `Dispensers.ts` has the
+    flat 1s recharge, `tier x 10` capacity, the 12-tier chain cap, gem refill
+    pricing and the full refill on merge.
   - Use Water as the provisional output family; the final family is undecided.
   - Build Source 01 from four mergeable pre-dispenser piece tiers.
   - Begin making its pieces obtainable at player level 5.
