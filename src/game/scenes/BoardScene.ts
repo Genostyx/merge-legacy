@@ -2525,7 +2525,17 @@ export class BoardScene extends Phaser.Scene {
     if (this.orderBarMaskShape) {
       this.orderBarMaskShape.clear();
       this.orderBarMaskShape.fillStyle(0xffffff);
-      this.orderBarMaskShape.fillRect(laneX, y - ORDER_GO_H - 2, visibleW, cardH + ORDER_GO_H + 6);
+      // Scaled, exactly like the rect `buildOrderBar` lays down. Redrawing it
+      // with the raw constants quietly undid that on the first refresh, and a
+      // mask shorter than the scaled cards shaves their bottom edge - and
+      // clips the crate meter, which rides inside this same container while
+      // the meter is cooling.
+      this.orderBarMaskShape.fillRect(
+        laneX,
+        y - (ORDER_GO_H + 2) * this.chromeScale,
+        visibleW,
+        (cardH + ORDER_GO_H + 6) * this.chromeScale
+      );
     }
 
     // Completable orders move to the LEFT so the ones you can act on are
