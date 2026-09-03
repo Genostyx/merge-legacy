@@ -160,6 +160,17 @@ import type { CollectionState } from '../collection/Collection';
 const COLS = 7;
 const ROWS = 9;
 const BOARD_TO_TRAY_GAP = 6;
+/**
+ * How far a finger must travel before a press becomes a DRAG.
+ *
+ * The piece used to follow the pointer from the first pixel, so the couple of
+ * pixels a thumb rolls through on an ordinary tap were enough to pick the
+ * piece up and carry it - and if it crossed into a neighbouring cell it moved
+ * or merged. Below this distance the press is a tap and the piece never
+ * leaves its cell; above it, the drag begins. The same number decides both,
+ * so there is no band where a gesture is neither.
+ */
+const DRAG_START_PX = 14;
 const EXPANSION_ROW_ONE = 7;
 const EXPANSION_ROW_TWO = 8;
 /** Player level the second expansion row opens at - the label quotes this, so the two cannot drift. */
@@ -629,6 +640,14 @@ export class BoardScene extends Phaser.Scene {
   private shopNotice: { text: string; error: boolean } | null = null;
 
   private draggingView: BoardView | null = null;
+  /**
+   * Whether the pending press has crossed `DRAG_START_PX` and become a drag.
+   *
+   * `draggingView` is set on press so the release path can still resolve the
+   * piece under the finger; this says whether the piece has actually been
+   * picked up.
+   */
+  private dragActive = false;
   private dragFromCell: GridPosition | null = null;
   private mergeReadyTarget: BoardView | null = null;
   private selectedItemKey: string | null = null;
@@ -778,6 +797,7 @@ export class BoardScene extends Phaser.Scene {
     this.deadlockOverlay = null;
     this.orderCards = [];
     this.draggingView = null;
+    this.dragActive = false;
     this.dragFromCell = null;
     this.mergeReadyTarget = null;
     this.inputLocked = false;
@@ -2141,6 +2161,9 @@ export class BoardScene extends Phaser.Scene {
         const targetCell = { col: targetCol, row: targetRow };
         const target = this.cellToWorld(targetCell);
         this.draggingView = fromView;
+        // A programmatic move, not a finger: mark it as a real drag so the
+        // release resolves as a move rather than as a tap on the source cell.
+        this.dragActive = true;
         this.dragFromCell = fromCell;
         this.dragStartPointer = this.cellToWorld(fromCell);
         await this.onPointerUp({ x: target.x, y: target.y } as Phaser.Input.Pointer);
@@ -7731,9 +7754,10 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     this.draggingView = view;
     this.dragFromCell = cell;
     this.dragStartPointer = { x: pointer.x, y: pointer.y };
-    view.state = 'dragging';
-    this.children.bringToTop(view);
-    view.setScale(1.08);
+    // Deliberately NOT picked up here - see `DRAG_START_PX`. The lift, the
+    // scale-up and the raise to the top all wait until the finger has moved
+    // far enough to mean it.
+    this.dragActive = false;
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
@@ -7746,6 +7770,17 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       return;
     }
     if (!this.draggingView) return;
+    if (!this.dragActive) {
+      const travelled = Math.hypot(
+        pointer.x - this.dragStartPointer.x,
+        pointer.y - this.dragStartPointer.y
+      );
+      if (travelled < DRAG_START_PX) return;
+      this.dragActive = true;
+      this.draggingView.state = 'dragging';
+      this.children.bringToTop(this.draggingView);
+      this.draggingView.setScale(1.08);
+    }
     this.draggingView.setPosition(pointer.x, pointer.y);
 
     // Merge-ready highlight: a thin acid-green pulse on whatever tile is
@@ -7789,8 +7824,13 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     }
 
     const view = this.draggingView;
+    // Captured before it is cleared: the release path below asks whether the
+    // piece was ever actually picked up, which is what separates a tap from a
+    // drag that wandered and came back to its own cell.
+    const wasDragging = this.dragActive;
     const fromCell = this.dragFromCell;
     this.draggingView = null;
+    this.dragActive = false;
     this.dragFromCell = null;
     if (this.mergeReadyTarget instanceof TileView || this.mergeReadyTarget instanceof SpawnerView || this.mergeReadyTarget instanceof SpawnerPieceView) {
       this.mergeReadyTarget.setMergeReady(false);
@@ -7819,16 +7859,11 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       view.setScale(1);
       await view.snapTo(fromWorld.x, fromWorld.y);
       view.state = 'idle';
-      // Landing back on the starting cell is only a TAP if the pointer
-      // barely moved. Picking a crate up, carrying it around and setting it
-      // back down was dispensing from it, because "same cell" was being
-      // treated as "tapped" no matter how far it had travelled. The same
-      // rule now covers sources, which had the identical problem.
-      const travelled = Math.hypot(
-        pointer.x - this.dragStartPointer.x,
-        pointer.y - this.dragStartPointer.y
-      );
-      if (targetCell && travelled <= 8) {
+      // Landing back on the starting cell is only a TAP if the piece was
+      // never picked up at all. Carrying a crate around and setting it back
+      // down was dispensing from it, because "same cell" was being treated as
+      // "tapped" no matter how far it had travelled.
+      if (targetCell && !wasDragging) {
         if (view instanceof CrateView) this.tapCrate(view);
         else if (view instanceof ResourceProducerView) this.tapResourceProducer(view);
         else if (view instanceof SpawnerView) this.spawnFromSpawner(view);
