@@ -3741,6 +3741,33 @@ ${familyTierLabel(typeId, tier)}`
         });
         footer.add(zone);
       });
+
+      // What finishing the stage pays. The unlock step already showed this,
+      // but that is the one moment the player is NOT working toward it - the
+      // pull belongs here, on the list they are working through. On the last
+      // stage it is the reward for completing the room.
+      const lineY = top + pieces.length * (rowH + 3) + 16;
+      const prompt = this.add.text(w / 2, lineY, 'FINISH THIS STAGE  ·  GET', {
+        resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
+        fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
+      }).setOrigin(1, 0.5).setPosition(w / 2 - 6, lineY);
+      footer.add(prompt);
+
+      // Mirrors `grantStageReward`: stage 2 pays a bronze crate, 3 pays gems,
+      // 4 pays the gold crate.
+      if (this.projectStage === 3) {
+        footer.add(currencyPill(this, '10', 'gem', {
+          ...currencyChipOptions('gem'), fontSize: 11, iconSize: 16, height: 22
+        }).setPosition(w / 2 + 26, lineY));
+      } else {
+        const tier: CrateTier = this.projectStage === 4 ? 'gold' : 'bronze';
+        const icon = this.add.graphics().setPosition(w / 2 + 12, lineY);
+        drawCrate(icon, 24, tier);
+        footer.add([icon, this.add.text(w / 2 + 26, lineY, `${tier.toUpperCase()} CRATE`, {
+          resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '10px',
+          fontStyle: 'bold', color: hex(Theme.textOnDark)
+        }).setOrigin(0, 0.5)]);
+      }
     };
 
     const renderUnlock = (stageDef: ProjectStage | undefined): void => {
