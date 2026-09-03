@@ -1933,9 +1933,10 @@ export class BoardScene extends Phaser.Scene {
     // The shop button is a radius-18 circle centred at `headerRight - 18`, so
     // its left edge is `headerRight - 36`; four pixels of air, then the gear.
     const x = this.headerRight - 36 * s - 4 * s - size / 2;
-    // Bottom-aligned with the currency chips, like the badge and the shop
-    // button beside it - see `chipBottomY` in create().
-    const y = this.contentTop + 42 * this.hudScale - 2 - size / 2;
+    // Centred on the chips' midline, like the shop button beside it: both are
+    // small marks in their own container, so the eye lines their middles up
+    // with the middle of the chips rather than their lower edges.
+    const y = this.contentTop + 42 * this.hudScale - 18 + 8;
 
     const bg = this.add.graphics().setDepth(4);
     bg.fillStyle(Theme.bg, 0.94);
