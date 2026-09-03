@@ -101,7 +101,7 @@
     piece rate. Add more expensive crate tiers instead, so the Credit drain
     grows while the piece ceiling stays put.
 
-- [ ] **Let Gems skip a sealed supply crate's remaining wait**
+- [x] **Let Gems skip a sealed supply crate's remaining wait**
   - The natural companion to the delay, and already specified for event
     crates under Deferred. Price by tier and by time remaining.
 
