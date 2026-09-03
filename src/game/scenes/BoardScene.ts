@@ -747,6 +747,7 @@ export class BoardScene extends Phaser.Scene {
     // RESET is a dev-only utility, not part of the real game's HUD - kept
     // fully isolated (absolute screen position, own tiny call) so it can be
     // deleted in one line without touching any other header element's math.
+    this.buildSettingsButton();
     this.buildDevResetButton();
     this.buildAutoMergeButton();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
@@ -1290,7 +1291,10 @@ export class BoardScene extends Phaser.Scene {
   private layoutHudChips(): void {
     if (!this.hudChips.length) return;
     // Equal insets keep the three slot centres symmetrical across the board.
-    const right = this.headerRight - 44;
+    // 70, not 44: the settings gear occupies the 26px immediately left of the
+    // shop button now, and chips pack right-to-left from this inset - without
+    // widening it a long credit balance would run underneath the gear.
+    const right = this.headerRight - 70;
     // The level badge ends at roughly boardOriginX + 37. Seven more pixels
     // form a protected gap that resource balances may never enter.
     const left = this.boardOriginX + 44;
@@ -1631,6 +1635,157 @@ export class BoardScene extends Phaser.Scene {
 
     const zone = this.add.zone(cx, cy, diameter, diameter).setInteractive({ useHandCursor: true });
     zone.on('pointerdown', onTap);
+  }
+
+  /**
+   * Settings: a small gear immediately left of the shop button.
+   *
+   * It sits in the band `layoutHudChips` gives up for it - the chips pack
+   * right-to-left from a fixed inset, so the gear's width has to come out of
+   * that inset or the credit balance would slide underneath it.
+   */
+  private buildSettingsButton(): void {
+    const size = 22;
+    // The shop button is a radius-18 circle centred at `headerRight - 18`, so
+    // its left edge is `headerRight - 36`; four pixels of air, then the gear.
+    const x = this.headerRight - 36 - 4 - size / 2;
+    const y = this.contentTop + 18;
+
+    const bg = this.add.graphics().setDepth(4);
+    bg.fillStyle(Theme.bg, 0.94);
+    bg.fillRoundedRect(x - size / 2, y - size / 2, size, size, Theme.radiusChip);
+    bg.lineStyle(1, Theme.borderOnDark, 1);
+    bg.strokeRoundedRect(x - size / 2, y - size / 2, size, size, Theme.radiusChip);
+
+    const icon = this.add.graphics().setPosition(x, y).setDepth(5);
+    const lighting = materialLighting(Theme.textOnDarkMuted, 4);
+    icon.fillStyle(lighting.light, 1);
+    const teeth = 8;
+    for (let i = 0; i < teeth; i++) {
+      const angle = (i / teeth) * Math.PI * 2;
+      // Each tooth is drawn at the origin and moved into place by the canvas
+      // transform, so they sit square to their own radius instead of being
+      // axis-aligned squares that read as a blur at this size.
+      icon.save();
+      icon.translateCanvas(Math.cos(angle) * 6, Math.sin(angle) * 6);
+      icon.rotateCanvas(angle);
+      icon.fillRect(-1.9, -1.9, 3.8, 3.8);
+      icon.restore();
+    }
+    icon.fillCircle(0, 0, 5.2);
+    icon.fillStyle(Theme.bg, 1);
+    icon.fillCircle(0, 0, 2.2);
+
+    // Hit area stays finger-sized even though the art shrank - a 22px target
+    // is under every touch guideline, and this one sits next to the shop
+    // button, where a miss costs the player a wrong panel.
+    const zone = this.add.zone(x, y, size + 14, size + 14)
+      .setDepth(6).setInteractive({ useHandCursor: true });
+    zone.on('pointerdown', () => this.time.delayedCall(0, () => this.openSettings()));
+  }
+
+  /**
+   * The settings panel. One setting so far: fullscreen.
+   *
+   * Toggling fullscreen resizes the viewport, and this scene answers a resize
+   * by restarting itself, so the panel closes on its own a moment after the
+   * tap. That is the architecture working rather than a bug - the whole HUD
+   * has to be laid out again against the new size - so the panel does not try
+   * to survive it.
+   */
+  private openSettings(): void {
+    if (this.modalOpen || this.inputLocked) return;
+    this.modalOpen = true;
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const overlay = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.6)
+      .setDepth(3000).setInteractive();
+
+    const card = this.add.container(w / 2, h / 2).setDepth(3001);
+    const cw = Math.min(300, w - 40);
+    const ch = 168;
+    const cardBg = this.add.graphics();
+    cardBg.fillStyle(Theme.panel, 1);
+    cardBg.fillRoundedRect(-cw / 2, -ch / 2, cw, ch, Theme.radiusPanel);
+    cardBg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 0.85);
+    cardBg.strokeRoundedRect(-cw / 2, -ch / 2, cw, ch, Theme.radiusPanel);
+
+    const title = this.add.text(0, -ch / 2 + 26, 'SETTINGS', {
+      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '16px',
+      fontStyle: 'bold', color: hex(Theme.textOnLight)
+    }).setOrigin(0.5);
+
+    // Not every browser has the Fullscreen API - iOS Safari on iPhone has
+    // never shipped it - so the row says so plainly and points at the route
+    // that does work there, rather than offering a control that does nothing.
+    const available = this.scale.fullscreen.available;
+    const rowY = -6;
+    const label = this.add.text(-cw / 2 + 20, rowY, 'FULLSCREEN', {
+      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
+      fontStyle: 'bold', color: hex(available ? Theme.textOnLight : Theme.textOnLightMuted)
+    }).setOrigin(0, 0.5);
+
+    const toggleW = 68;
+    const toggleH = 28;
+    const toggleX = cw / 2 - 20 - toggleW / 2;
+    const toggleBg = this.add.graphics();
+    const toggleText = this.add.text(toggleX, rowY, '', {
+      resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '11px',
+      fontStyle: 'bold', color: hex(Theme.textOnLight)
+    }).setOrigin(0.5);
+
+    const paintToggle = (): void => {
+      const on = this.scale.isFullscreen;
+      const tone = !available ? Theme.textOnLightMuted : on ? Theme.accentGreen : Theme.textOnLightMuted;
+      toggleBg.clear();
+      toggleBg.fillStyle(on && available ? Theme.accentGreen : Theme.panelAlt, on && available ? 0.22 : 1);
+      toggleBg.fillRoundedRect(toggleX - toggleW / 2, rowY - toggleH / 2, toggleW, toggleH, Theme.radiusChip);
+      toggleBg.lineStyle(1, tone, 0.9);
+      toggleBg.strokeRoundedRect(toggleX - toggleW / 2, rowY - toggleH / 2, toggleW, toggleH, Theme.radiusChip);
+      toggleText.setText(!available ? 'N/A' : on ? 'ON' : 'OFF').setColor(hex(tone));
+    };
+    paintToggle();
+
+    const note = this.add.text(
+      0, ch / 2 - 46,
+      available
+        ? 'THE GAME REBUILDS ITS LAYOUT WHEN THIS CHANGES.'
+        : 'THIS BROWSER HAS NO FULLSCREEN API.\nADD THE GAME TO YOUR HOME SCREEN INSTEAD.',
+      {
+        resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
+        color: hex(Theme.textOnLightMuted), align: 'center', lineSpacing: 3
+      }
+    ).setOrigin(0.5);
+
+    const close = this.add.text(0, ch / 2 - 22, 'CLOSE', {
+      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
+      fontStyle: 'bold', color: hex(Theme.textOnLightMuted)
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    card.add([cardBg, title, label, toggleBg, toggleText, note, close]);
+
+    if (available) {
+      const toggleZone = this.add.zone(toggleX, rowY, toggleW, toggleH)
+        .setInteractive({ useHandCursor: true });
+      // Fullscreen has to be requested from inside a real user gesture, which
+      // a pointerdown handler is - so this is NOT deferred through a
+      // delayedCall the way the panel's other taps are. Deferring drops it
+      // out of the gesture and the browser refuses the request.
+      toggleZone.on('pointerdown', () => {
+        this.scale.toggleFullscreen();
+        paintToggle();
+      });
+      card.add(toggleZone);
+    }
+
+    const dismiss = () => {
+      overlay.destroy();
+      card.destroy();
+      this.modalOpen = false;
+    };
+    const deferDismiss = () => this.time.delayedCall(0, dismiss);
+    overlay.on('pointerdown', deferDismiss);
+    close.on('pointerdown', deferDismiss);
   }
 
   /**
