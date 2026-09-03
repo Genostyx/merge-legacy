@@ -603,6 +603,14 @@ export class BoardScene extends Phaser.Scene {
   private chromeScale = 1;
   /** Fullscreen-only HUD scale, derived from the extra vertical room. */
   private hudScale = 1;
+  /**
+   * Redraws the open project panel's footer, or null when it is closed.
+   *
+   * A stage reward is granted a tick AFTER the purchase that earns it, so the
+   * footer the purchase redrew still showed the reward as pending. Handing the
+   * renderer out lets the reward path refresh the panel it is standing on.
+   */
+  private projectFooterRefresh: (() => void) | null = null;
   private projectStage = 0;
   /** Keys of every room piece bought so far. Drives what the 3D room shows. */
   private builtPieces = new Set<string>();
@@ -801,6 +809,8 @@ export class BoardScene extends Phaser.Scene {
     this.expansionRowLabels = [];
     this.shopOverlay = null;
     this.collectionOverlay = null;
+    // Points at a closure over the previous scene's objects.
+    this.projectFooterRefresh = null;
     // A DOM sibling of the game canvas, so a scene teardown does not remove it.
     this.roomView?.dispose();
     this.roomView = null;
@@ -3271,6 +3281,9 @@ ${familyTierLabel(typeId, tier)}`
 
   /** The one-off payout for finishing a stage's furniture. */
   private grantStageReward(stage: number, from: { x: number; y: number }): void {
+    // The panel is usually still open behind the reward flying out of it, and
+    // it was left showing the reward as pending until it was closed and
+    // reopened. Redrawn at the end of this method.
     if (stage === 1) {
       addEnergy(this.energy, 25);
       this.playProjectCurrencyReward('energy', 25, from);
@@ -3282,6 +3295,7 @@ ${familyTierLabel(typeId, tier)}`
     } else if (stage === 4) {
       this.awardCrate('gold', 'PROJECT REWARD', from);
     }
+    this.projectFooterRefresh?.();
   }
 
   private consumeProjectItems(stage: ProjectStage): void {
@@ -3640,6 +3654,7 @@ ${familyTierLabel(typeId, tier)}`
       this.roomView = null;
       overlay.destroy(true);
       this.projectOverlay = null;
+      this.projectFooterRefresh = null;
       this.modalOpen = false;
       this.refreshProjectButton();
     };
@@ -3851,6 +3866,7 @@ ${familyTierLabel(typeId, tier)}`
     };
 
     const renderFooter = (): void => {
+      if (!this.projectOverlay) return;
       footer.removeAll(true);
       stage.setText(`STAGE ${this.projectStage + 1}/5  ·  ${PROJECT_STAGE_NAMES[this.projectStage]}`);
       const pieces = roomPiecesForStage(this.projectStage);
@@ -3862,6 +3878,7 @@ ${familyTierLabel(typeId, tier)}`
     };
 
     overlay.add([dim, artPanel, ...roomParts, title, stage, close, footer]);
+    this.projectFooterRefresh = renderFooter;
     renderFooter();
   }
 
@@ -3933,6 +3950,7 @@ ${rewardLine}`,
       this.roomView = null;
       this.projectOverlay?.destroy(true);
       this.projectOverlay = null;
+      this.projectFooterRefresh = null;
       this.modalOpen = false;
     });
     confirm.add([dim, panel, title, detail, cancel.bg, cancel.text, cancel.zone, build.bg, build.text, build.zone]);
