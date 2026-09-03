@@ -63,3 +63,28 @@ The persistent upgradable dispensers are meant to carry retention in place of
 a story, but a player sees one wood source and no visible ladder of what it
 becomes. If that is the spine, it deserves the surfacing the room project
 gets.
+
+## 8. Comb the merge-game subreddits for churn reasons
+
+High priority, and time-sensitive in the sense that it is cheapest to act on
+BEFORE the systems harden around a mistake other games already made.
+
+Read what players actually complain about and quit over, not what reviews
+praise. Titles to cover:
+
+- Merge Mansion
+- Travel Town
+- Gossip Harbor
+- Merge Cruise: Mystery Puzzle
+- Merge Dragons
+- Merge Camp
+
+Note that some of these have no dedicated subreddit - Merge Cruise did not
+turn up one - so the sweep has to include the general mobile-gaming and
+merge-game subs, app store review sections and the games' own Discords.
+
+What to come back with: the recurring complaints ranked by how often they
+appear and how final they are (annoyance vs "I uninstalled"), each tagged with
+whether this game is already exposed to it. Energy economics, board-space
+pressure, event FOMO, paywalled progression and story gating are the ones I
+would expect to dominate - the point is to find out rather than assume.
