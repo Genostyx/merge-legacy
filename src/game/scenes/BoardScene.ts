@@ -509,6 +509,14 @@ export class BoardScene extends Phaser.Scene {
    * not celebrate the level the player already had.
    */
   private levelBadgeShownLevel = 0;
+  /**
+   * The fraction the XP ring is currently DRAWN at, which trails the real
+   * value while the fill animates. -1 means nothing has been drawn yet, so
+   * the first paint after a scene build snaps rather than sweeping up from
+   * zero.
+   */
+  private levelXpRingDrawn = -1;
+  private levelXpRingTween: Phaser.Tweens.Tween | null = null;
   private levelXpRing!: Phaser.GameObjects.Graphics;
   private levelKeystone!: Phaser.GameObjects.Graphics;
   private levelMilestoneDot!: Phaser.GameObjects.Graphics;
@@ -1682,6 +1690,12 @@ export class BoardScene extends Phaser.Scene {
     const s = this.hudScale;
     const radius = 15 * s;
     const lighting = materialLighting(Theme.playerLevel, 5);
+    // A rebuild (resize, fullscreen) makes a fresh Graphics, so the trailing
+    // value is dropped and any tween still writing to the OLD object is
+    // killed - that write would land on a destroyed display object.
+    this.levelXpRingTween?.remove();
+    this.levelXpRingTween = null;
+    this.levelXpRingDrawn = -1;
     this.levelXpRing = this.add.graphics();
     const badgePoints = (centerY: number, outer: number, inner: number): Phaser.Geom.Point[] => {
       const points: Phaser.Geom.Point[] = [];
@@ -1786,24 +1800,12 @@ export class BoardScene extends Phaser.Scene {
     });
   }
 
-  private updateLevelBadge(): void {
-    const s = this.hudScale;
-    const level = playerLevel(this.orderState);
-    this.levelBadgeText.setText(String(level));
-    // Detected here rather than at the order-completion call site, because
-    // XP also arrives from milestones, daily claims and discoveries - every
-    // one of which already routes through this method.
-    if (this.levelBadgeShownLevel !== 0 && level > this.levelBadgeShownLevel) {
-      this.playLevelUpFlourish();
-    }
-    this.levelBadgeShownLevel = level;
-    const xp = playerXpProgress(this.orderState);
-    const progress = Phaser.Math.Clamp(xp.current / xp.required, 0, 1);
+  /** One paint of the ring at a given fill fraction. */
+  private drawLevelXpRing(progress: number, ringX: number, ringY: number, s: number): void {
     const gap = Phaser.Math.DegToRad(38);
     const start = -Math.PI / 2 + gap / 2;
     const span = Math.PI * 2 - gap;
-    const ringX = this.levelBadgeText.x;
-    const ringY = this.levelBadgeText.y + 1.5 * s;
+    this.levelXpRingDrawn = progress;
     this.levelXpRing.clear();
     this.levelXpRing.lineStyle(5 * s, Theme.borderOnDark, 0.8);
     this.levelXpRing.beginPath();
@@ -1821,6 +1823,64 @@ export class BoardScene extends Phaser.Scene {
         this.levelXpRing.strokePath();
       }
     }
+  }
+
+  /**
+   * Sweeps the ring to its new fill instead of snapping. XP arrives in one
+   * lump when an order is delivered, and the ring jumping a quarter turn
+   * between frames read as a number changing rather than progress being
+   * made - the one place in the HUD where the player is meant to SEE the
+   * gain.
+   *
+   * A level-up runs as two legs: up to full, then round from empty to the
+   * remainder. Tweening straight to the smaller number would run the ring
+   * BACKWARDS through the level it just earned.
+   */
+  private animateLevelXpRing(target: number, ringX: number, ringY: number, s: number): void {
+    this.levelXpRingTween?.remove();
+    this.levelXpRingTween = null;
+    const from = this.levelXpRingDrawn;
+    if (from === target) return;
+
+    const sweep = (a: number, b: number, onDone?: () => void) => {
+      // Paced by DISTANCE, so a sliver of XP is a flick and a big delivery is
+      // a visible sweep, both at the same angular speed.
+      const duration = Phaser.Math.Clamp(Math.abs(b - a) * 900, 120, 700);
+      this.levelXpRingTween = this.tweens.addCounter({
+        from: a,
+        to: b,
+        duration,
+        ease: 'Sine.easeOut',
+        onUpdate: (tween) => this.drawLevelXpRing(tween.getValue() ?? b, ringX, ringY, s),
+        onComplete: () => {
+          this.drawLevelXpRing(b, ringX, ringY, s);
+          this.levelXpRingTween = null;
+          onDone?.();
+        }
+      });
+    };
+
+    if (target < from) sweep(from, 1, () => sweep(0, target));
+    else sweep(from, target);
+  }
+
+  private updateLevelBadge(): void {
+    const s = this.hudScale;
+    const level = playerLevel(this.orderState);
+    this.levelBadgeText.setText(String(level));
+    // Detected here rather than at the order-completion call site, because
+    // XP also arrives from milestones, daily claims and discoveries - every
+    // one of which already routes through this method.
+    if (this.levelBadgeShownLevel !== 0 && level > this.levelBadgeShownLevel) {
+      this.playLevelUpFlourish();
+    }
+    this.levelBadgeShownLevel = level;
+    const xp = playerXpProgress(this.orderState);
+    const progress = Phaser.Math.Clamp(xp.current / xp.required, 0, 1);
+    const ringX = this.levelBadgeText.x;
+    const ringY = this.levelBadgeText.y + 1.5 * s;
+    this.drawLevelXpRing(this.levelXpRingDrawn < 0 ? progress : this.levelXpRingDrawn, ringX, ringY, s);
+    this.animateLevelXpRing(progress, ringX, ringY, s);
     const capLighting = materialLighting(Theme.playerLevel, 5);
     const keystone = [
       new Phaser.Geom.Point(ringX - 7 * s, ringY - 20 * s),
@@ -2625,6 +2685,16 @@ export class BoardScene extends Phaser.Scene {
      * makes the item nearly fill its square, as in the reference.
      */
     const REQ_ICON_ART = 52;
+    /**
+     * The sapphire is the one icon the plate cannot hold. `iconPresentation`
+     * sizes on sqrt(w*h), so the marquise's narrow waist buys it height: it
+     * is drawn 1.06 of its box tall where a typical tier sits at 0.80, and it
+     * pins MAX_HEIGHT exactly. On the board that overhang is the point; in a
+     * 38px slot it stands a third taller than everything beside it. Trimmed
+     * to 0.86 - stone tier 7's height - so it is still the tallest thing on
+     * the row without leaving it. The board keeps its own size.
+     */
+    const REQ_ICON_ART_TRIM: Record<string, number> = { 'mineral:8': 0.8 };
     /** The unlit plate: a recessed slot, still visibly a square. */
     const REQ_PLATE_DARK = 0x14120f;
     const innerW = (width: number) => width - ORDER_CARD_PAD * 2;
@@ -2686,12 +2756,13 @@ export class BoardScene extends Phaser.Scene {
       plate.strokeRoundedRect(px - half, -half, REQ_PLATE, REQ_PLATE, radius);
 
       // The item keeps its own colour in both states. It is the item.
+      const reqArt = REQ_ICON_ART * (REQ_ICON_ART_TRIM[`${line.typeId}:${line.tier}`] ?? 1);
       const icon = this.add.graphics();
       const render = drawTierIcon(
-        icon, line.typeId, line.tier, REQ_ICON_ART, materialLighting(baseColor, line.tier)
+        icon, line.typeId, line.tier, reqArt, materialLighting(baseColor, line.tier)
       );
       icon.setAlpha(render.materialAlpha);
-      const present = iconPresentation(line.typeId, line.tier, REQ_ICON_ART);
+      const present = iconPresentation(line.typeId, line.tier, reqArt);
 
       // The board's own contact shadow, so an item sits ON the plate rather
       // than floating in front of it - the single cue that made board tiles
