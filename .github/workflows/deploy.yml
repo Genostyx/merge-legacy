@@ -32,6 +32,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      # The runner's bundled npm is too old to read this lock file. It was
+      # written by npm 11, which records a `libc` field on the Linux rolldown
+      # and lightningcss binaries; npm 10 - what Node 22 ships - does not know
+      # that field and mis-resolves those optional packages, so `npm ci` fails
+      # on the runner while succeeding on any machine with npm 11. Pinned
+      # rather than floated so a future npm release cannot change the install
+      # underneath a deploy.
+      - run: npm install --global npm@11
+
       # `npm ci` rather than `npm install`: it installs exactly what the lock
       # file pins, so a deploy can never pick up a different dependency
       # version than the one the game was tested against.
