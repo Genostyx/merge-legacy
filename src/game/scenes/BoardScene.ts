@@ -7536,7 +7536,10 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
 
     const card = this.add.container(this.scale.width / 2, this.scale.height / 2).setDepth(3001);
     const panelW = Math.min(360, this.scale.width - 40);
-    const panelH = Math.min(360, this.scale.height - 32);
+    // 316, down from 360. The panel was a title row, three blocks and the gaps
+    // between them; dropping the title and the advice line took about 60px of
+    // nothing out of it, so what is left is denser rather than more cramped.
+    const panelH = Math.min(316, this.scale.height - 32);
     const left = -panelW / 2;
     const top = -panelH / 2;
     const cardBg = this.add.graphics();
@@ -7545,38 +7548,33 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     cardBg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
     cardBg.strokeRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
 
+    // No "PLAYER PROFILE" heading and no rule under it. A panel opened from
+    // the level badge does not need to announce itself, and between them they
+    // cost 45px at the top of a panel whose contents were already tight. The
+    // level block is the identity now.
     const titleRule = this.add.graphics();
-    titleRule.lineStyle(1, Theme.playerLevel, 0.65);
-    titleRule.lineBetween(left + 22, top + 48, -left - 22, top + 48);
-
-    const title = this.add.text(0, top + 23, 'PLAYER PROFILE', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading,
-      fontSize: '19px',
-      fontStyle: 'bold',
-      color: hex(Theme.textOnDark)
-    }).setOrigin(0.5);
+    const title = this.add.text(0, 0, '', { fontSize: '1px' }).setVisible(false);
 
     const levelDisc = this.add.graphics();
     levelDisc.fillStyle(Theme.playerLevel, 1);
     const profileBand = this.add.graphics();
     profileBand.fillStyle(Theme.playerLevel, 0.16);
-    profileBand.fillRoundedRect(left + 18, top + 61, panelW - 36, 76, Theme.radiusChip);
+    profileBand.fillRoundedRect(left + 18, top + 20, panelW - 36, 82, Theme.radiusChip);
     profileBand.lineStyle(1, Theme.playerLevel, 0.7);
-    profileBand.strokeRoundedRect(left + 18, top + 61, panelW - 36, 76, Theme.radiusChip);
+    profileBand.strokeRoundedRect(left + 18, top + 20, panelW - 36, 82, Theme.radiusChip);
 
     levelDisc.fillStyle(Theme.playerLevel, 1);
-    levelDisc.fillCircle(left + 55, top + 99, 27);
+    levelDisc.fillCircle(left + 57, top + 61, 30);
     levelDisc.lineStyle(1, Theme.textOnDark, 0.4);
-    levelDisc.strokeCircle(left + 55, top + 99, 27);
-    const levelText = this.add.text(left + 55, top + 99, String(xp.level), {
+    levelDisc.strokeCircle(left + 57, top + 61, 30);
+    const levelText = this.add.text(left + 57, top + 61, String(xp.level), {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric,
-      fontSize: '22px',
+      fontSize: '25px',
       fontStyle: 'bold',
       color: hex(Theme.textOnDark)
     }).setOrigin(0.5);
-    const levelLabel = this.add.text(left + 94, top + 76, `LEVEL ${xp.level}`, {
+    const levelLabel = this.add.text(left + 100, top + 40, `LEVEL ${xp.level}`, {
       resolution: textResolution,
       fontFamily: Theme.fontHeading,
       fontSize: '13px',
@@ -7590,10 +7588,10 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     // figures watches the cost of a level climb from 200 to 4,400 - the bar
     // shows the same progress without spelling out a curve that only reads as
     // discouraging. Inlining it also frees the whole middle of the panel.
-    const barX = left + 94;
-    const barY = top + 99;
-    const barW = panelW - 130;
-    const barH = 11;
+    const barX = left + 100;
+    const barY = top + 62;
+    const barW = panelW - 136;
+    const barH = 13;
     const progress = Phaser.Math.Clamp(xp.current / xp.required, 0, 1);
     const xpBar = this.add.graphics();
     xpBar.fillStyle(Theme.bg, 0.7);
@@ -7621,24 +7619,21 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     };
     drawLevelReward(nextMilestoneTier as CrateTier);
 
+    // The divider, and the "MERGE ITEMS AND COMPLETE ORDERS TO LEVEL UP" line
+    // under it, are gone. Nobody opens their profile to be told how to level
+    // up, and that line held the most prominent free space on the panel to say
+    // it.
     const divider = this.add.graphics();
-    divider.lineStyle(1, Theme.borderOnDark, 0.9);
-    divider.lineBetween(left + 24, top + 151, -left - 24, top + 151);
-    const guidance = this.add.text(0, top + 169,
-      'MERGE ITEMS AND COMPLETE ORDERS TO LEVEL UP', {
-        resolution: textResolution,
-        fontFamily: Theme.fontMono,
-        fontSize: '10px',
-        color: hex(Theme.textOnDarkMuted),
-        align: 'center',
-        lineSpacing: 5
-      }).setOrigin(0.5);
+    const guidance = this.add.text(0, 0, '', { fontSize: '1px' }).setVisible(false);
 
-    const dailyY = top + 235;
+    // Sits straight under the level block and takes the height the title and
+    // the advice line gave back: 92 rather than 74, which is what lets the day
+    // labels and reward figures be read at all.
+    const dailyY = top + 160;
     const dailyStripX = left + 18;
-    const dailyStripY = dailyY - 30;
+    const dailyStripY = dailyY - 46;
     const dailyStripW = panelW - 36;
-    const dailyStripH = 74;
+    const dailyStripH = 92;
     const dailyTabW = 62;
     const dailyLastW = dailyStripW - dailyTabW * 4;
     const dailyStrip = this.add.graphics();
@@ -7647,21 +7642,21 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       index === 4 ? 'DAY 5+' : `DAY ${index + 1}`, {
         resolution: textResolution,
         fontFamily: Theme.fontHeading,
-        fontSize: '8px',
+        fontSize: '10px',
         fontStyle: 'bold',
         color: hex(Theme.textOnDarkMuted)
       }).setOrigin(0.5));
     const dailyRewardLabels = Array.from({ length: 5 }, () => this.add.text(0, 0, '', {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric,
-      fontSize: '7px',
+      fontSize: '9px',
       fontStyle: 'bold',
       color: hex(Theme.textOnDark)
     }).setOrigin(0.5));
     const dailyStateLabels = Array.from({ length: 5 }, () => this.add.text(0, 0, '', {
       resolution: textResolution,
       fontFamily: Theme.fontHeading,
-      fontSize: '7px',
+      fontSize: '9px',
       fontStyle: 'bold',
       color: hex(Theme.accentGreen)
     }).setOrigin(0.5));
@@ -7755,24 +7750,29 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     drawDailyStrip();
 
     const collectionX = left + 42;
-    const collectionY = top + 329;
+    const collectionY = top + 258;
     const collectionPanel = this.add.graphics();
     collectionPanel.fillStyle(Theme.panelAlt, 0.72);
-    collectionPanel.fillRoundedRect(collectionX - 24, collectionY - 18, 48, 36, Theme.radiusChip);
+    // 60x37. The height is DERIVED: the house's drawn art stands on the chip's
+    // bottom edge while breaking ~9px past its top, and the home-icon SVG
+    // carries 9.7% padding above its drawing and 8.9% below - so at a 56px
+    // display size the art runs 5.4px to 51px inside its own box, and the chip
+    // that satisfies both ends is 37 tall with the box centred 4.5px above it.
+    collectionPanel.fillRoundedRect(collectionX - 30, collectionY - 18.5, 60, 37, Theme.radiusChip);
     collectionPanel.lineStyle(1, profileProjectReady ? Theme.accentAmber : Theme.borderOnDark,
       profileProjectReady ? 0.9 : 1);
-    collectionPanel.strokeRoundedRect(collectionX - 24, collectionY - 18, 48, 36, Theme.radiusChip);
+    collectionPanel.strokeRoundedRect(collectionX - 30, collectionY - 18.5, 60, 37, Theme.radiusChip);
     // The owner's house mark, drawn LARGER than its 48x36 tile and allowed to
     // overhang it. Contained inside the chip the building was too small to
     // read as a building - same call as the currency glyphs, which are sized
     // for legibility first and overflow their scrims rather than shrink.
-    const collectionIcon = this.add.image(collectionX, collectionY, 'home-icon')
-      .setDisplaySize(46, 46)
+    const collectionIcon = this.add.image(collectionX, collectionY - 4.5, 'home-icon')
+      .setDisplaySize(56, 56)
       .setAlpha(projectUnlocked ? 1 : 0.38);
     // The badge means "something is waiting for you". A locked button has
     // nothing waiting - it says so with the padlock and the line beside it, so
     // the dot no longer doubles as a level requirement.
-    const collectionBadge = this.add.text(collectionX + 18, collectionY - 13,
+    const collectionBadge = this.add.text(collectionX + 23, collectionY - 14,
       profileProjectReady ? '!' : '', {
         resolution: textResolution,
         fontFamily: Theme.fontNumeric,
@@ -7786,8 +7786,8 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
 
     // Padlock over the greyed mark, and the requirement spelled out beside it.
     // Two lines: one would run under the collection button sitting at x = 0.
-    const collectionLock = this.add.graphics().setPosition(collectionX, collectionY);
-    const collectionLockNote = this.add.text(collectionX + 30, collectionY, 'UNLOCKS AT\nLEVEL 3', {
+    const collectionLock = this.add.graphics().setPosition(collectionX, collectionY - 3);
+    const collectionLockNote = this.add.text(collectionX + 36, collectionY, 'UNLOCKS AT\nLEVEL 3', {
       resolution: textResolution,
       fontFamily: Theme.fontMono,
       fontSize: '8px',
@@ -7808,20 +7808,23 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       collectionLock.fillStyle(Theme.bg, 0.9);
       collectionLock.fillCircle(0, 4, 1.6);
     }
-    const collectionZone = this.add.zone(collectionX, collectionY, 48, 36)
+    const collectionZone = this.add.zone(collectionX, collectionY, 60, 44)
       .setInteractive({ useHandCursor: true });
 
     const bookX = 0;
     const bookY = collectionY;
     const bookPanel = this.add.graphics();
     bookPanel.fillStyle(Theme.panelAlt, 0.72);
-    bookPanel.fillRoundedRect(bookX - 24, bookY - 18, 48, 36, Theme.radiusChip);
+    bookPanel.fillRoundedRect(bookX - 30, bookY - 18.5, 60, 37, Theme.radiusChip);
     bookPanel.lineStyle(1, collectionReady > 0 ? Theme.currencyGem : Theme.borderOnDark,
       collectionReady > 0 ? 0.8 : 1);
-    bookPanel.strokeRoundedRect(bookX - 24, bookY - 18, 48, 36, Theme.radiusChip);
-    const bookIcon = this.add.graphics().setPosition(bookX, bookY);
-    this.drawCollectionBook(bookIcon, 22, collectionReady > 0 ? Theme.currencyGem : Theme.textOnDarkMuted);
-    const bookBadge = this.add.text(bookX + 18, bookY - 13,
+    bookPanel.strokeRoundedRect(bookX - 30, bookY - 18.5, 60, 37, Theme.radiusChip);
+    // The book draws centred on its origin at 0.68 of its size tall, so
+    // standing it on the chip's bottom edge with the same overhang means its
+    // centre sits 5px above the chip's.
+    const bookIcon = this.add.graphics().setPosition(bookX, bookY - 5);
+    this.drawCollectionBook(bookIcon, 40, collectionReady > 0 ? Theme.currencyGem : Theme.textOnDarkMuted);
+    const bookBadge = this.add.text(bookX + 23, bookY - 14,
       collectionReady > 0 ? String(collectionReady > 9 ? '9+' : collectionReady) : '', {
         resolution: textResolution,
         fontFamily: Theme.fontNumeric,
@@ -7831,7 +7834,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         backgroundColor: hex(Theme.currencyGem),
         padding: { x: 3, y: 1 }
       }).setOrigin(0.5).setVisible(collectionReady > 0);
-    const bookZone = this.add.zone(bookX, bookY, 48, 36).setInteractive({ useHandCursor: true });
+    const bookZone = this.add.zone(bookX, bookY, 60, 44).setInteractive({ useHandCursor: true });
 
     const closeBtn = this.add.text(-left - 22, top + 22, '✕', {
       resolution: textResolution,

@@ -38,7 +38,9 @@ This document stores context, constraints, and open decisions for tasks listed i
     - **Every crate bought from the store carries a wait before it can be opened** (owner's requirement). Without it, coins convert directly into board items at will and the advantage is far too great - the timer is what keeps a bought crate a decision rather than a bypass.
     - Shares the timer framework described under Deferred work, including the absolute open-at timestamp so it counts down while the game is closed.
 
-- **Scrap machine.** Feed unwanted items in; a bar fills; a full bar pays out a crate.
+- **Max-tier consumer** (working name; called the Scrap machine in earlier notes). Feed MAX-TIER items in; a bar fills; a full bar pays out a crate.
+    - Max tier ONLY (owner's call, 2026-09-03). It is not a shredder for unwanted stock: an item at the top of its chain cannot merge again, so it is the one thing on the board with no remaining use, and this is what it is for. Anything below max tier still has a merge path and stays out.
+    - That restriction is also what keeps it from undoing board-space scarcity: a general dump would relieve the pressure the loop runs on, while a max-tier-only intake only clears what the player already finished.
     - The best answer to the dead state because it consumes items ALREADY ON THE BOARD - it needs no energy and does not touch the recharge, so it fills the gap beside the wait rather than removing it.
     - Solves a real problem the build has now: a board of low-tier leftovers whose only use is `sellSelectedItem`. Items get a second sink besides credits.
     - Mechanically it is the crate meter that already ships - `CRATE_THRESHOLDS`, a filling bar, a crate at the end - pointed at fed items instead of source runs. Most of it exists.

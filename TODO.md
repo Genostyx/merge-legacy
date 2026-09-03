@@ -155,8 +155,14 @@
   - Later rooms should draw on families beyond Wood once more than one family
     is guaranteed owned.
 
-- [ ] **Add the Scrap machine**
-  - Accept unwanted board items without spending Energy.
+- [ ] **Add the max-tier consumer** (working name; was "Scrap machine")
+  - Accepts MAX-TIER ITEMS ONLY, without spending Energy. Not a shredder: it
+    is not somewhere to dump leftovers, it is the one thing a finished chain
+    can be spent on. A max-tier item cannot merge further, so it is board
+    clutter with no use - this is what buys it back.
+  - Feeding it anything below max tier is out of scope on purpose: low-tier
+    stock still has a merge path, and a general dump would relieve the
+    board-space pressure the whole loop runs on.
   - Fill a reward meter using `2^(tier−1)` value per item.
   - Award a crate when the meter fills.
   - Present it as a facility and an alternative item sink, not a replacement for selling.
