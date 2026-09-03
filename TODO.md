@@ -193,7 +193,7 @@
 
 ## Deferred
 
-- [ ] **Add timed crates for events**
+- [x] **Add timed crates for events**
   - Do not apply timers to general reward crates.
   - Allow multiple event crates to count down simultaneously.
   - Store absolute opening timestamps for offline progress.
