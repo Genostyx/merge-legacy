@@ -851,8 +851,16 @@ export class BoardScene extends Phaser.Scene {
     // which is exactly where the chips used to sit; dropping them to the
     // bottom of the header band clears it.
     const chipTopY = ruleY - 18;
+    // The chips' lower edge. Everything else in the row hangs off it rather
+    // than sharing a centre line, because the badge, the gear and the shop
+    // button are three different sizes and a common centre left their bottoms
+    // ragged. Each offset below is that widget's own drawn half-height, not
+    // half its box: the badge carries its XP ring 18px under its centre, and
+    // the shop button a drop shadow 20px under its own - and the shop button's
+    // container is scaled, so its offset scales with it.
+    const chipBottomY = chipTopY + 16;
 
-    this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, rowY);
+    this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, chipBottomY - 18);
 
     // Currency chips: a bordered badge with a small drawn glyph + the
     // number, instead of bare colored text floating on the backdrop -
@@ -880,7 +888,10 @@ export class BoardScene extends Phaser.Scene {
 
     // Opening from the cart starts clean; only an in-panel action (buy,
     // reroll, pack) carries a notice through via reopenShop.
-    this.buildShopIconButton(headerRight - 18 * this.hudScale, rowY, () => {
+    // 18, not 20: the offset is the DISC's radius, not the disc plus its drop
+    // shadow. Allowing for the shadow left the button itself sitting two
+    // pixels proud of the chips.
+    this.buildShopIconButton(headerRight - 18 * this.hudScale, chipBottomY - 18 * this.chromeScale, () => {
       this.shopNotice = null;
       this.openShop('full');
     });
@@ -3776,74 +3787,90 @@ ${familyTierLabel(typeId, tier)}`
       const affordable = stageDef != null && this.economy.coins >= stageDef.coins;
       const buildable = stageDef != null && affordable && shortfall === 0;
 
-      // The bill of materials sits between the room and the button, so the
-      // player reads WHAT the stage costs before the control that spends it.
-      const PLATE = 42;
-      const GAP = 10;
-      const billY = artCy + artH / 2 + 30;
-      if (stageDef) {
-        // Only the surfaces stage charges credits at its unlock; every later
-        // stage takes its credits through the furniture, so it draws no coin
-        // chip at all rather than an honest-looking 0.
-        const chips: Phaser.GameObjects.Container[] = [];
-        if (stageDef.coins > 0) {
-          // Greyed rather than faded when the credits are short: fading kept
-          // the chip gold, and gold still reads as "affordable" at a glance.
-          const chipColor = affordable ? CURRENCY_COLOR.credit : Theme.textOnDarkMuted;
-          const coinChip = currencyPill(this, stageDef.coins.toLocaleString(), 'credit', {
-            ...currencyChipOptions('credit'),
-            fontSize: 13, iconSize: 20, height: PLATE,
-            textColor: chipColor, stroke: chipColor
-          });
-          const chipMark = coinChip.list[2] as Partial<Phaser.GameObjects.Components.Alpha> | undefined;
-          if (!affordable) chipMark?.setAlpha?.(0.45);
-          chips.push(coinChip);
-        }
-        const chipsW = chips.reduce((sum, chip) => sum + chip.width + GAP, 0);
-        const totalW = chipsW + stageDef.requirements.length * (PLATE + GAP) - GAP;
-        let x = w / 2 - totalW / 2;
-        for (const chip of chips) {
-          chip.setPosition(x + chip.width / 2, billY);
-          footer.add(chip);
-          x += chip.width + GAP;
-        }
+      // Built UPWARD from the bottom of the screen, in the same rows the
+      // shopping list uses: one line per thing you owe, its state on the
+      // right. The old version scattered a coin chip, square item plates and
+      // a separate reward line across the middle of the panel at three
+      // different sizes, and none of them lined up with anything.
+      const rowW = Math.min(330, w - 28);
+      const rowH = 28;
+      const left = w / 2 - rowW / 2;
+      const right = w / 2 + rowW / 2;
+      const buttonH = 42;
+      const buttonY = h - 16 - buttonH / 2;
 
-        for (const req of stageDef.requirements) {
-          const cx = x + PLATE / 2;
-          const have = this.grid.countAtTier(req.tier, req.typeId);
-          const met = have >= req.count;
-          const def = getTierDef(req.typeId, req.tier);
-
-          // Same recessed-slot-goes-green language as the order cards, so a
-          // requirement reads identically wherever the game asks for one.
-          const plate = this.add.graphics();
-          plate.fillStyle(met ? Theme.accentGreen : 0x14120f, met ? 0.2 : 1);
-          plate.fillRoundedRect(cx - PLATE / 2, billY - PLATE / 2, PLATE, PLATE, Theme.radiusChip);
-          plate.lineStyle(1, met ? Theme.accentGreen : Theme.borderOnDark, met ? 0.9 : 0.6);
-          plate.strokeRoundedRect(cx - PLATE / 2, billY - PLATE / 2, PLATE, PLATE, Theme.radiusChip);
-
-          const art = PLATE + 14;
-          const icon = this.add.graphics();
-          const { materialAlpha } = drawTierIcon(
-            icon, req.typeId, req.tier, art, materialLighting(def?.color ?? Theme.panelAlt, req.tier)
-          );
-          icon.setAlpha(met ? materialAlpha : materialAlpha * 0.5);
-          const present = iconPresentation(req.typeId, req.tier, art);
-          icon.setScale(present.scale).setPosition(cx + present.offsetX, billY + present.offsetY);
-
-          const count = this.add.text(cx, billY + PLATE / 2 + 10, `${Math.min(have, req.count)}/${req.count}`, {
-            resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px', fontStyle: 'bold',
-            color: hex(met ? Theme.accentGreen : Theme.textOnDarkMuted)
-          }).setOrigin(0.5);
-
-          footer.add([plate, icon, count]);
-          x += PLATE + GAP;
-        }
+      // Rows: the credits, when a stage charges any, then the materials.
+      const rows: { label: string; met: boolean; req?: { typeId: string; tier: number; count: number } }[] = [];
+      if (stageDef && stageDef.coins > 0) {
+        rows.push({ label: `${stageDef.coins.toLocaleString()} CREDITS`, met: affordable });
+      }
+      for (const req of stageDef?.requirements ?? []) {
+        const have = this.grid.countAtTier(req.tier, req.typeId);
+        rows.push({
+          label: `${req.count}x ${familyTierLabel(req.typeId, req.tier)}`,
+          met: have >= req.count,
+          req
+        });
       }
 
-      const rewardY = billY + PLATE / 2 + 30;
+      const rewardY = buttonY - buttonH / 2 - 20;
+      const rowsBottom = rewardY - 18;
+      const rowsTop = rowsBottom - rows.length * (rowH + 3);
+
       if (stageDef) {
-        footer.add(this.add.text(w / 2 - 40, rewardY, 'REWARD', {
+        footer.add(this.add.text(w / 2, rowsTop - 14, `TO OPEN ${PROJECT_STAGE_NAMES[this.projectStage + 1]}`, {
+          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
+          fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
+        }).setOrigin(0.5));
+      }
+
+      rows.forEach((row, i) => {
+        const y = rowsTop + rowH / 2 + i * (rowH + 3);
+        const tone = row.met ? Theme.accentGreen : Theme.borderOnDark;
+        const bg = this.add.graphics();
+        bg.fillStyle(row.met ? Theme.accentGreen : Theme.bgElevated, row.met ? 0.16 : 1);
+        bg.fillRoundedRect(left, y - rowH / 2, rowW, rowH, Theme.radiusChip);
+        bg.lineStyle(1, tone, row.met ? 0.85 : 0.5);
+        bg.strokeRoundedRect(left, y - rowH / 2, rowW, rowH, Theme.radiusChip);
+        footer.add(bg);
+
+        // The item's own art, at the row's height, so a requirement is
+        // recognisable without reading it.
+        let textX = left + 12;
+        if (row.req) {
+          const def = getTierDef(row.req.typeId, row.req.tier);
+          const art = rowH + 8;
+          const icon = this.add.graphics();
+          const { materialAlpha } = drawTierIcon(
+            icon, row.req.typeId, row.req.tier, art,
+            materialLighting(def?.color ?? Theme.panelAlt, row.req.tier)
+          );
+          icon.setAlpha(row.met ? materialAlpha : materialAlpha * 0.55);
+          const present = iconPresentation(row.req.typeId, row.req.tier, art);
+          icon.setScale(present.scale).setPosition(left + 20 + present.offsetX, y + present.offsetY);
+          footer.add(icon);
+          textX = left + 40;
+        }
+
+        footer.add(this.add.text(textX, y, row.label.toUpperCase(), {
+          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '11px', fontStyle: 'bold',
+          color: hex(row.met ? Theme.accentGreen : Theme.textOnDark)
+        }).setOrigin(0, 0.5));
+
+        // Right edge carries the state: how many you have, or a tick.
+        const status = row.req
+          ? `${Math.min(this.grid.countAtTier(row.req.tier, row.req.typeId), row.req.count)}/${row.req.count}`
+          : row.met ? 'READY' : 'SHORT';
+        footer.add(this.add.text(right - 12, y, status, {
+          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px', fontStyle: 'bold',
+          color: hex(row.met ? Theme.accentGreen : Theme.textOnDarkMuted)
+        }).setOrigin(1, 0.5));
+      });
+
+      // Reward line, worded and placed exactly like the shopping list's, so
+      // the two halves of the panel read as one thing.
+      if (stageDef) {
+        footer.add(this.add.text(w / 2 - 6, rewardY, 'ON OPENING  ·  GET', {
           resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
           fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
         }).setOrigin(1, 0.5));
@@ -3852,21 +3879,16 @@ ${familyTierLabel(typeId, tier)}`
           const kind = this.projectStage === 0 ? 'energy' : 'gem';
           const amount = this.projectStage === 0 ? 25 : 10;
           footer.add(currencyPill(this, String(amount), kind, {
-            ...currencyChipOptions(kind), fontSize: 12, iconSize: 21, height: 34
-          }).setPosition(w / 2 + 30, rewardY));
+            ...currencyChipOptions(kind), fontSize: 11, iconSize: 16, height: 22
+          }).setPosition(w / 2 + 26, rewardY));
         } else {
           const tier: CrateTier = this.projectStage === 1 ? 'bronze' : 'gold';
-          const rewardIcon = this.add.graphics().setPosition(w / 2 - 18, rewardY);
-          drawCrate(rewardIcon, 38, tier);
-          footer.add([rewardIcon, this.add.text(w / 2 + 5, rewardY, `${tier.toUpperCase()} CRATE`, {
-            resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '11px',
-            fontStyle: 'bold', color: hex(Theme.textOnDark)
-          }).setOrigin(0, 0.5)]);
+          const rewardIcon = this.add.graphics().setPosition(w / 2 + 14, rewardY);
+          drawCrate(rewardIcon, 26, tier);
+          footer.add(rewardIcon);
         }
       }
 
-      const buttonY = Math.min(h - 46, rewardY + 48);
-      const buttonW = Math.min(250, w - 60);
       const buttonBg = this.add.graphics();
       const buttonColor = complete ? Theme.panelAlt : buildable ? Theme.accentGreen : Theme.textOnDarkMuted;
       const buttonLighting = materialLighting(buttonColor, buildable ? 5 : 2);
@@ -3874,10 +3896,12 @@ ${familyTierLabel(typeId, tier)}`
         buttonLighting.highlight, buttonLighting.light,
         buttonLighting.dark, buttonLighting.shadow, 1
       );
-      buttonBg.fillRoundedRect(w / 2 - buttonW / 2, buttonY - 21, buttonW, 42, Theme.radiusChip);
+      // Full row width, so the button is the base of the same column the rows
+      // stand in rather than a narrower shape floating under them.
+      buttonBg.fillRoundedRect(left, buttonY - buttonH / 2, rowW, buttonH, Theme.radiusChip);
       // The label names the MISSING half rather than repeating the price, which
-      // the bill above it already shows. It says OPEN rather than BUILD now:
-      // the button no longer builds a stage, it unlocks one to be furnished.
+      // the rows above already show. It says OPEN rather than BUILD: the button
+      // no longer builds a stage, it unlocks one to be furnished.
       const label = complete
         ? 'PROJECT COMPLETE  ·  NEXT ROOM COMING SOON'
         : buildable ? `OPEN ${PROJECT_STAGE_NAMES[this.projectStage + 1]}`
@@ -3887,7 +3911,7 @@ ${familyTierLabel(typeId, tier)}`
         resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
         fontStyle: 'bold', color: hex(complete ? Theme.textOnDarkMuted : Theme.bg)
       }).setOrigin(0.5);
-      const buttonZone = this.add.zone(w / 2, buttonY, buttonW, 42).setInteractive({ useHandCursor: true });
+      const buttonZone = this.add.zone(w / 2, buttonY, rowW, buttonH).setInteractive({ useHandCursor: true });
       if (buildable && stageDef) buttonZone.on('pointerdown', () => this.confirmProjectPurchase(stageDef));
       footer.add([buttonBg, buttonText, buttonZone]);
     };
@@ -4373,10 +4397,26 @@ ${rewardLine}`,
     }
   }
 
+  /**
+   * Keeps a board object out of sight while the room panel is open.
+   *
+   * The panel hides the board by sweeping the display list ONCE, when it
+   * opens. Anything created afterwards - a crate delivered by a stage reward,
+   * for instance - was never swept, so it landed on top of the room and stayed
+   * there. Registering it with the same list hides it now and reveals it with
+   * everything else when the panel closes.
+   */
+  private hideBehindRoomPanel(view: Phaser.GameObjects.GameObject & { visible: boolean }): void {
+    if (!this.roomPanelOpen) return;
+    view.visible = false;
+    this.roomHiddenForPanel.push(view);
+  }
+
   private enqueueForcedSpawn(spawn: ForcedSpawn, from?: { x: number; y: number }): void {
     const openCell = this.firstFreeCellInReadingOrder();
     if (openCell) {
       const view = this.placeForcedSpawn(openCell, spawn);
+      this.hideBehindRoomPanel(view);
       const target = this.cellToWorld(openCell);
       const origin = from ?? this.vaultPosition();
       view.setPosition(origin.x, origin.y).setScale(0.72).setAlpha(0.35);
@@ -6132,6 +6172,12 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     panelBg.fillRoundedRect(panelX - panelW / 2, panelY - panelH / 2, panelW, panelH, Theme.radiusPanel);
     panelBg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
     panelBg.strokeRoundedRect(panelX - panelW / 2, panelY - panelH / 2, panelW, panelH, Theme.radiusPanel);
+    // Swallows taps that land on the panel itself. Without it a press on any
+    // bare part of the shop - the gap beside a card, the header, the space
+    // under the last row - fell through to the backdrop behind and closed the
+    // whole thing. Only the X and a tap OUTSIDE the panel close it now.
+    const panelCatcher = this.add.zone(panelX, panelY, panelW, panelH)
+      .setInteractive({ useHandCursor: false });
 
     const panelTitle = mode === 'coin' ? 'CREDITS' : mode === 'gem' ? 'GEMS' : 'SHOP';
     const title = this.add.text(panelX, panelY - panelH / 2 + 20, panelTitle, {
@@ -6145,7 +6191,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => this.time.delayedCall(0, () => this.closeShop()));
 
-    overlay.add([dim, panelBg, title, closeBtn]);
+    overlay.add([dim, panelBg, panelCatcher, title, closeBtn]);
 
     // Sits in the gap the title already leaves above the first section, so
     // showing it never reflows the rows below.
