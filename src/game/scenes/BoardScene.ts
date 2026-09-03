@@ -636,29 +636,51 @@ export class BoardScene extends Phaser.Scene {
     }
     const iconPx = { width: ICON_TEXTURE_PX * 2, height: ICON_TEXTURE_PX * 2 };
     const markPx = { width: ICON_TEXTURE_PX, height: ICON_TEXTURE_PX };
-    this.load.svg('energy-basket', 'energy-basket.svg', iconPx);
-    this.load.svg('producer-coin-pouch', 'coin-pouch.svg', iconPx);
-    this.load.svg('producer-coin-basket', 'coin-basket.svg', iconPx);
-    this.load.svg('producer-energy-basket', 'energy-basket.svg', iconPx);
-    this.load.svg('producer-gem-basket', 'gem-basket.svg', iconPx);
+
+    /**
+     * Loads a texture ONCE, however many times the scene restarts.
+     *
+     * `scene.restart()` re-enters preload on every viewport change, and an
+     * unguarded load re-rasterises its SVG into a brand new canvas each time.
+     * The art here is heavy - a megabyte-plus of paths per file - so a handful
+     * of resizes was enough for the browser to start refusing new canvases,
+     * and a refused canvas has a NULL 2d context: the loader then threw on
+     * `ctx.drawImage` in the middle of create(), after the HUD was drawn but
+     * before input was wired. That is the black/frozen game with a stale frame
+     * still on screen, and it took a resize to trigger, never a first load.
+     */
+    const svgOnce = (key: string, file: string, size: { width: number; height: number }): void => {
+      if (!this.textures.exists(key)) this.load.svg(key, file, size);
+    };
+    const imageOnce = (key: string, file: string): void => {
+      if (!this.textures.exists(key)) this.load.image(key, file);
+    };
+
+    svgOnce('energy-basket', 'energy-basket.svg', iconPx);
+    svgOnce('producer-coin-pouch', 'coin-pouch.svg', iconPx);
+    svgOnce('producer-coin-basket', 'coin-basket.svg', iconPx);
+    svgOnce('producer-energy-basket', 'energy-basket.svg', iconPx);
+    svgOnce('producer-gem-basket', 'gem-basket.svg', iconPx);
     // Living room project art. The shell is one full 1024-square frame; every
     // furniture piece is its own sprite, border-rendered and cropped to just
     // its own screen rect, with the shell acting as a shadow catcher so each
     // one carries its own contact shadow. `living.json` holds each piece's
     // rect, its stage, and its back-to-front draw order.
-    this.load.json('room-living-manifest', 'rooms/living.json');
-    this.load.image('room-shell', 'rooms/shell.png');
-    this.load.image('room-shell-raw', 'rooms/shell-raw.png');
+    if (!this.cache.json.exists('room-living-manifest')) {
+      this.load.json('room-living-manifest', 'rooms/living.json');
+    }
+    imageOnce('room-shell', 'rooms/shell.png');
+    imageOnce('room-shell-raw', 'rooms/shell-raw.png');
     for (const key of ROOM_ITEM_KEYS) {
-      this.load.image(`room-item-${key}`, `rooms/item-${key}.png`);
+      imageOnce(`room-item-${key}`, `rooms/item-${key}.png`);
     }
     // The project button's house mark. Loaded at the source texture size
     // rather than the mark size: it draws larger than a currency glyph, and
     // `potTextureSize` keeps it power-of-two so mipmaps stay on.
-    this.load.svg('home-icon', 'home-icon.svg', { width: SOURCE_TEXTURE_PX, height: SOURCE_TEXTURE_PX });
-    this.load.svg('currency-coin', 'currency-coin.svg', markPx);
-    this.load.svg('currency-gem', 'currency-gem.svg', markPx);
-    this.load.svg('currency-energy', 'currency-energy.svg', markPx);
+    svgOnce('home-icon', 'home-icon.svg', { width: SOURCE_TEXTURE_PX, height: SOURCE_TEXTURE_PX });
+    svgOnce('currency-coin', 'currency-coin.svg', markPx);
+    svgOnce('currency-gem', 'currency-gem.svg', markPx);
+    svgOnce('currency-energy', 'currency-energy.svg', markPx);
     for (let tier = 1; tier <= 4; tier++) {
       const textureKey = `source-wood-${tier}`;
       if (!this.textures.exists(textureKey)) {
@@ -770,6 +792,12 @@ export class BoardScene extends Phaser.Scene {
     this.buildForcedSpawnVault();
 
     this.buildOrderBar();
+    // BEFORE anything that can refresh it: `checkDeadlock` below refreshes the
+    // tray, and after a restart its fields still point at the previous scene's
+    // destroyed Text objects - live enough to pass an optional chain, dead
+    // enough to throw inside Phaser. That killed create() half way through, so
+    // the HUD drew but input was never wired.
+    this.buildActionTray();
 
     this.loadOrSeed();
     this.buildBoardExpansionLocks();
@@ -786,7 +814,6 @@ export class BoardScene extends Phaser.Scene {
     this.input.on('pointermove', this.onPointerMove, this);
     this.input.on('pointerup', this.onPointerUp, this);
 
-    this.buildActionTray();
     const autoLevelRewards = this.autoDeliverLevelRewards();
     const readyRewards = dailyAvailable(this.rewards, Date.now()) ? 1 : 0;
     this.refreshActionTray(readyRewards > 0
