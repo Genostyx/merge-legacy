@@ -2995,18 +2995,19 @@ export class BoardScene extends Phaser.Scene {
         // own contents and can be much narrower than the card, so aligning to
         // the card put the chip off to one side of the thing it belongs to.
         const gx = (barW - ORDER_GO_W) / 2;
-        // BELOW the card, not above it. Over the top edge the chip reached up
-        // into the header band, where a ready order could sit under the
-        // currency chips; underneath there is nothing but the board.
-        const gy = cardH + 1;
+        // Straddling the card's bottom edge - half on the card, half off it.
+        // Below the top edge it reached into the header band, where a ready
+        // order could sit under the currency chips; underneath there is
+        // nothing but the board.
+        const gy = cardH - ORDER_GO_H / 2;
         const goLighting = materialLighting(Theme.accentGreen, 5);
         view.bg.fillGradientStyle(goLighting.highlight, goLighting.light, goLighting.base, goLighting.dark, 1);
         view.bg.fillRoundedRect(gx, gy, ORDER_GO_W, ORDER_GO_H, Theme.radiusChip);
         view.progress.setPosition(gx + ORDER_GO_W / 2, gy + ORDER_GO_H / 2).setOrigin(0.5, 0.5);
       }
 
-      // Reaches DOWN over the GO chip, which now hangs below the card.
-      const below = status.ready ? ORDER_GO_H + 1 : 0;
+      // Reaches DOWN over the half of the GO chip that hangs past the card.
+      const below = status.ready ? ORDER_GO_H / 2 + 1 : 0;
       view.zone.setPosition(width / 2, (cardH + below) / 2).setSize(width, cardH + below);
       const hit = view.zone.input?.hitArea as Phaser.Geom.Rectangle | undefined;
       hit?.setTo(0, 0, width, cardH + below);
