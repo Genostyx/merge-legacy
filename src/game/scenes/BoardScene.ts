@@ -833,7 +833,11 @@ export class BoardScene extends Phaser.Scene {
     // shop button. A phone's camera cut-out is centred in the status bar,
     // which is exactly where the chips used to sit; dropping them to the
     // bottom of the header band clears it.
-    const chipTopY = ruleY - 18;
+    // ONE centre line for the whole header row, set by the profile badge - it
+    // is the tallest thing in the row and carries its XP ring, so everything
+    // else lines up with it rather than the other way round.
+    const headerMidY = ruleY - 16;
+    const chipTopY = headerMidY - 8;
     // The chips' lower edge. Everything else in the row hangs off it rather
     // than sharing a centre line, because the badge, the gear and the shop
     // button are three different sizes and a common centre left their bottoms
@@ -842,15 +846,9 @@ export class BoardScene extends Phaser.Scene {
     // the shop button a drop shadow 20px under its own - and the shop button's
     // container is scaled, so its offset scales with it.
     const chipBottomY = chipTopY + 16;
-    // The chips' own centre line. The shop button is CENTRED on it rather than
-    // hung from the bottom edge like the badge: it is a disc, so its middle is
-    // what the eye lines up with the middle of the chips beside it.
-    const chipMidY = chipTopY + 8;
+    const chipMidY = headerMidY;
 
-    // A few pixels lower than a strict bottom-align: the badge carries its XP
-    // ring below the disc, so hanging the disc off the chips' baseline left
-    // the pair sitting high.
-    this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, chipBottomY - 14);
+    this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, headerMidY);
 
     // Currency chips: a bordered badge with a small drawn glyph + the
     // number, instead of bare colored text floating on the backdrop -
@@ -1933,10 +1931,8 @@ export class BoardScene extends Phaser.Scene {
     // The shop button is a radius-18 circle centred at `headerRight - 18`, so
     // its left edge is `headerRight - 36`; four pixels of air, then the gear.
     const x = this.headerRight - 36 * s - 4 * s - size / 2;
-    // Centred on the chips' midline, like the shop button beside it: both are
-    // small marks in their own container, so the eye lines their middles up
-    // with the middle of the chips rather than their lower edges.
-    const y = this.contentTop + 42 * this.hudScale - 18 + 8;
+    // The header row's shared centre line - see `headerMidY` in create().
+    const y = this.contentTop + 42 * this.hudScale - 16;
 
     const bg = this.add.graphics().setDepth(4);
     bg.fillStyle(Theme.bg, 0.94);
