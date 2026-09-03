@@ -4686,22 +4686,31 @@ ${rewardLine}`,
             plate.lineStyle(1, Theme.borderOnDark, 0.55);
             plate.strokeRoundedRect(cx - slotSize / 2, cellTop, slotSize, slotSize, Theme.radiusChip);
 
+            // The gem leaves the list and finishes its flight in SCENE space.
+            // Inside `content` it was clipped by the list's mask and drawn
+            // under the panel header, so it disappeared behind the top of the
+            // collection exactly as it arrived. Reparenting keeps it whole and
+            // lets it pass over everything on its way to the counter.
+            const flightX = cx;
+            const flightY = cy + content.y;
+            content.remove(gem);
+            this.add.existing(gem);
+            gem.setPosition(flightX, flightY).setDepth(4200);
+
             const targetX = this.gemText.x;
-            const targetY = this.gemText.y - content.y;
+            const targetY = this.gemText.y;
             // Arc rather than a straight line, and a control point pulled up
             // and toward the counter - a collected thing thrown to a counter
             // reads as a lob, and a linear slide reads as a sprite being
             // dragged.
-            const ctrlX = (cx + targetX) / 2 + (targetX - cx) * 0.1;
-            const ctrlY = Math.min(cy, targetY) - Math.abs(targetX - cx) * 0.22 - 40;
-
-            gem.setDepth(4000);
+            const ctrlX = (flightX + targetX) / 2 + (targetX - flightX) * 0.1;
+            const ctrlY = Math.min(flightY, targetY) - Math.abs(targetX - flightX) * 0.22 - 40;
             // The claim beat is now a HOLD, not a swell. A short pause before
             // the gem leaves still gives the tap its own moment, without the
             // gem ever growing - which is what read as bloated at any size the
             // swell was tuned to.
             this.time.delayedCall(90, () => {
-              burstParticles(this, cx, cy + content.y, Theme.currencyGem, 1);
+              burstParticles(this, flightX, flightY, Theme.currencyGem, 1);
               this.tweens.addCounter({
                 from: 0,
                 to: 1,
@@ -4711,8 +4720,8 @@ ${rewardLine}`,
                   const t = tween.getValue() ?? 0;
                   const inv = 1 - t;
                   gem.setPosition(
-                    inv * inv * cx + 2 * inv * t * ctrlX + t * t * targetX,
-                    inv * inv * cy + 2 * inv * t * ctrlY + t * t * targetY
+                    inv * inv * flightX + 2 * inv * t * ctrlX + t * t * targetX,
+                    inv * inv * flightY + 2 * inv * t * ctrlY + t * t * targetY
                   );
                   // Preserve the SVG's display-size scale. Setting this to a
                   // literal 1 reset the image to its huge native dimensions.
