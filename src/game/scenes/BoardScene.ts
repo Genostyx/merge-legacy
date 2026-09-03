@@ -2325,9 +2325,9 @@ export class BoardScene extends Phaser.Scene {
     // or the scroll mask clips exactly the parts that moved outside.
     maskShape.fillRect(
       this.boardOriginX + this.crateLaneW(),
-      y - (ORDER_GO_H + 2) * this.chromeScale,
+      y - 4 * this.chromeScale,
       viewW,
-      (cardH + ORDER_GO_H + 6) * this.chromeScale
+      (cardH + ORDER_GO_H + 8) * this.chromeScale
     );
     this.orderBarMaskShape = maskShape;
     container.setMask(maskShape.createGeometryMask());
@@ -2558,9 +2558,9 @@ export class BoardScene extends Phaser.Scene {
       // the meter is cooling.
       this.orderBarMaskShape.fillRect(
         laneX,
-        y - (ORDER_GO_H + 2) * this.chromeScale,
+        y - 4 * this.chromeScale,
         visibleW,
-        (cardH + ORDER_GO_H + 6) * this.chromeScale
+        (cardH + ORDER_GO_H + 8) * this.chromeScale
       );
     }
 
@@ -2980,20 +2980,21 @@ export class BoardScene extends Phaser.Scene {
         // own contents and can be much narrower than the card, so aligning to
         // the card put the chip off to one side of the thing it belongs to.
         const gx = (barW - ORDER_GO_W) / 2;
-        // Fully clear of the bar rather than straddling it - half-on put the
-        // chip straight through the reward figure.
-        const gy = ORDER_BAR_TOP - ORDER_GO_H - 1;
+        // BELOW the card, not above it. Over the top edge the chip reached up
+        // into the header band, where a ready order could sit under the
+        // currency chips; underneath there is nothing but the board.
+        const gy = cardH + 1;
         const goLighting = materialLighting(Theme.accentGreen, 5);
         view.bg.fillGradientStyle(goLighting.highlight, goLighting.light, goLighting.base, goLighting.dark, 1);
         view.bg.fillRoundedRect(gx, gy, ORDER_GO_W, ORDER_GO_H, Theme.radiusChip);
         view.progress.setPosition(gx + ORDER_GO_W / 2, gy + ORDER_GO_H / 2).setOrigin(0.5, 0.5);
       }
 
-      // Reaches up over the GO chip, which now clears the card's top edge.
-      const above = status.ready ? ORDER_GO_H + 1 - ORDER_BAR_TOP : 0;
-      view.zone.setPosition(width / 2, cardH / 2 - above / 2).setSize(width, cardH + above);
+      // Reaches DOWN over the GO chip, which now hangs below the card.
+      const below = status.ready ? ORDER_GO_H + 1 : 0;
+      view.zone.setPosition(width / 2, (cardH + below) / 2).setSize(width, cardH + below);
       const hit = view.zone.input?.hitArea as Phaser.Geom.Rectangle | undefined;
-      hit?.setTo(0, 0, width, cardH + above);
+      hit?.setTo(0, 0, width, cardH + below);
 
       // Cards SLIDE to their new position rather than jumping, on the same
       // 140ms Quad.Out as TileView.snapTo - so an order reordering itself
