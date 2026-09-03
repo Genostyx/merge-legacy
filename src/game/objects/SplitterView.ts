@@ -31,7 +31,9 @@ export class SplitterView extends Phaser.GameObjects.Container {
     super(scene, x, y);
     this.gridPos = gridPos;
     this.icon = scene.add.graphics();
-    drawSplitterIcon(this.icon, cellSize * 0.78);
+    // 0.88, matching the dispensers and spawner pieces it sits among. At 0.78 it
+    // was the only piece of board furniture drawn smaller than the rest.
+    drawSplitterIcon(this.icon, cellSize * 0.88);
     this.add(this.icon);
     this.setSize(cellSize, cellSize);
     scene.add.existing(this);

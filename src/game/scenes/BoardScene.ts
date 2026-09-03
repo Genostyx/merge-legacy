@@ -142,7 +142,7 @@ import {
   supplyCrateReady, supplyCooldownRemaining,
   crateReady, crateRemainingMs, formatCrateWait, supplyCrateFor
 } from '../shop/SupplyCrates';
-import { CURRENCY_COLOR, type CurrencyKind, applyCurrencyIcon, currencyChipOptions, currencyIcon, currencyLabel, currencyPill, drawCurrencyGlyph } from '../ui/CurrencyGlyph';
+import { CURRENCY_COLOR, type CurrencyKind, applyCurrencyIcon, currencyBoxFor, currencyChipOptions, currencyIcon, currencyLabel, currencyPill, drawCurrencyGlyph } from '../ui/CurrencyGlyph';
 import { createLockedBoardSeed } from '../LockedBoard';
 import {
   claimDiscovery,
@@ -220,25 +220,6 @@ type ForcedSpawn =
   // `readyAt` rides along so a bought crate that has to wait for board space
   // keeps counting down in the vault rather than restarting when it lands.
   | { kind: 'crate'; tier: CrateTier; remaining: CratePayloadEntry[]; source?: string; readyAt?: number };
-
-/**
- * Share of its 1024px art box each currency mark's drawing actually fills.
- *
- * Every currency SVG is the same square, but the art inside is not: the
- * coin's disc reaches 65% of the box, the gem 59%, the bolt 78%. Display size
- * is therefore NOT how tall a mark comes out, which is why equal sizes drew
- * visibly unequal marks in the chips.
- *
- * Measured off the path bounds in `public/currency-*.svg`. Retrace an SVG
- * with different padding and its number here has to be remeasured - this is a
- * property of the art file, not of the shape it draws.
- */
-const GLYPH_FILL_RATIO = { coin: 0.649, gem: 0.591, energy: 0.779 } as const;
-
-/** Display size that draws `height` pixels of actual mark. */
-function glyphBoxFor(mark: keyof typeof GLYPH_FILL_RATIO, height: number): number {
-  return Math.round((height / GLYPH_FILL_RATIO[mark]) * 10) / 10;
-}
 
 /**
  * The Fullscreen API, across the shapes phones actually ship.
@@ -336,7 +317,9 @@ const SPAWNER_PIECE_NAMES: Record<string, string[]> = {
   wood: ['Cut Timber', 'Joined Beams', 'Timber Frame', 'Roofed Frame'],
   mineral: ['Cut Stone', 'Joined Stone Beams', 'Stone Framework', 'Roofed Stone Frame'],
   glass: ['Glass Panel', 'Joined Panels', 'Glass Framework', 'Roofed Glass Frame'],
-  water: ['Pipe Segment', 'Joined Pipes', 'Pump Frame', 'Pump Assembly']
+  // The well set from docs/TODO_DETAILS.md, replacing the pipe names these
+  // pieces no longer look like.
+  water: ['Ring Section', 'Support Frame', 'Roof Section', 'Winch Assembly']
 };
 
 function spawnerPieceLabel(typeId: string, tier: number): string {
@@ -859,8 +842,15 @@ export class BoardScene extends Phaser.Scene {
     // the shop button a drop shadow 20px under its own - and the shop button's
     // container is scaled, so its offset scales with it.
     const chipBottomY = chipTopY + 16;
+    // The chips' own centre line. The shop button is CENTRED on it rather than
+    // hung from the bottom edge like the badge: it is a disc, so its middle is
+    // what the eye lines up with the middle of the chips beside it.
+    const chipMidY = chipTopY + 8;
 
-    this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, chipBottomY - 18);
+    // A few pixels lower than a strict bottom-align: the badge carries its XP
+    // ring below the disc, so hanging the disc off the chips' baseline left
+    // the pair sitting high.
+    this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, chipBottomY - 14);
 
     // Currency chips: a bordered badge with a small drawn glyph + the
     // number, instead of bare colored text floating on the backdrop -
@@ -891,7 +881,7 @@ export class BoardScene extends Phaser.Scene {
     // 18, not 20: the offset is the DISC's radius, not the disc plus its drop
     // shadow. Allowing for the shadow left the button itself sitting two
     // pixels proud of the chips.
-    this.buildShopIconButton(headerRight - 18 * this.hudScale, chipBottomY - 18 * this.chromeScale, () => {
+    this.buildShopIconButton(headerRight - 18 * this.hudScale, chipMidY, () => {
       this.shopNotice = null;
       this.openShop('full');
     });
@@ -1522,7 +1512,7 @@ export class BoardScene extends Phaser.Scene {
     const accent = Theme.currencyEnergy;
     const numberColor = materialLighting(accent, 4).light;
     const bg = this.add.graphics().setDepth(20);
-    const iconSize = glyphBoxFor('energy', 17 * s);
+    const iconSize = currencyBoxFor('energy', 17 * s);
     const iconShadow = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
     const icon = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setDepth(22);
     const iconGloss = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
@@ -1616,7 +1606,7 @@ export class BoardScene extends Phaser.Scene {
     const iconKey = glyph === 'coin' ? 'currency-coin' : 'currency-gem';
     // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
     // why that is not the same as a 24px display size.
-    const iconSize = glyphBoxFor(glyph, 15 * s);
+    const iconSize = currencyBoxFor(glyph === 'coin' ? 'credit' : 'gem', 15 * s);
     const iconShadow = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
     const icon = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
     const iconGloss = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);

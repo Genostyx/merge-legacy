@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import type { ResourceProducerId } from '../rewards/ResourceRewards';
 import { RESOURCE_PRODUCERS } from '../rewards/ResourceRewards';
+import { boxForDrawnArt } from './ArtFill';
 
 export class ResourceProducerView extends Phaser.GameObjects.Container {
   gridPos: GridPosition;
@@ -15,8 +16,13 @@ export class ResourceProducerView extends Phaser.GameObjects.Container {
     this.gridPos = gridPos;
     this.cellSize = cellSize;
     this.producerId = producerId;
-    this.art = scene.add.image(0, 0, RESOURCE_PRODUCERS[producerId].textureKey)
-      .setDisplaySize(cellSize * 0.94, cellSize * 0.94);
+    // Sized by drawn art, not by box: these four assets carry between 61% and
+    // 80% of their square, so a flat 0.94 box drew the coin pouch noticeably
+    // smaller than the baskets beside it.
+    const producerKey = RESOURCE_PRODUCERS[producerId].textureKey;
+    const producerBox = boxForDrawnArt(producerKey, cellSize * 0.76);
+    this.art = scene.add.image(0, 0, producerKey)
+      .setDisplaySize(producerBox, producerBox);
     this.add(this.art);
     this.setSize(cellSize, cellSize);
     scene.add.existing(this);

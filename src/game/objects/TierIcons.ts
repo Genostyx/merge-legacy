@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Theme, materialLighting, toneForNormal } from '../ui/Theme';
-import { getTierDef } from '../data/chains';
+import { CHAINS, getTierDef } from '../data/chains';
 import { GraphicsRecorder } from './GraphicsRecorder';
 
 /**
@@ -522,8 +522,8 @@ export interface IconPresentation {
 // cell, which is why the board read as small objects in big empty squares -
 // and why every reference merge game draws its items closer to, or past, the
 // cell edge. The band stays narrow for the reason above; it just sits higher.
-const SIZE_AT_TIER_ONE = 0.60;
-const SIZE_AT_TIER_NINE = 0.78;
+const SIZE_AT_TIER_ONE = 0.68;
+const SIZE_AT_TIER_NINE = 0.80;
 
 /**
  * Items sit on a common ground line rather than being centred in their cell.
@@ -542,7 +542,7 @@ const GROUND_LINE = 0.32;
  * break their square, and detail below ~40px of drawn art stops being
  * readable at all on a phone.
  */
-const MAX_WIDTH = 1.04;
+const MAX_WIDTH = 1.16;
 
 /** How far above centre a shape may reach. `s` is already 0.96 of the cell, so this is measured against that. */
 const MAX_RISE = 0.74;
@@ -569,6 +569,28 @@ const MAX_HEIGHT = GROUND_LINE + MAX_RISE;
  * rewriting 27 hand-authored shapes - the shapes are correct in themselves,
  * it is only their sizes relative to each other that were arbitrary.
  */
+/**
+ * Per-icon corrections to the size ladder, keyed `typeId:tier`.
+ *
+ * The ladder sizes every icon by its bounding box, which is right for single
+ * objects and slightly wrong for arrangements: a lone water droplet fills its
+ * box, while the twin droplets share theirs, so the single one came out larger
+ * than the biggest droplet in the pair it merges into. A merge must never
+ * produce something that looks smaller.
+ *
+ * Deliberately a short list of exceptions rather than a per-icon size table -
+ * the ladder is the rule, and every entry here is a shape whose bounding box
+ * lies about how big it looks.
+ */
+const ICON_SIZE_CORRECTION: Record<string, number> = {
+  'water:1': 0.86
+};
+
+/** How many tiers the family has, for normalising the size ladder across it. */
+function chainLength(typeId: string): number {
+  return CHAINS.find((chain) => chain.typeId === typeId)?.tiers.length ?? 9;
+}
+
 export function iconPresentation(typeId: string, tier: number, s: number): IconPresentation {
   const f = iconFootprint(typeId, tier);
 
@@ -576,10 +598,16 @@ export function iconPresentation(typeId: string, tier: number, s: number): IconP
   // tall narrow form (the obelisks, the marquise) far out of its cell to
   // make its narrow waist hit the target.
   const metric = Math.sqrt(f.width * f.height);
-  const t = Math.min(Math.max((tier - 1) / 8, 0), 1);
+  // Normalised over the FAMILY's own chain length, not a fixed nine tiers.
+  // Water runs to twelve, so dividing by 8 clamped its top three tiers to the
+  // same size as tier 9 - three consecutive merges that produced nothing
+  // bigger, in the one family long enough to notice.
+  const topTier = Math.max(2, chainLength(typeId));
+  const t = Math.min(Math.max((tier - 1) / (topTier - 1), 0), 1);
   const target = SIZE_AT_TIER_ONE + (SIZE_AT_TIER_NINE - SIZE_AT_TIER_ONE) * t;
 
-  let scale = metric > 0 ? target / metric : 1;
+  const correction = ICON_SIZE_CORRECTION[`${typeId}:${tier}`] ?? 1;
+  let scale = metric > 0 ? (target * correction) / metric : 1;
   if (f.width * scale > MAX_WIDTH) scale = MAX_WIDTH / f.width;
   if (f.height * scale > MAX_HEIGHT) scale = MAX_HEIGHT / f.height;
 

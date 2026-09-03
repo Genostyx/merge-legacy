@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { getTierDef } from '../data/chains';
 import { drawTierIcon, iconPresentation } from './TierIcons';
+import { currencyBoxFor, type CurrencyKind } from '../ui/CurrencyGlyph';
 import type { IconFootprint } from './TierIcons';
 import { Theme, materialLighting } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
@@ -151,17 +152,21 @@ export class TileView extends Phaser.GameObjects.Container {
       // Credits keep the stacked, structured arrangement - coins are minted
       // things and stack squarely. Drops and gems do not: they get loose
       // clusters, because aligned columns made them read as a bar chart.
+      // Every layout is a FRACTION of the cell. Tiers 1 and 2 used to be
+      // authored in pixels, so their spacing did not track cell size at all -
+      // it was tuned for one board width and the two coins closed up on each
+      // other everywhere else, which got worse the moment the marks grew.
       const creditLayouts: [number, number][][] = [
-        [[0, 4]],
-        [[-10, 7], [0, 4]],
+        [[0, 0.07]],
+        [[-0.19, 0.13], [0, 0.07]],
         [[0, 0.17], [0, 0.05], [0, -0.07]],
         [[-0.15, 0.15], [-0.15, 0.03], [0.15, 0.11], [0.15, -0.01]],
         [[-0.21, 0.15], [0, 0.15], [0.21, 0.15], [-0.11, 0.01], [0.11, 0.01]],
         [[-0.21, 0.18], [0, 0.18], [0.21, 0.18], [-0.11, 0.04], [0.11, 0.04], [0, -0.1]]
       ];
       const clusterLayouts: [number, number][][] = [
-        [[0, 4]],
-        [[-10, 7], [0, 4]],
+        [[0, 0.07]],
+        [[-0.19, 0.13], [0, 0.07]],
         [[-0.16, 0.14], [0.17, 0.07], [0, -0.07]],
         [[-0.19, 0.14], [0.16, 0.15], [-0.04, 0], [0.19, -0.08]],
         [[-0.2, 0.16], [0.05, 0.19], [-0.15, -0.02], [0.2, 0.05], [0.02, -0.13]],
@@ -175,13 +180,26 @@ export class TileView extends Phaser.GameObjects.Container {
       // droplets do NOT shrink: they hold tier 2's size at every tier and are
       // allowed to overlap, because a higher tier reading as physically
       // smaller undercuts the merge.
-      const iconSize = this.typeId === 'currency-credit'
-        ? this.cellSize * (tier <= 2 ? 0.52 : tier <= 4 ? 0.36 : 0.32)
-        : this.cellSize * 0.52;
+      // Sized by the mark that ACTUALLY GETS DRAWN, not by the box it is
+      // drawn in. The art fills 59-78% of its own square depending on the
+      // currency, so a flat 0.52 box put a single gem on the board at ~0.31 of
+      // a cell - less than half a tier-1 item standing beside it, and easily
+      // the smallest thing on the board.
+      //
+      // Coins shrink as they stack - six have to share the cell where one does
+      // not - but gems and drops do NOT. They hold one size at every tier and
+      // are allowed to overlap, because a higher tier reading as physically
+      // smaller undercuts the merge that produced it.
+      const drawnFraction = this.typeId === 'currency-credit'
+        ? [0.62, 0.54, 0.46, 0.42, 0.38, 0.36][layout.length - 1] ?? 0.36
+        : 0.54;
+      const kind: CurrencyKind = this.typeId === 'currency-credit'
+        ? 'credit'
+        : this.typeId === 'currency-gem' ? 'gem' : 'energy';
+      const iconSize = currencyBoxFor(kind, this.cellSize * drawnFraction);
       layout.forEach(([x, y]) => {
-        // Tiers 1-2 are authored in pixels; the rest scale with the cell.
-        const px = tier <= 2 ? x : x * this.cellSize;
-        const py = tier <= 2 ? y : y * this.cellSize;
+        const px = x * this.cellSize;
+        const py = y * this.cellSize;
         const image = this.scene.add.image(px, py, textureKey).setDisplaySize(iconSize, iconSize);
         this.currencyIcons.push(image);
         this.addAt(image, 2);

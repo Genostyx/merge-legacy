@@ -170,7 +170,7 @@ describe('icon presentation', () => {
     // art stops reading on a phone. So this no longer asserts "inside the
     // box"; it asserts each of the three caps the presentation actually
     // enforces, which is what stops a shape growing without limit.
-    const horizontal = S * (1.04 / 2); // half of MAX_WIDTH
+    const horizontal = S * (1.16 / 2); // half of MAX_WIDTH
     const top = S * 0.74;              // MAX_RISE
     const bottom = S * 0.52;           // sits on the ground line, never below the cell
     for (const { typeId, tier } of ALL_TIERS) {

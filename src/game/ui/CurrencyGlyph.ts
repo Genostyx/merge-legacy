@@ -73,6 +73,26 @@ export function drawCurrencyGlyph(
   g.fillPath();
 }
 
+/**
+ * Share of its 1024px art box each currency mark's drawing actually fills.
+ *
+ * Every currency SVG is the same square, but the art inside is not: the
+ * coin's disc reaches 65% of the box, the gem 59%, the bolt 78%. Display size
+ * is therefore NOT how big a mark comes out, which is why anything sizing one
+ * - the HUD chips, the board tiles - goes through `currencyBoxFor` instead of
+ * passing a display size straight in.
+ *
+ * Measured off the path bounds in `public/currency-*.svg`. Retrace an SVG
+ * with different padding and its number here has to be remeasured: this is a
+ * property of the art file, not of the shape it draws.
+ */
+export const CURRENCY_FILL_RATIO = { credit: 0.649, gem: 0.591, energy: 0.779 } as const;
+
+/** Display size that draws `height` pixels of actual mark. */
+export function currencyBoxFor(kind: CurrencyKind, height: number): number {
+  return Math.round((height / CURRENCY_FILL_RATIO[kind]) * 10) / 10;
+}
+
 /** Texture keys for the drawn currency art, loaded in BoardScene.preload. */
 const CURRENCY_TEXTURE: Record<CurrencyKind, string> = {
   credit: 'currency-coin',
