@@ -75,13 +75,14 @@ praise. Titles to cover:
 - Merge Mansion
 - Travel Town
 - Gossip Harbor
-- Merge Cruise: Mystery Puzzle
+- Merge Cruise: Mystery Puzzle - r/MergeCruise
 - Merge Dragons
 - Merge Camp
 
-Note that some of these have no dedicated subreddit - Merge Cruise did not
-turn up one - so the sweep has to include the general mobile-gaming and
-merge-game subs, app store review sections and the games' own Discords.
+Check each game's own subreddit first, then widen to the general
+mobile-gaming and merge subs, app store review sections and the games'
+Discords. Guess the r/<GameName> URL directly rather than trusting a search
+engine to surface it.
 
 What to come back with: the recurring complaints ranked by how often they
 appear and how final they are (annoyance vs "I uninstalled"), each tagged with
