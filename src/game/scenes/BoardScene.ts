@@ -7098,6 +7098,15 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     }
     // A fresh game begins with one physical source and a ready-made first
     // merge. Further sources arrive as goal rewards.
+    //
+    // The grid is CLEARED first because it is a scene field and survives
+    // `scene.restart()`, while the views that draw it do not. Re-seeding onto
+    // a grid that still held the previous run's cells placed nothing -
+    // `seedLockedBoard` skips any cell that is not empty - so the locked items
+    // existed as data with no views: invisible, and un-mergeable. The load
+    // path above already clears for the same reason; only the seed path did
+    // not, which is why one merge (and the save it writes) hid the bug.
+    this.grid.clear();
     this.boardExpansionUnlocked.clear();
     this.applyBoardExpansionLocks();
     const fullStarter = makeDispenser(TYPE_ID, 1, Date.now(), capacityForTier(TYPE_ID, 1));
@@ -7109,6 +7118,10 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     this.seedLockedBoard(0);
     this.lastLoadInfo = 'seed';
     this.updateLevelBadge();
+    // Persist the starting board immediately, so a rebuild - a rotation, a
+    // resize, entering fullscreen - restores it through the load path instead
+    // of seeding a second time.
+    this.saveState();
   }
 
   private saveState(): void {
