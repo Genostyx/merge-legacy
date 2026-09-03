@@ -158,7 +158,10 @@ export class TileView extends Phaser.GameObjects.Container {
       // other everywhere else, which got worse the moment the marks grew.
       const creditLayouts: [number, number][][] = [
         [[0, 0.07]],
-        [[-0.19, 0.13], [0, 0.07]],
+        // The pair is centred on the tile: the two coins sat at -0.19 and 0, so
+        // their midpoint was 0.095 to the LEFT of centre and the whole mark
+        // hung off one side of the cell.
+        [[-0.095, 0.13], [0.095, 0.07]],
         [[0, 0.17], [0, 0.05], [0, -0.07]],
         [[-0.15, 0.15], [-0.15, 0.03], [0.15, 0.11], [0.15, -0.01]],
         [[-0.21, 0.15], [0, 0.15], [0.21, 0.15], [-0.11, 0.01], [0.11, 0.01]],
@@ -166,7 +169,9 @@ export class TileView extends Phaser.GameObjects.Container {
       ];
       const clusterLayouts: [number, number][][] = [
         [[0, 0.07]],
-        [[-0.19, 0.13], [0, 0.07]],
+        // Centred on the tile, as with the coin pair: -0.19 and 0 put the
+        // midpoint 0.095 left of centre.
+        [[-0.095, 0.13], [0.095, 0.07]],
         [[-0.16, 0.14], [0.17, 0.07], [0, -0.07]],
         [[-0.19, 0.14], [0.16, 0.15], [-0.04, 0], [0.19, -0.08]],
         [[-0.2, 0.16], [0.05, 0.19], [-0.15, -0.02], [0.2, 0.05], [0.02, -0.13]],

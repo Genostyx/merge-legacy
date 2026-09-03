@@ -27,6 +27,7 @@ import {
   ENERGY_CAP,
   ENERGY_COST_PER_COLLECT,
   ENERGY_REFILL_MS,
+  ENERGY_REFILL_BASE_GEMS,
   addEnergy,
   canSpendEnergy,
   createDefaultEnergy,
@@ -7336,9 +7337,14 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     };
     const [nextKey, nextValue] = statRow(-8, 'NEXT ENERGY');
     const [fullKey, fullValue] = statRow(14, 'FULL IN');
-    const footnote = this.add.text(0, 38, '1 ENERGY PER SOURCE ITEM', {
+    // Two lines: what energy is spent on, and what a refill will cost NEXT
+    // time. The price doubles per purchase and drops back 24 hours after the
+    // first one, and a player who is not told that reads the second refill's
+    // 40 as a bug - or, worse, learns it by spending.
+    const footnote = this.add.text(0, 42, '1 ENERGY PER SOURCE ITEM', {
       resolution: textResolution,
-      fontFamily: Theme.fontMono, fontSize: '9px', color: hex(Theme.textOnDarkMuted)
+      fontFamily: Theme.fontMono, fontSize: '9px', color: hex(Theme.textOnDarkMuted),
+      align: 'center', lineSpacing: 3
     }).setOrigin(0.5).setAlpha(0.7);
 
     // The refill gets its own full-width bar, and the WHOLE bar is the hit
@@ -7459,6 +7465,14 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       fullValue.setText(full
         ? `1 / ${formatCountdown(ENERGY_REFILL_MS)}`
         : formatCountdown(msUntilEnergyFull(this.energy)));
+
+      // The price line rides the same tick as the countdowns, so the time
+      // left on the window ticks down while the panel is open.
+      const resetAt = this.energy.refillPriceResetAt;
+      const priceNote = resetAt > Date.now()
+        ? `BACK TO ${ENERGY_REFILL_BASE_GEMS} GEMS IN ${formatCountdown(resetAt - Date.now())}`
+        : 'EACH REFILL DOUBLES THE PRICE FOR 24H';
+      footnote.setText(['1 ENERGY PER SOURCE ITEM', priceNote]);
 
       const color = drawBuyBar(full);
       buyVerb.setText(full ? 'ENERGY FULL' : 'REFILL').setColor(hex(color));
