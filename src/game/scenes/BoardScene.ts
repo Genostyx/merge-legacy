@@ -3222,9 +3222,22 @@ ${familyTierLabel(typeId, tier)}`
    * the purchase that completes the look rather than on the one that opened
    * the list.
    */
+  /**
+   * Whether the thing this piece sits on has been bought.
+   *
+   * The stage table already keeps a support in an earlier-or-equal stage, but
+   * within a stage the shelf can be bought in any order - so the books could
+   * be bought before the bookcase they stand in, and would hang in the air
+   * until it arrived.
+   */
+  private roomPieceSupported(piece: RoomPiece): boolean {
+    return piece.restsOn == null || this.builtPieces.has(piece.restsOn);
+  }
+
   private buyRoomPiece(piece: RoomPiece, from: { x: number; y: number }): boolean {
     if (piece.stage > this.projectStage) return false;
     if (this.builtPieces.has(piece.key)) return false;
+    if (!this.roomPieceSupported(piece)) return false;
     if (!spendCoinsGeneric(this.economy, piece.price)) return false;
     this.builtPieces.add(piece.key);
     this.roomView?.setBuilt(this.builtPieces);
@@ -3628,7 +3641,11 @@ ${familyTierLabel(typeId, tier)}`
       pieces.forEach((piece, i) => {
         const y = top + rowH / 2 + i * (rowH + 3);
         const owned = this.builtPieces.has(piece.key);
-        const affordable = !owned && this.economy.coins >= piece.price;
+        const supported = this.roomPieceSupported(piece);
+        const affordable = !owned && supported && this.economy.coins >= piece.price;
+        const support = piece.restsOn == null
+          ? null
+          : ROOM_PIECES.find((other) => other.key === piece.restsOn) ?? null;
         // Colour carries the state, not opacity - the same rule the order
         // cards and the inventory slots follow.
         const tone = owned ? Theme.accentGreen : affordable ? Theme.accentAmber : Theme.borderOnDark;
@@ -3648,6 +3665,16 @@ ${familyTierLabel(typeId, tier)}`
           footer.add(this.add.text(w / 2 + rowW / 2 - 12, y, 'BUILT', {
             resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
             fontStyle: 'bold', color: hex(Theme.accentGreen)
+          }).setOrigin(1, 0.5));
+          return;
+        }
+
+        // A piece with nowhere to sit names what it is waiting for instead of
+        // showing a price it cannot take.
+        if (!supported && support) {
+          footer.add(this.add.text(w / 2 + rowW / 2 - 12, y, `NEEDS ${support.label.toUpperCase()}`, {
+            resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
+            color: hex(Theme.textOnDarkMuted)
           }).setOrigin(1, 0.5));
           return;
         }
