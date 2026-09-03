@@ -172,12 +172,7 @@ const BOARD_TO_TRAY_GAP = 6;
  */
 const DRAG_START_PX = 14;
 /** Cell size the chrome constants below are tuned against. */
-// 46, not 54: a real phone is 390-430 CSS px wide, so its cells land near 60
-// and the order cards were coming out barely larger than the ones a 300px
-// desktop pane gets - cards that read as too small next to the board they sit
-// above. This is the cell size at which the card constants are considered
-// "correct"; anything bigger scales up from here.
-const CHROME_BASE_CELL = 46;
+const CHROME_BASE_CELL = 54;
 const EXPANSION_ROW_ONE = 7;
 const EXPANSION_ROW_TWO = 8;
 /** Player level the second expansion row opens at - the label quotes this, so the two cannot drift. */
@@ -1097,7 +1092,7 @@ export class BoardScene extends Phaser.Scene {
       widthCellSize,
       Math.floor((this.scale.height - header - trayReserve - trayGap - outerReserve) / ROWS)
     ));
-    this.chromeScale = Phaser.Math.Clamp(cellFor(124) / CHROME_BASE_CELL, 1, 1.5);
+    this.chromeScale = Phaser.Math.Clamp(cellFor(124) / CHROME_BASE_CELL, 1, 1.35);
     const headerReserve = Math.round(124 * this.chromeScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
