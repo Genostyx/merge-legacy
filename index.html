@@ -23,22 +23,26 @@
   <style>
     html, body {
       margin: 0;
+      /* Anything the canvas does not cover shows this, not black. */
+      background: #1c1a17;
       padding: 0;
       background: #1c1a17;
       overflow: hidden;
       height: 100%;
       width: 100%;
     }
+    /* Pinned to the visual viewport instead of sized by a viewport UNIT.
+       dvh is reported per-frame while the address bar animates, so the game
+       could be laid out against a height the screen never actually had,
+       leaving the background short of the bottom edge - a black band under
+       the game. `position: fixed` with all four insets is measured from the
+       real box, so the canvas is always exactly the visible area. */
     #game-root {
       display: flex;
       align-items: center;
       justify-content: center;
-      /* 100dvh, not 100vh: on mobile browsers 100vh is the height with the
-         address bar HIDDEN, so the canvas is taller than the visible area
-         until the bar collapses, and the bottom row of the board sits under
-         it. dvh tracks the bar as it shows and hides. */
-      height: 100dvh;
-      width: 100vw;
+      position: fixed;
+      inset: 0;
     }
     body {
       /* No safe-area padding here. Insetting the BODY shrank the game on
