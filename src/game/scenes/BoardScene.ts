@@ -2290,7 +2290,12 @@ export class BoardScene extends Phaser.Scene {
     const { cardH, y, viewW } = this.orderBarMetrics();
     const slots = this.orderState.activeOrderIndices.length;
 
-    const container = this.add.container(0, 0);
+    // Above the board. Tiles, dispensers and the glass pane all draw at the
+    // default depth, so the GO chip - which now hangs below its card, over the
+    // top of the board - was coming out behind a piece or its outline. 8 clears
+    // every board object and the expansion locks (4-7) while staying under the
+    // HUD chips at 20.
+    const container = this.add.container(0, 0).setDepth(8);
     this.orderBarContainer = container;
 
     for (let position = 0; position < slots; position++) {
@@ -2335,7 +2340,7 @@ export class BoardScene extends Phaser.Scene {
 
     // Edge fades: the only cue that more orders exist off-screen, since the
     // bar has no room for a scrollbar without stealing a card's height.
-    this.orderScrollHint = this.add.graphics();
+    this.orderScrollHint = this.add.graphics().setDepth(8);
   }
 
   private inventoryButtonBounds(): Phaser.Geom.Rectangle {
