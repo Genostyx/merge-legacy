@@ -227,6 +227,64 @@ function glyphBoxFor(mark: keyof typeof GLYPH_FILL_RATIO, height: number): numbe
   return Math.round((height / GLYPH_FILL_RATIO[mark]) * 10) / 10;
 }
 
+/**
+ * The Fullscreen API, across the shapes phones actually ship.
+ *
+ * Standard `requestFullscreen` is not enough: Safari on iPad and older
+ * Android WebViews only expose the `webkit` names, and asking the standard
+ * one there silently does nothing. iPhone Safari has neither - it has never
+ * shipped element fullscreen at all - which is why `fullscreenSupported`
+ * exists: the settings row says so plainly instead of offering a dead switch.
+ */
+interface FullscreenDoc extends Document {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+}
+interface FullscreenEl extends HTMLElement {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+}
+
+/** The element fullscreen is requested on: the page itself, so nothing is clipped. */
+function fullscreenTarget(): FullscreenEl {
+  return document.documentElement as FullscreenEl;
+}
+
+function fullscreenElement(): Element | null {
+  const doc = document as FullscreenDoc;
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+}
+
+function fullscreenSupported(): boolean {
+  const el = fullscreenTarget();
+  const doc = document as FullscreenDoc;
+  // `fullscreenEnabled` is false inside an iframe whose parent withholds the
+  // permission, where a request would be rejected rather than ignored.
+  if (doc.fullscreenEnabled === false) return false;
+  return typeof el.requestFullscreen === 'function' || typeof el.webkitRequestFullscreen === 'function';
+}
+
+/**
+ * Enters or leaves fullscreen. MUST be called straight from a user gesture -
+ * anything deferred, even by a zero-delay timer, drops the transient
+ * activation the browser requires and the request is refused.
+ */
+function toggleFullscreen(): void {
+  const doc = document as FullscreenDoc;
+  if (fullscreenElement()) {
+    void (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
+    return;
+  }
+  const el = fullscreenTarget();
+  const request = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+  // `navigationUI: 'hide'` asks Android Chrome to drop its own bars too. It is
+  // a hint, and browsers that do not know the option ignore it rather than
+  // reject, so it is safe to pass unconditionally.
+  const result = request?.({ navigationUI: 'hide' } as FullscreenOptions);
+  if (result && typeof (result as Promise<void>).catch === 'function') {
+    void (result as Promise<void>).catch(() => undefined);
+  }
+}
+
 /** A HUD currency chip that redraws itself to fit its own number. */
 interface HudChip {
   text: Phaser.GameObjects.Text;
@@ -883,6 +941,42 @@ export class BoardScene extends Phaser.Scene {
     };
     this.scale.on(Phaser.Scale.Events.RESIZE, onViewportResize);
 
+    // Watches the CANVAS ITSELF, because Phaser's own resize handling is
+    // driven by the window `resize` event and that is not the only way the
+    // canvas changes size. A device-emulated viewport, a phone's browser bar
+    // collapsing, an element going fullscreen - all resize the element while
+    // the scene keeps the size it booted with, and the game then draws into
+    // the top-left corner of a canvas that is now larger, leaving dead strips
+    // down the right and along the bottom.
+    //
+    // `scale.resize` is what actually re-sizes the game to the element; the
+    // restart then rebuilds the layout for it.
+    const canvasBox = this.game.canvas.parentElement ?? this.game.canvas;
+    const observer = new ResizeObserver(() => {
+      const rect = canvasBox.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w < 2 || h < 2) return;
+      if (Math.abs(w - this.scale.width) < 2 && Math.abs(h - this.scale.height) < 2) return;
+      this.scale.resize(w, h);
+      onViewportResize();
+    });
+    observer.observe(canvasBox);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => observer.disconnect());
+
+    // The same check once, a beat after boot: the element can settle to its
+    // real size between the game being constructed and the scene being ready,
+    // which fires no event this scene was alive to hear.
+    this.time.delayedCall(120, () => {
+      const rect = canvasBox.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w < 2 || h < 2) return;
+      if (Math.abs(w - this.scale.width) < 2 && Math.abs(h - this.scale.height) < 2) return;
+      this.scale.resize(w, h);
+      this.scene.restart();
+    });
+
     // Entering or leaving fullscreen moves the canvas in the page as well as
     // resizing it. `refresh()` makes the scale manager re-read that geometry;
     // without it Phaser keeps hit-testing pointers against the canvas's old
@@ -903,12 +997,14 @@ export class BoardScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
     this.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
     document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, onViewportResize);
       this.scale.off(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
       this.scale.off(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
       resizeDebounce?.remove();
       resizeDebounce = null;
     });
@@ -1811,7 +1907,7 @@ export class BoardScene extends Phaser.Scene {
     // Not every browser has the Fullscreen API - iOS Safari on iPhone has
     // never shipped it - so the row says so plainly and points at the route
     // that does work there, rather than offering a control that does nothing.
-    const available = this.scale.fullscreen.available || !!document.documentElement.requestFullscreen;
+    const available = fullscreenSupported();
     const rowY = -6;
     const label = this.add.text(-cw / 2 + 20, rowY, 'FULLSCREEN', {
       resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
@@ -1828,7 +1924,7 @@ export class BoardScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     const paintToggle = (): void => {
-      const on = !!document.fullscreenElement || this.scale.isFullscreen;
+      const on = !!fullscreenElement();
       const tone = !available ? Theme.textOnLightMuted : on ? Theme.accentGreen : Theme.textOnLightMuted;
       toggleBg.clear();
       toggleBg.fillStyle(on && available ? Theme.accentGreen : Theme.panelAlt, on && available ? 0.22 : 1);
@@ -1871,19 +1967,11 @@ export class BoardScene extends Phaser.Scene {
       // delayedCall the way the panel's other taps are. Deferring drops it
       // out of the gesture and the browser refuses the request.
       toggleZone.on('pointerdown', () => {
-        // Phaser's own toggle wraps the canvas in a target element it
-        // creates, which does not survive this scene's restart-on-resize and
-        // left the request failing silently. Going through the DOM on the
-        // game's own container is what the browsers actually honour; Phaser's
-        // toggle stays as the fallback.
-        const root = document.getElementById('game-root') ?? document.documentElement;
-        if (document.fullscreenElement) {
-          void document.exitFullscreen().catch(() => this.scale.stopFullscreen());
-        } else if (root.requestFullscreen) {
-          void root.requestFullscreen({ navigationUI: 'hide' }).catch(() => this.scale.startFullscreen());
-        } else {
-          this.scale.toggleFullscreen();
-        }
+        // Phaser's own toggle wraps the canvas in an element it creates, which
+        // does not survive this scene's restart-on-resize; the request went
+        // through the DOM instead, and `toggleFullscreen` handles the prefixed
+        // spellings phones still ship.
+        toggleFullscreen();
         // Closed immediately rather than left open to be torn down by the
         // resize-driven restart. Entering fullscreen moves and resizes the
         // canvas, and until the scale manager re-reads its bounds every
