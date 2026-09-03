@@ -47,13 +47,21 @@ describe('shop offers', () => {
   });
 
   it('never offers an item tier the player has not discovered', () => {
-    const unlocked = ['wood:2', 'mineral:3'];
+    // Includes a tier 4 so the coin shelf is open at all - see the gate below.
+    const unlocked = ['wood:2', 'mineral:3', 'wood:4'];
     const coin = generateRowOffers('coin', ['wood', 'mineral'], unlocked);
     const gem = generateRowOffers('gem', ['wood', 'mineral'], unlocked);
     expect(coin.map((offer) => `${offer.typeId}:${offer.tier}`))
-      .toEqual(expect.arrayContaining(unlocked));
+      .toEqual(expect.arrayContaining(['wood:2', 'mineral:3']));
     expect(coin.every((offer) => unlocked.includes(`${offer.typeId}:${offer.tier}`))).toBe(true);
     expect(gem).toEqual([]);
+  });
+
+  it('keeps the coin shelf empty until the player has reached tier 4', () => {
+    const belowGate = generateRowOffers('coin', ['wood', 'mineral'], ['wood:2', 'mineral:3']);
+    expect(belowGate).toEqual([]);
+    const atGate = generateRowOffers('coin', ['wood', 'mineral'], ['wood:2', 'wood:4']);
+    expect(atGate.length).toBeGreaterThan(0);
   });
 
   it('builds three distinct weighted Special Items offers with premium prices', () => {

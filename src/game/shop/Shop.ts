@@ -80,6 +80,16 @@ export function coinRerollCost(state: ShopState, now: number = Date.now()): numb
 // play, gems are scarce/premium, so anything worth skipping the grind for
 // should be gem-priced.
 const COIN_TIER_POOL = [2, 3, 4];
+/**
+ * Tier the player must have reached before the coin shelf stocks anything.
+ *
+ * The shelf sells tiers 2-4, so without a gate it opened for business on the
+ * first tier-2 merge - minutes into a new save, when a bought tier 2 is worth
+ * nothing and the shop has no pull. Holding it until a tier 4 exists means it
+ * appears at the point its cheapest offer is still a shortcut worth paying
+ * for.
+ */
+const COIN_ROW_MIN_TIER = 4;
 const GEM_TIER_PRICING: Record<number, number> = {
   5: 15,
   6: 35,
@@ -164,6 +174,14 @@ function isUnlocked(typeId: string, tier: number, unlockedItems?: readonly strin
  * instead of retrying into a duplicate.
  */
 export function generateRowOffers(row: ShopRowKey, typeIds: string[] = ['wood'], unlockedItems?: readonly string[]): ShopOffer[] {
+  // Gated on what the player has REACHED, not on what this row sells: the
+  // shelf stays dark until a tier 4 has been merged, then opens with its full
+  // 2-4 spread rather than only the tier that unlocked it.
+  if (row === 'coin' && unlockedItems != null && !unlockedItems.some(
+    (key) => Number(key.split(':')[1]) >= COIN_ROW_MIN_TIER
+  )) {
+    return [];
+  }
   const candidates: { typeId: string; tier: number }[] = [];
   for (const typeId of validTypeIds(typeIds)) {
     for (const tier of tierPoolFor(row)) {
@@ -204,7 +222,11 @@ export function createDefaultShopState(typeIds: string[] = ['wood'], now: number
 function isValidRow(row: unknown, key: ShopRowKey, allowed: Set<string>, unlockedItems?: readonly string[]): row is ShopRow {
   const candidate = row as ShopRow | undefined;
   if (!candidate || !Array.isArray(candidate.offers)) return false;
-  if (candidate.offers.length > SHOP_SLOTS) return false;
+  // A SHORT row is invalid, not just an over-long one. An empty row passed
+  // every check below - `[].every()` is true - so a row generated while
+  // nothing was unlocked stayed empty until the four-hour refresh or a paid
+  // reroll, rather than restocking as soon as the player unlocked something.
+  if (candidate.offers.length !== SHOP_SLOTS) return false;
   if (!Number.isFinite(candidate.lastRefreshAt)) return false;
   if (candidate.rerollCount != null && (!Number.isInteger(candidate.rerollCount) || candidate.rerollCount < 0)) return false;
   return candidate.offers.every((offer) => {
