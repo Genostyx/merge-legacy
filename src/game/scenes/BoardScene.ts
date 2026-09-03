@@ -887,11 +887,13 @@ export class BoardScene extends Phaser.Scene {
     };
     this.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
     this.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, onViewportResize);
       this.scale.off(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
       this.scale.off(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
       resizeDebounce?.remove();
       resizeDebounce = null;
     });
@@ -1800,7 +1802,7 @@ export class BoardScene extends Phaser.Scene {
     // Not every browser has the Fullscreen API - iOS Safari on iPhone has
     // never shipped it - so the row says so plainly and points at the route
     // that does work there, rather than offering a control that does nothing.
-    const available = this.scale.fullscreen.available;
+    const available = this.scale.fullscreen.available || !!document.documentElement.requestFullscreen;
     const rowY = -6;
     const label = this.add.text(-cw / 2 + 20, rowY, 'FULLSCREEN', {
       resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
@@ -1817,7 +1819,7 @@ export class BoardScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     const paintToggle = (): void => {
-      const on = this.scale.isFullscreen;
+      const on = !!document.fullscreenElement || this.scale.isFullscreen;
       const tone = !available ? Theme.textOnLightMuted : on ? Theme.accentGreen : Theme.textOnLightMuted;
       toggleBg.clear();
       toggleBg.fillStyle(on && available ? Theme.accentGreen : Theme.panelAlt, on && available ? 0.22 : 1);
@@ -1860,7 +1862,19 @@ export class BoardScene extends Phaser.Scene {
       // delayedCall the way the panel's other taps are. Deferring drops it
       // out of the gesture and the browser refuses the request.
       toggleZone.on('pointerdown', () => {
-        this.scale.toggleFullscreen();
+        // Phaser's own toggle wraps the canvas in a target element it
+        // creates, which does not survive this scene's restart-on-resize and
+        // left the request failing silently. Going through the DOM on the
+        // game's own container is what the browsers actually honour; Phaser's
+        // toggle stays as the fallback.
+        const root = document.getElementById('game-root') ?? document.documentElement;
+        if (document.fullscreenElement) {
+          void document.exitFullscreen().catch(() => this.scale.stopFullscreen());
+        } else if (root.requestFullscreen) {
+          void root.requestFullscreen({ navigationUI: 'hide' }).catch(() => this.scale.startFullscreen());
+        } else {
+          this.scale.toggleFullscreen();
+        }
         // Closed immediately rather than left open to be torn down by the
         // resize-driven restart. Entering fullscreen moves and resizes the
         // canvas, and until the scale manager re-reads its bounds every
