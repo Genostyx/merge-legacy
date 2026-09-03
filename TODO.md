@@ -70,12 +70,18 @@
 - [x] **Add coin-priced supply crates**
   - Bronze 1,500 / Silver 4,000 / Gold 9,000, in a SUPPLY CRATES shop section.
   - Purchased crates occupy a board cell; buying is refused when the board is full.
-  - Opening delays of 30m / 2h / 6h, stored as an absolute `readyAt` on the
-    crate cell so the wait continues while the game is closed.
-  - At most `SUPPLY_CRATE_LIMIT` (3) sealed crates at once. This cap, not the
-    price, is what bounds the piece rate Credits can buy: three gold crates a
-    day adds ~9.9 piece-units per family against a ~20.4 baseline, so spending
-    helps without doubling a free player's rate. Guarded by a test.
+  - **Crates open immediately.** A per-purchase RESTOCK COOLDOWN gates buying
+    instead: 25m / 3h / 6h, stored as an absolute timestamp so it keeps running
+    while the game is closed.
+  - The sealed-on-the-board timer was removed as too punishing - it consumed
+    the scarcest resource, board space, and gave nothing back for hours, which
+    reads as a penalty for spending.
+  - The old three-sealed-crates cap also bounded throughput far more loosely
+    than intended: three concurrent gold crates at six hours each complete
+    TWELVE a day, not three, so spending could nearly double a free player's
+    piece rate. A cooldown gives an exact ceiling - ~13 units per family per
+    day on every tier, against a ~20.4 baseline. Two tests guard it, including
+    one that no tier becomes the obvious exploit.
   - Prices sit at roughly 5x the Credit value of the contents, so buying is a
     deliberately worse deal than playing.
   - The vault is never sold - it stays a milestone.

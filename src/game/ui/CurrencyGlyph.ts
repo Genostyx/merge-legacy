@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Theme } from './Theme';
+import { Theme, materialLighting } from './Theme';
 import { drawGemGlyph } from '../objects/TierIcons';
 
 /**
@@ -263,7 +263,8 @@ export function currencyPill(
   const pillW = contentW + padX * 2;
 
   const pill = scene.add.graphics();
-  pill.fillStyle(fill, 1);
+  const lighting = materialLighting(fill, 4);
+  pill.fillGradientStyle(lighting.light, lighting.base, lighting.dark, lighting.shadow, 1);
   const radius = options.radius ?? height / 2;
   pill.fillRoundedRect(-pillW / 2, -height / 2, pillW, height, radius);
   pill.lineStyle(Theme.borderWidth, options.stroke ?? 0x000000, options.strokeAlpha ?? 0.28);

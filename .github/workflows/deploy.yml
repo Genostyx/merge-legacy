@@ -1,0 +1,56 @@
+# Builds the game and publishes it to GitHub Pages on every push to main.
+#
+# The site is served from a SUBPATH (/merge-legacy/), which is why
+# vite.config.ts sets `base: './'` - absolute asset URLs would resolve against
+# the domain root and 404 there.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # So a deploy can be re-run from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push supersedes one still building.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly what the lock
+      # file pins, so a deploy can never pick up a different dependency
+      # version than the one the game was tested against.
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

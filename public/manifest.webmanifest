@@ -1,0 +1,19 @@
+{
+  "name": "Merge Legacy",
+  "short_name": "Merge",
+  "description": "A merge game.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#1c1a17",
+  "theme_color": "#1c1a17",
+  "icons": [
+    {
+      "src": "./home-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

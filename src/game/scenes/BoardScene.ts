@@ -78,6 +78,7 @@ import {
   iconPresentation,
   sourcePalette
 } from '../objects/TierIcons';
+import { RoomView3D, ROOM_SCOPES, ROOM_PIECES, roomPiecesForStage, type RoomPiece } from '../rooms/RoomView3D';
 import { CrateView } from '../objects/CrateView';
 import { ResourceProducerView } from '../objects/ResourceProducerView';
 import { RESOURCE_PRODUCERS, currencyPayout, expectedProducerCoinValue, rollResourceTier } from '../rewards/ResourceRewards';
@@ -135,9 +136,10 @@ import {
   MAX_DISPENSER_TIER
 } from '../dispensers/Dispensers';
 import type { DispenserState } from '../dispensers/Dispensers';
-import { Theme, hex, materialLighting, textResolution } from '../ui/Theme';
+import { Theme, hex, materialLighting, textResolution, toneAt } from '../ui/Theme';
 import {
-  SUPPLY_CRATES, SUPPLY_CRATE_LIMIT, SUPPLY_CRATE_MIN_LEVEL, type SupplyCrateOffer, supplyCratePrice,
+  SUPPLY_CRATES, SUPPLY_CRATE_MIN_LEVEL, type SupplyCrateOffer, supplyCratePrice,
+  supplyCrateReady, supplyCooldownRemaining,
   crateReady, crateRemainingMs, formatCrateWait, supplyCrateFor
 } from '../shop/SupplyCrates';
 import { CURRENCY_COLOR, type CurrencyKind, applyCurrencyIcon, currencyChipOptions, currencyIcon, currencyLabel, currencyPill, drawCurrencyGlyph } from '../ui/CurrencyGlyph';
@@ -166,6 +168,33 @@ const EXPANSION_ROW_TWO_LEVEL = 50;
 const EXPANSION_ROW_ONE_PRICES = [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 64_000];
 const EXPANSION_ROW_TWO_PRICES = [10_000, 20_000, 40_000, 80_000, 160_000, 320_000, 640_000];
 const SAVE_KEY = 'merge-game-save-v1';
+/**
+ * Where a save that could not be READ is parked, and where the last save that
+ * loaded fine is kept.
+ *
+ * The game updates underneath players who are mid-run: their progress lives in
+ * this browser, and a new build has to read what an older build wrote. When
+ * that goes wrong the old behaviour was to silently start a new game, and the
+ * next autosave - seconds later - overwrote the real save for good. These two
+ * keys make that recoverable instead of terminal.
+ *
+ * `.unreadable` holds a save the current build choked on, exactly as written.
+ * `.prev` holds the last save that loaded cleanly, captured BEFORE this
+ * session starts writing over it, so a run can be rolled back one step even
+ * when a broken build loaded fine and then corrupted the state.
+ */
+const UNREADABLE_SAVE_KEY = `${SAVE_KEY}.unreadable`;
+const PREVIOUS_SAVE_KEY = `${SAVE_KEY}.prev`;
+
+/** Writes a key without letting a full or blocked localStorage break the game. */
+function stashSave(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private mode and quota-exceeded both land here. A missing backup is bad;
+    // a crash on startup because the backup could not be written is worse.
+  }
+}
 const AUTO_MERGE_KEY = 'merge-game-auto-merge';
 const TYPE_ID = 'wood';
 type BoardView = TileView | SpawnerView | SpawnerPieceView | CrateView | SplitterView | ResourceProducerView;
@@ -178,6 +207,25 @@ type ForcedSpawn =
   // `readyAt` rides along so a bought crate that has to wait for board space
   // keeps counting down in the vault rather than restarting when it lands.
   | { kind: 'crate'; tier: CrateTier; remaining: CratePayloadEntry[]; source?: string; readyAt?: number };
+
+/**
+ * Share of its 1024px art box each currency mark's drawing actually fills.
+ *
+ * Every currency SVG is the same square, but the art inside is not: the
+ * coin's disc reaches 65% of the box, the gem 59%, the bolt 78%. Display size
+ * is therefore NOT how tall a mark comes out, which is why equal sizes drew
+ * visibly unequal marks in the chips.
+ *
+ * Measured off the path bounds in `public/currency-*.svg`. Retrace an SVG
+ * with different padding and its number here has to be remeasured - this is a
+ * property of the art file, not of the shape it draws.
+ */
+const GLYPH_FILL_RATIO = { coin: 0.649, gem: 0.591, energy: 0.779 } as const;
+
+/** Display size that draws `height` pixels of actual mark. */
+function glyphBoxFor(mark: keyof typeof GLYPH_FILL_RATIO, height: number): number {
+  return Math.round((height / GLYPH_FILL_RATIO[mark]) * 10) / 10;
+}
 
 /** A HUD currency chip that redraws itself to fit its own number. */
 interface HudChip {
@@ -277,7 +325,22 @@ const CRATE_RING_W = 6;
  * as the wording changes.
  */
 const CRATE_RING_LANE = 56;
+/**
+ * What it costs to UNLOCK a stage - not to build it.
+ *
+ * The furniture inside a stage is bought piece by piece with credits (see
+ * `ROOM_PIECES`); this is the gate in front of the stage itself. Splitting the
+ * two is what lets the project be a merge goal AND a steady spend: the wood
+ * says "produce this", the pieces say "now choose what to buy first".
+ */
 interface ProjectStage {
+  /**
+   * Credits charged at the unlock itself.
+   *
+   * Only the surfaces stage has one - it has no furniture to itemize, so its
+   * 300 credits stay attached to the stage. Every later stage charges nothing
+   * here and takes its credits through its pieces instead.
+   */
   coins: number;
   /**
    * Delivered off the board, exactly like an order's requirements.
@@ -296,9 +359,9 @@ interface ProjectStage {
 
 const PROJECT_STAGES: ProjectStage[] = [
   { coins: 300, requirements: [{ typeId: 'wood', tier: 4, count: 2 }] },
-  { coins: 900, requirements: [{ typeId: 'wood', tier: 5, count: 2 }] },
-  { coins: 2_500, requirements: [{ typeId: 'wood', tier: 6, count: 2 }] },
-  { coins: 6_000, requirements: [{ typeId: 'wood', tier: 7, count: 2 }] }
+  { coins: 0, requirements: [{ typeId: 'wood', tier: 5, count: 2 }] },
+  { coins: 0, requirements: [{ typeId: 'wood', tier: 6, count: 2 }] },
+  { coins: 0, requirements: [{ typeId: 'wood', tier: 7, count: 2 }] }
 ];
 /**
  * Every furniture sprite in the living room, in no particular order - the
@@ -320,7 +383,7 @@ interface RoomItemDef {
 }
 
 const PROJECT_STAGE_NAMES = [
-  'UNFINISHED ROOM', 'FINISHED SURFACES', 'MAIN FURNITURE', 'LIGHTING & STORAGE', 'COMPLETED LIVING ROOM'
+  'UNFINISHED ROOM', 'FINISHED SURFACES', 'MAIN FURNITURE', 'COMFORT & STORAGE', 'COMPLETED LIVING ROOM'
 ] as const;
 /**
  * Header band inside the card: reward on the left, GO on the right, both on
@@ -385,6 +448,14 @@ export class BoardScene extends Phaser.Scene {
   private expansionRowLabels: Phaser.GameObjects.Text[] = [];
 
   private levelBadgeText!: Phaser.GameObjects.Text;
+  /**
+   * Level the badge is currently showing, so a rise can be spotted wherever
+   * it comes from. 0 means "not drawn yet": the first paint after a load must
+   * not celebrate the level the player already had.
+   */
+  private levelBadgeShownLevel = 0;
+  private levelXpRing!: Phaser.GameObjects.Graphics;
+  private levelKeystone!: Phaser.GameObjects.Graphics;
   private levelMilestoneDot!: Phaser.GameObjects.Graphics;
   private levelMilestoneCount!: Phaser.GameObjects.Text;
 
@@ -439,7 +510,18 @@ export class BoardScene extends Phaser.Scene {
   private crateMeterPulse?: Phaser.Tweens.Tween;
   private crateMeterWasCooling = false;
   private crateMeterSecond = -1;
+  /** Highest stage the player has unlocked; its pieces are the buyable ones. */
   private projectStage = 0;
+  /** Keys of every room piece bought so far. Drives what the 3D room shows. */
+  private builtPieces = new Set<string>();
+  /** The 3D room, alive only while the project panel is open. */
+  private roomView: RoomView3D | null = null;
+  /** Board objects hidden so the full-screen room can show behind the UI. */
+  private roomHiddenForPanel: Phaser.GameObjects.GameObject[] = [];
+  /** True while the full-screen room owns the display. */
+  private roomPanelOpen = false;
+  /** Epoch ms before which no further supply crate may be bought. */
+  private supplyCooldownUntil = 0;
   private projectOverlay: Phaser.GameObjects.Container | null = null;
   private projectButtonBg!: Phaser.GameObjects.Graphics;
   private projectButtonIcon!: Phaser.GameObjects.Graphics;
@@ -597,6 +679,10 @@ export class BoardScene extends Phaser.Scene {
     this.expansionRowLabels = [];
     this.shopOverlay = null;
     this.collectionOverlay = null;
+    // A DOM sibling of the game canvas, so a scene teardown does not remove it.
+    this.roomView?.dispose();
+    this.roomView = null;
+    this.roomHiddenForPanel = [];
     this.projectOverlay = null;
     this.shopCountdownUpdater = null;
     this.energyMenuUpdater = null;
@@ -705,6 +791,14 @@ export class BoardScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         this.releaseWaterSourceItems();
+        // Cheap insurance: refreshers run on their own schedules and several
+        // set visibility unconditionally. Re-assert the hide rather than
+        // hunting each one down.
+        if (this.roomPanelOpen) {
+          for (const obj of this.roomHiddenForPanel) {
+            (obj as Phaser.GameObjects.GameObject & { visible?: boolean }).visible = false;
+          }
+        }
         this.refreshCrateWaits();
         for (const view of this.views.values()) {
           if (view instanceof SpawnerView) view.refresh();
@@ -989,7 +1083,7 @@ export class BoardScene extends Phaser.Scene {
       const top = world.y - this.cellSize / 2;
       view.bg.clear();
       this.drawExpansionMetalTile(view.bg, left - 0.5, top - 0.5, this.cellSize + 1, eligible, concealed);
-      const showPrice = eligible && !concealed;
+      const showPrice = eligible && !concealed && !this.roomPanelOpen;
       const rawPrice = this.expansionPrice({ col, row });
       const priceLabel = rawPrice >= 1_000 ? `${rawPrice / 1_000}k` : String(rawPrice);
       view.price.setVisible(showPrice).setText(priceLabel);
@@ -1010,7 +1104,11 @@ export class BoardScene extends Phaser.Scene {
         !this.expansionRowEligible(row)
         && !(row === EXPANSION_ROW_TWO && !this.firstExpansionRowComplete())
       );
-      label.setVisible(visible);
+      // Hiding the board for the room panel sets visible=false on everything
+      // below depth 3000, but this refresher runs afterwards and would set it
+      // straight back - which is how the locked-row caption reappeared over
+      // the 3D room.
+      label.setVisible(visible && !this.roomPanelOpen);
     });
   }
 
@@ -1134,19 +1232,23 @@ export class BoardScene extends Phaser.Scene {
   private buildEnergyChip(y: number): HudChip {
     const accent = Theme.currencyEnergy;
     const numberColor = materialLighting(accent, 4).light;
-    const bg = this.add.graphics();
-    const icon = this.add.image(0, 0, 'currency-energy').setDisplaySize(34, 34);
+    const bg = this.add.graphics().setDepth(20);
+    const iconSize = glyphBoxFor('energy', 26);
+    const iconShadow = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
+    const icon = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setDepth(22);
+    const iconGloss = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
+    iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
     const text = this.add.text(0, 0, '', {
       fontFamily: Theme.fontNumeric,
       fontSize: '12px',
       fontStyle: 'bold',
       color: hex(numberColor),
       resolution: textResolution
-    }).setOrigin(1, 0.5);
-    const hit = this.add.rectangle(0, 0, 10, 20, 0x000000, 0).setInteractive({ useHandCursor: true });
+    }).setOrigin(1, 0.5).setDepth(24);
+    const hit = this.add.rectangle(0, 0, 10, 20, 0x000000, 0).setDepth(25).setInteractive({ useHandCursor: true });
     hit.on('pointerdown', () => this.time.delayedCall(0, () => this.offerEnergyRefill()));
 
-    const naturalWidth = (): number => Math.max(62, Math.ceil(text.width) + 40);
+    const naturalWidth = (): number => Math.max(50, Math.ceil(text.width) + 40);
     const draw = (rightX: number, w: number): void => {
       const h = 20;
       const x = rightX - w;
@@ -1154,12 +1256,20 @@ export class BoardScene extends Phaser.Scene {
       bg.clear();
       // Darker than the surfaces around it, so the bar reads as a recess the
       // number sits in rather than as another raised panel.
-      bg.fillStyle(Theme.bg, 1);
+      const chipLighting = materialLighting(Theme.bgElevated, 2);
+      bg.fillGradientStyle(chipLighting.light, chipLighting.base, chipLighting.dark, chipLighting.shadow, 1);
       bg.fillRoundedRect(x, y, w, h, Theme.radiusChip);
-      bg.lineStyle(Theme.borderWidth, accent, 0.5);
+      const edgeLighting = materialLighting(accent, 6);
+      bg.lineGradientStyle(
+        Theme.borderWidth + 0.5,
+        edgeLighting.highlight, edgeLighting.light,
+        edgeLighting.dark, edgeLighting.shadow, 0.95
+      );
       bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
 
+      iconShadow.setPosition(x + 10, y + h / 2 + 1.25);
       icon.setPosition(x + 10, y + h / 2);
+      iconGloss.setPosition(x + 10, y + h / 2);
 
       text.setScale(Math.min(1, Math.max(0.72, (w - 34) / Math.max(1, text.width))), 1);
       text.setPosition(x + w - 7, y + h / 2);
@@ -1179,49 +1289,22 @@ export class BoardScene extends Phaser.Scene {
    */
   private layoutHudChips(): void {
     if (!this.hudChips.length) return;
-    const right = this.headerRight - 40;
+    // Equal insets keep the three slot centres symmetrical across the board.
+    const right = this.headerRight - 44;
     // The level badge ends at roughly boardOriginX + 37. Seven more pixels
     // form a protected gap that resource balances may never enter.
     const left = this.boardOriginX + 44;
     const available = Math.max(1, right - left);
-    let gap = 8;
+    const gap = available >= 180 ? 8 : 3;
     const widths = this.hudChips.map((chip) => chip.naturalWidth());
-    const minimum = 48;
-
-    let contentAvailable = available - gap * (widths.length - 1);
-    if (contentAvailable < minimum * widths.length) {
-      gap = 3;
-      contentAvailable = available - gap * (widths.length - 1);
+    const gapTotal = gap * (widths.length - 1);
+    const naturalTotal = widths.reduce((sum, width) => sum + width, 0);
+    if (naturalTotal + gapTotal > available) {
+      const scale = Math.max(0, (available - gapTotal) / naturalTotal);
+      for (let i = 0; i < widths.length; i++) widths[i] *= scale;
     }
-
-    // Remove overflow from the widest chips first. Text scales only inside
-    // its own chip; the badge boundary is therefore absolute, not hopeful.
-    let overflow = Math.max(0, widths.reduce((sum, width) => sum + width, 0) - contentAvailable);
-    while (overflow > 0.01) {
-      const shrinkable = widths
-        .map((width, index) => ({ width, index }))
-        .filter(({ width }) => width > minimum + 0.01);
-      if (shrinkable.length === 0) break;
-      const share = overflow / shrinkable.length;
-      let removed = 0;
-      for (const { width, index } of shrinkable) {
-        const amount = Math.min(width - minimum, share);
-        widths[index] -= amount;
-        removed += amount;
-      }
-      if (removed <= 0.01) break;
-      overflow -= removed;
-    }
-
-    // Extremely narrow diagnostic viewports can be smaller than even the
-    // minimum row. Divide the exact available width rather than overlap the
-    // profile badge; legibility can degrade, ownership of space cannot.
-    if (overflow > 0) {
-      const equal = Math.max(1, contentAvailable / widths.length);
-      widths.fill(equal);
-    }
-
-    let cursor = right;
+    const total = widths.reduce((sum, width) => sum + width, 0) + gapTotal;
+    let cursor = (left + right + total) / 2;
     for (let i = 0; i < this.hudChips.length; i++) {
       this.hudChips[i].draw(cursor, widths[i]);
       cursor -= widths[i] + gap;
@@ -1236,21 +1319,26 @@ export class BoardScene extends Phaser.Scene {
     onTap: () => void
   ): HudChip {
     const numberColor = materialLighting(accent, 4).light;
-    const bg = this.add.graphics();
+    const bg = this.add.graphics().setDepth(20);
     const iconKey = glyph === 'coin' ? 'currency-coin' : 'currency-gem';
-    const iconSize = glyph === 'coin' ? 34 : 38;
-    const icon = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize);
+    // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
+    // why that is not the same as a 24px display size.
+    const iconSize = glyphBoxFor(glyph, 24);
+    const iconShadow = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
+    const icon = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
+    const iconGloss = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
+    iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
     const text = this.add.text(0, 0, '', {
       fontFamily: Theme.fontNumeric,
       fontSize: '13px',
       fontStyle: 'bold',
       color: hex(numberColor),
       resolution: textResolution
-    }).setOrigin(1, 0.5);
-    const hit = this.add.rectangle(0, 0, 10, 28, 0x000000, 0).setInteractive({ useHandCursor: true });
+    }).setOrigin(1, 0.5).setDepth(24);
+    const hit = this.add.rectangle(0, 0, 10, 28, 0x000000, 0).setDepth(25).setInteractive({ useHandCursor: true });
     hit.on('pointerdown', () => this.time.delayedCall(0, onTap));
 
-    const naturalWidth = (): number => Math.max(62, Math.ceil(text.width) + 40);
+    const naturalWidth = (): number => Math.max(50, Math.ceil(text.width) + 40);
     const draw = (rightX: number, w: number): void => {
       const h = 20;
       const x = rightX - w;
@@ -1258,12 +1346,20 @@ export class BoardScene extends Phaser.Scene {
       bg.clear();
       // Darker than the surfaces around it, so the bar reads as a recess the
       // number sits in rather than as another raised panel.
-      bg.fillStyle(Theme.bg, 1);
+      const chipLighting = materialLighting(Theme.bgElevated, 2);
+      bg.fillGradientStyle(chipLighting.light, chipLighting.base, chipLighting.dark, chipLighting.shadow, 1);
       bg.fillRoundedRect(x, y, w, h, Theme.radiusChip);
-      bg.lineStyle(Theme.borderWidth, accent, 0.5);
+      const edgeLighting = materialLighting(accent, 6);
+      bg.lineGradientStyle(
+        Theme.borderWidth + 0.5,
+        edgeLighting.highlight, edgeLighting.light,
+        edgeLighting.dark, edgeLighting.shadow, 0.95
+      );
       bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
 
+      iconShadow.setPosition(x + 12, y + h / 2 + 1.25);
       icon.setPosition(x + 12, y + h / 2);
+      iconGloss.setPosition(x + 12, y + h / 2);
 
       text.setScale(Math.min(1, Math.max(0.72, (w - 34) / Math.max(1, text.width))), 1);
       text.setPosition(x + w - 7, y + h / 2);
@@ -1303,6 +1399,7 @@ export class BoardScene extends Phaser.Scene {
   private buildLevelBadge(cx: number, cy: number): Phaser.GameObjects.Text {
     const radius = 19;
     const lighting = materialLighting(Theme.playerLevel, 5);
+    this.levelXpRing = this.add.graphics();
     const badgePoints = (centerY: number, outer: number, inner: number): Phaser.Geom.Point[] => {
       const points: Phaser.Geom.Point[] = [];
       for (let i = 0; i < 16; i++) {
@@ -1317,12 +1414,13 @@ export class BoardScene extends Phaser.Scene {
     bg.fillPoints(badgePoints(cy + 2, radius + 1, radius - 3), true);
     bg.fillStyle(lighting.light, 1);
     bg.fillPoints(badgePoints(cy, radius, radius - 4), true);
-    bg.fillStyle(Theme.playerLevel, 1);
+    bg.fillGradientStyle(lighting.light, lighting.highlight, Theme.playerLevel, lighting.dark, 1);
     bg.fillCircle(cx, cy, radius - 4);
     bg.lineStyle(1.5, lighting.highlight, 0.75);
     bg.strokeCircle(cx, cy, radius - 5);
     bg.fillStyle(lighting.highlight, 0.3);
     bg.fillEllipse(cx - 4, cy - 6, 10, 5);
+    this.levelKeystone = this.add.graphics();
 
     const text = this.add.text(cx, cy, '1', {
       fontFamily: Theme.fontNumeric,
@@ -1349,9 +1447,133 @@ export class BoardScene extends Phaser.Scene {
     return text;
   }
 
+  /**
+   * Level-up flourish on the profile badge.
+   *
+   * Two rings leaving the badge and a punch on the number. The rings are the
+   * XP ring's own radius and colour, so the effect reads as the ring the
+   * player just filled letting go, rather than as a sparkle arriving from
+   * nowhere - and the second, thinner one trails the first so it lands as a
+   * pulse rather than as one hard flash.
+   *
+   * Drawn as throwaway Graphics rather than by animating the badge itself:
+   * the badge's dome, rim, ring and keystone are separate objects at absolute
+   * coordinates, so there is nothing to scale as a unit without rebuilding it
+   * into a container.
+   */
+  private playLevelUpFlourish(): void {
+    const x = this.levelBadgeText.x;
+    const y = this.levelBadgeText.y + 1.5;
+    const lighting = materialLighting(Theme.playerLevel, 5);
+
+    for (const wave of [
+      { delay: 0, width: 3, tone: lighting.highlight, scale: 2.05, duration: 520 },
+      { delay: 110, width: 1.5, tone: lighting.light, scale: 2.5, duration: 620 }
+    ]) {
+      const ring = this.add.graphics().setPosition(x, y).setDepth(3).setAlpha(0);
+      ring.lineStyle(wave.width, wave.tone, 1);
+      // Centred on the graphics' own origin so `scale` grows it from the
+      // badge rather than sliding it across the header.
+      ring.strokeCircle(0, 0, 20.5);
+      this.tweens.add({
+        targets: ring,
+        alpha: { from: 0.9, to: 0 },
+        scale: { from: 1, to: wave.scale },
+        delay: wave.delay,
+        duration: wave.duration,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy()
+      });
+    }
+
+    // Killed first: levelling twice in quick succession - which a milestone
+    // crate's own XP can cause - would otherwise leave the number stranded
+    // mid-punch at whatever scale the interrupted tween had reached.
+    this.tweens.killTweensOf(this.levelBadgeText);
+    this.levelBadgeText.setScale(1);
+    this.tweens.add({
+      targets: this.levelBadgeText,
+      scale: 1.4,
+      duration: 150,
+      hold: 70,
+      yoyo: true,
+      ease: 'Back.easeOut',
+      onComplete: () => this.levelBadgeText.setScale(1)
+    });
+  }
+
   private updateLevelBadge(): void {
     const level = playerLevel(this.orderState);
     this.levelBadgeText.setText(String(level));
+    // Detected here rather than at the order-completion call site, because
+    // XP also arrives from milestones, daily claims and discoveries - every
+    // one of which already routes through this method.
+    if (this.levelBadgeShownLevel !== 0 && level > this.levelBadgeShownLevel) {
+      this.playLevelUpFlourish();
+    }
+    this.levelBadgeShownLevel = level;
+    const xp = playerXpProgress(this.orderState);
+    const progress = Phaser.Math.Clamp(xp.current / xp.required, 0, 1);
+    const gap = Phaser.Math.DegToRad(38);
+    const start = -Math.PI / 2 + gap / 2;
+    const span = Math.PI * 2 - gap;
+    const ringX = this.levelBadgeText.x;
+    const ringY = this.levelBadgeText.y + 1.5;
+    this.levelXpRing.clear();
+    this.levelXpRing.lineStyle(6, Theme.borderOnDark, 0.8);
+    this.levelXpRing.beginPath();
+    this.levelXpRing.arc(ringX, ringY, 20.5, start, start + span);
+    this.levelXpRing.strokePath();
+    if (progress > 0) {
+      const xpLighting = materialLighting(Theme.currencyXp, 5);
+      const segments = Math.max(2, Math.ceil(36 * progress));
+      for (let i = 0; i < segments; i++) {
+        const from = start + span * progress * (i / segments);
+        const to = start + span * progress * ((i + 1) / segments);
+        this.levelXpRing.lineStyle(6, toneAt(xpLighting, 0.25 + 0.75 * (i / Math.max(1, segments - 1))), 1);
+        this.levelXpRing.beginPath();
+        this.levelXpRing.arc(ringX, ringY, 20.5, from, to + 0.002);
+        this.levelXpRing.strokePath();
+      }
+    }
+    const capLighting = materialLighting(Theme.playerLevel, 5);
+    const keystone = [
+      new Phaser.Geom.Point(ringX - 9, ringY - 25),
+      new Phaser.Geom.Point(ringX + 9, ringY - 25),
+      new Phaser.Geom.Point(ringX + 6, ringY - 16),
+      new Phaser.Geom.Point(ringX - 6, ringY - 16)
+    ];
+    this.levelKeystone.clear();
+    // Shaded as horizontal slices rather than one flat fill. Graphics has no
+    // gradient fill for an arbitrary polygon - fillGradientStyle only reaches
+    // rects and triangles, and on a triangulated path it keys off vertex
+    // order, which for this trapezoid lands wherever the tessellator happens
+    // to cut it. Slicing the shape puts the ramp under our control.
+    //
+    // Lit at the top face, falling to a shadowed underside where the cap
+    // meets the ring: the same upper-left key light the dome, rim and XP
+    // ring below it are all shaded by. A flat cap was the one surface on
+    // this badge that read as a sticker sitting on the art.
+    const capTop = ringY - 25;
+    const capBottom = ringY - 16;
+    const capSlices = 9;
+    for (let i = 0; i < capSlices; i++) {
+      const t0 = i / capSlices;
+      const t1 = (i + 1) / capSlices;
+      const halfAt = (t: number) => 9 - 3 * t;
+      const yAt = (t: number) => capTop + (capBottom - capTop) * t;
+      this.levelKeystone.fillStyle(toneAt(capLighting, 0.88 - 0.55 * ((t0 + t1) / 2)), 1);
+      this.levelKeystone.fillPoints([
+        new Phaser.Geom.Point(ringX - halfAt(t0), yAt(t0)),
+        new Phaser.Geom.Point(ringX + halfAt(t0), yAt(t0)),
+        // Half a pixel of overlap onto the next slice; butted edges leave
+        // hairline seams once the canvas is scaled by devicePixelRatio.
+        new Phaser.Geom.Point(ringX + halfAt(t1), yAt(t1) + 0.5),
+        new Phaser.Geom.Point(ringX - halfAt(t1), yAt(t1) + 0.5)
+      ], true);
+    }
+    this.levelKeystone.lineStyle(1, capLighting.highlight, 0.8);
+    this.levelKeystone.strokePoints(keystone, true);
     const projectReady = this.projectStageReady();
     const readyCount = (dailyAvailable(this.rewards, Date.now()) ? 1 : 0)
       + unclaimedDiscoveryCount(this.collection)
@@ -1451,7 +1673,7 @@ export class BoardScene extends Phaser.Scene {
   private async runAutoMergeStep(): Promise<void> {
     if (!this.autoMergeEnabled || this.inputLocked || this.modalOpen || this.draggingView) return;
     const projectStage = PROJECT_STAGES[this.projectStage];
-    if (projectStage && this.projectStageReady()) {
+    if (projectStage && this.projectUnlockReady()) {
       this.completeProjectStage(projectStage, {
         x: Math.max(22, this.boardOriginX - 24),
         y: this.crateRingCentre().cy
@@ -1693,7 +1915,11 @@ export class BoardScene extends Phaser.Scene {
     if (view instanceof CrateView && cell.kind === 'crate') {
       // Carries its REMAINING contents, so tidying a part-emptied crate away
       // never refills or resets it.
-      entry = { kind: 'crate', tier: cell.tier, remaining: cell.remaining };
+      // `readyAt` travels with it. Without this, storing a sealed supply crate
+      // and taking it back out cleared its timer and it opened immediately -
+      // and it also freed a SUPPLY_CRATE_LIMIT slot while still sealed, so the
+      // cap could be sidestepped by shuffling crates through the inventory.
+      entry = { kind: 'crate', tier: cell.tier, remaining: cell.remaining, readyAt: cell.readyAt };
       label = CRATE_LABELS[cell.tier as CrateTier];
     } else if (view instanceof ResourceProducerView && cell.kind === 'resource-producer') {
       entry = { kind: 'resource-producer', producerId: cell.producerId, remaining: cell.remaining, tier: 1 };
@@ -2282,7 +2508,8 @@ export class BoardScene extends Phaser.Scene {
         // Fully clear of the bar rather than straddling it - half-on put the
         // chip straight through the reward figure.
         const gy = ORDER_BAR_TOP - ORDER_GO_H - 1;
-        view.bg.fillStyle(Theme.accentGreen, 1);
+        const goLighting = materialLighting(Theme.accentGreen, 5);
+        view.bg.fillGradientStyle(goLighting.highlight, goLighting.light, goLighting.base, goLighting.dark, 1);
         view.bg.fillRoundedRect(gx, gy, ORDER_GO_W, ORDER_GO_H, Theme.radiusChip);
         view.progress.setPosition(gx + ORDER_GO_W / 2, gy + ORDER_GO_H / 2).setOrigin(0.5, 0.5);
       }
@@ -2467,6 +2694,16 @@ ${familyTierLabel(typeId, tier)}`
    * How many required items the board is still short, summed across lines.
    * Zero means the stage can be built.
    */
+  /** Puts the board back after the full-screen room panel closes. */
+  private restoreBoardAfterRoom(): void {
+    for (const obj of this.roomHiddenForPanel) {
+      (obj as Phaser.GameObjects.GameObject & { visible?: boolean }).visible = true;
+    }
+    this.roomHiddenForPanel = [];
+    this.roomPanelOpen = false;
+    this.game.canvas.style.zIndex = '';
+  }
+
   private projectShortfall(stage: ProjectStage): number {
     return stage.requirements.reduce(
       (short, req) => short + Math.max(0, req.count - this.grid.countAtTier(req.tier, req.typeId)),
@@ -2481,9 +2718,76 @@ ${familyTierLabel(typeId, tier)}`
    * disagree about whether a stage was actually buildable.
    */
   private projectStageReady(): boolean {
+    if (playerLevel(this.orderState) < 3) return false;
+    return this.projectPieceAffordable() || this.projectUnlockReady();
+  }
+
+  /** A piece of the open stage the player could buy right now. */
+  private projectPieceAffordable(): boolean {
+    return roomPiecesForStage(this.projectStage)
+      .some((piece) => !this.builtPieces.has(piece.key) && this.economy.coins >= piece.price);
+  }
+
+  /** Every piece a stage sells is bought. Stages with no pieces are trivially done. */
+  private projectStageFurnished(stage: number): boolean {
+    return roomPiecesForStage(stage).every((piece) => this.builtPieces.has(piece.key));
+  }
+
+  /**
+   * The next stage can be unlocked.
+   *
+   * Furnishing the CURRENT stage is part of the gate: buying into stage 4
+   * while stage 3 still has an empty corner would let the room fill out of
+   * order and leave pieces sitting on supports that were never bought.
+   */
+  private projectUnlockReady(): boolean {
     const stage = PROJECT_STAGES[this.projectStage];
     if (!stage || playerLevel(this.orderState) < 3) return false;
+    if (!this.projectStageFurnished(this.projectStage)) return false;
     return this.economy.coins >= stage.coins && this.projectShortfall(stage) === 0;
+  }
+
+  /**
+   * Buys one piece of furniture and stands it in the room.
+   *
+   * The stage's reward waits for its LAST piece: a stage is finished when it
+   * is furnished, not when it is unlocked, so the crate or the gems land on
+   * the purchase that completes the look rather than on the one that opened
+   * the list.
+   */
+  private buyRoomPiece(piece: RoomPiece, from: { x: number; y: number }): boolean {
+    if (piece.stage > this.projectStage) return false;
+    if (this.builtPieces.has(piece.key)) return false;
+    if (!spendCoinsGeneric(this.economy, piece.price)) return false;
+    this.builtPieces.add(piece.key);
+    this.roomView?.setBuilt(this.builtPieces);
+    if (this.projectStageFurnished(piece.stage)) {
+      this.time.delayedCall(0, () => {
+        this.grantStageReward(piece.stage, from);
+        this.updateCurrencyText();
+        this.saveState();
+      });
+    }
+    this.updateCurrencyText();
+    this.refreshProjectButton();
+    this.updateLevelBadge();
+    this.saveState();
+    return true;
+  }
+
+  /** The one-off payout for finishing a stage's furniture. */
+  private grantStageReward(stage: number, from: { x: number; y: number }): void {
+    if (stage === 1) {
+      addEnergy(this.energy, 25);
+      this.playProjectCurrencyReward('energy', 25, from);
+    } else if (stage === 2) {
+      this.awardCrate('bronze', 'PROJECT REWARD', from);
+    } else if (stage === 3) {
+      addGems(this.economy, 10);
+      this.playProjectCurrencyReward('gem', 10, from);
+    } else if (stage === 4) {
+      this.awardCrate('gold', 'PROJECT REWARD', from);
+    }
   }
 
   private consumeProjectItems(stage: ProjectStage): void {
@@ -2636,65 +2940,197 @@ ${familyTierLabel(typeId, tier)}`
     const artH = Math.max(240, h - 78 - 210);
     const artCx = w / 2;
     const artCy = 78 + artH / 2;
-    // The room is COMPOSITED, not one baked picture: a shell plus one sprite
-    // per furniture piece, drawn back-to-front. That is what lets a piece be
-    // addressed on its own - tapped, and later swapped or moved.
+    // The room is real 3D, on its own canvas layered over the Phaser view.
+    //
+    // It used to be a shell sprite plus one sprite per piece, composited
+    // back-to-front. That could never give camera movement - the camera is
+    // baked into every pre-rendered frame - which is the thing the long-term
+    // design actually needs. Three.js rather than a second game engine: it
+    // shares this page and this JS heap, so object state can go straight into
+    // the save file with no interop bridge.
     const roomParts: Phaser.GameObjects.GameObject[] = [];
-    const manifest = this.cache.json.get('room-living-manifest') as
-      { items?: RoomItemDef[] } | undefined;
-    const shellKey = this.projectStage === 0 ? 'room-shell-raw' : 'room-shell';
 
-    // Info line under the room. Tapping a piece names it here; it is the only
-    // thing a tap does for now.
-    const inspect = this.add.text(artCx, artCy + artH / 2 - 16, '', {
+    // Names the piece the player last tapped. Inspect only, for now.
+    const inspect = this.add.text(artCx, 86, '', {
       resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '11px',
-      fontStyle: 'bold', color: hex(Theme.textOnDark)
-    }).setOrigin(0.5);
-
-    if (this.textures.exists(shellKey) && manifest?.items) {
-      const shell = this.add.image(artCx, artCy, shellKey);
-      // Contain: the frame carries its own margin, so cropping would cut the
-      // room's corners off.
-      const size = Math.min(artW - 10, artH - 10);
-      shell.setDisplaySize(size, size);
-      roomParts.push(shell);
-
-      // Sprites are positioned from the manifest rect, which is normalised
-      // against the same 1024 frame the shell fills - so no hand-tuned
-      // coordinates, and a re-render repositions everything automatically.
-      const left = artCx - size / 2;
-      const top = artCy - size / 2;
-      const visible = manifest.items
-        .filter((item) => item.stage <= this.projectStage)
-        .sort((a, b) => a.order - b.order);
-
-      for (const item of visible) {
-        const key = `room-item-${item.key}`;
-        if (!this.textures.exists(key)) continue;
-        const [rx, ry, rw, rh] = item.rect;
-        const sprite = this.add.image(left + rx * size, top + ry * size, key)
-          .setOrigin(0, 0)
-          .setDisplaySize(rw * size, rh * size)
-          .setInteractive({ useHandCursor: true, pixelPerfect: true });
-        // pixelPerfect so the transparent corners of a sprite's rect do not
-        // swallow taps meant for whatever sits behind it.
-        sprite.on('pointerdown', () => {
-          inspect.setText(item.label.toUpperCase());
-          this.tweens.add({
-            targets: sprite, alpha: { from: 0.45, to: 1 }, duration: 220, ease: 'Quad.Out'
+      fontStyle: 'bold', color: hex(Theme.textOnDark),
+      backgroundColor: 'rgba(10, 12, 14, 0.72)', padding: { x: 8, y: 4 }
+    }).setOrigin(0.5).setAlpha(0);
+    let inspectHide: Phaser.Time.TimerEvent | null = null;
+    const showInspect = (label: string | null): void => {
+      this.tweens.killTweensOf(inspect);
+      inspectHide?.remove(false);
+      inspectHide = null;
+      if (!label) { inspect.setAlpha(0); return; }
+      inspect.setText(label.toUpperCase()).setAlpha(0).setScale(0.92);
+      this.tweens.add({
+        targets: inspect, alpha: 1, scale: 1, duration: 120,
+        onComplete: () => {
+          inspectHide = this.time.delayedCall(900, () => {
+            this.tweens.add({ targets: inspect, alpha: 0, duration: 220 });
           });
-        });
-        roomParts.push(sprite);
+        }
+      });
+    };
+
+    // FULL SCREEN. The room fills the whole game area rather than sitting in an
+    // inset panel, so the 3D canvas matches the game canvas exactly and the
+    // panel's own UI draws on top of it.
+    //
+    // That means the 3D canvas goes UNDER Phaser's (which now clears to alpha)
+    // and the board has to be hidden while the panel is open, or it would be
+    // drawn over the room. Everything below depth 3000 is board content; the
+    // overlay itself is 4000.
+    const hiddenForRoom: Phaser.GameObjects.GameObject[] = [];
+    for (const child of this.children.list) {
+      const obj = child as Phaser.GameObjects.GameObject & { depth?: number; visible?: boolean };
+      if ((obj.depth ?? 0) < 3000 && obj.visible !== false) {
+        obj.visible = false;
+        hiddenForRoom.push(child);
       }
-    } else {
-      this.drawLivingRoom(artPanel, artCx, artCy, artW * 0.9, artH * 0.72, this.projectStage);
     }
+    this.roomHiddenForPanel = hiddenForRoom;
+    this.roomPanelOpen = true;
+
+    const canvasRect = this.game.canvas.getBoundingClientRect();
+    const roomCanvas = document.createElement('canvas');
+    roomCanvas.style.zIndex = '0';
+    this.game.canvas.style.position = 'relative';
+    this.game.canvas.style.zIndex = '1';
+    this.game.canvas.parentElement?.appendChild(roomCanvas);
+
+    this.roomView?.dispose();
+    this.roomView = new RoomView3D(roomCanvas, {
+      rect: {
+        x: canvasRect.left, y: canvasRect.top,
+        width: canvasRect.width, height: canvasRect.height
+      },
+      built: this.builtPieces,
+      onSelect: showInspect
+    });
+    void this.roomView.load('rooms/living-room.glb');
+
+    // Phaser owns input, so the orbit is driven from a Phaser zone rather than
+    // from the 3D canvas - which is underneath and never sees a pointer.
+    // Pushed into `roomParts` so it is added to the overlay BEFORE the title,
+    // bill and build button, leaving those on top and still clickable.
+    const orbitZone = this.add.zone(w / 2, h / 2, w, h)
+      .setInteractive({ useHandCursor: false, draggable: true });
+    // Assigned once the scope label exists further down. Wheel and pinch change
+    // scope too, so they have to refresh the same readout the buttons do -
+    // otherwise the label only tracks button presses and silently goes stale.
+    let refreshScopeLabel: () => void = () => {};
+    let orbitMoved = 0;
+    // The tap that OPENED this panel finishes here: its pointerup lands on a
+    // zone that did not exist when the press began, and was picking whatever
+    // object happened to sit under the button. A pick only counts when the
+    // press started on this zone.
+    let pressedHere = false;
+    orbitZone.on('pointerdown', () => { orbitMoved = 0; pressedHere = true; });
+    orbitZone.on('drag', (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+      const dx = pointer.x - pointer.prevPosition.x;
+      const dy = pointer.y - pointer.prevPosition.y;
+      orbitMoved += Math.abs(dx) + Math.abs(dy);
+      this.roomView?.orbitBy(dx, dy);
+      // `drag` gives absolute positions we do not use; consuming them keeps
+      // Phaser from complaining about unused parameters.
+      void dragX; void dragY;
+    });
+    orbitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      // A drag orbits; only a genuine tap selects, same rule as the board.
+      // Rotation settles on a quarter turn, so a released drag always lands on
+      // a composed corner rather than wherever the finger stopped.
+      if (!pressedHere) return;
+      pressedHere = false;
+      if (orbitMoved > 6) { this.roomView?.settleRotation(); return; }
+      // Scene units -> normalised device coordinates. The 3D canvas covers the
+      // game canvas exactly, so the two spaces map straight onto each other.
+      this.roomView?.pickAt(
+        (pointer.x / this.scale.width) * 2 - 1,
+        -(pointer.y / this.scale.height) * 2 + 1
+      );
+    });
+    // Wheel has to come through Phaser too - the 3D canvas is pointer-events
+    // none, so its own wheel listener never fires.
+    orbitZone.on('wheel', (_p: Phaser.Input.Pointer, _dx: number, dy: number) => {
+      if (this.roomView?.zoomBy(dy * 0.01)) refreshScopeLabel();
+    });
+
+    // Pinch: Phaser reports two pointers, and the change in the distance
+    // between them is the zoom. Tracked here because a zone only reports one.
+    // Phaser tracks one pointer by default; pinch needs a second.
+    this.input.addPointer(1);
+    let pinchStart = 0;
+    orbitZone.on('pointermove', () => {
+      const p1 = this.input.pointer1;
+      const p2 = this.input.pointer2;
+      if (!p1.isDown || !p2.isDown) { pinchStart = 0; return; }
+      const spread = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+      if (pinchStart === 0) { pinchStart = spread; return; }
+      if (this.roomView?.zoomBy((pinchStart - spread) * 0.02)) refreshScopeLabel();
+      pinchStart = spread;
+    });
+
+    // Discrete zoom, stepping between scopes. The view itself communicates
+    // the scale, so no ROOM/HOUSE/STREET label is drawn over the scene.
+    const showScope = (): void => {};
+    refreshScopeLabel = showScope;
+
+    const zoomBtn = (dy: number, glyph: string, onTap: () => void): Phaser.GameObjects.GameObject[] => {
+      const bx = w - 34;
+      const by = h / 2 + dy;
+      const g = this.add.graphics();
+      g.fillStyle(Theme.bg, 0.82);
+      g.fillRoundedRect(bx - 17, by - 17, 34, 34, Theme.radiusChip);
+      g.lineStyle(1, Theme.borderOnDark, 0.9);
+      g.strokeRoundedRect(bx - 17, by - 17, 34, 34, Theme.radiusChip);
+      const t = this.add.text(bx, by, glyph, {
+        resolution: textResolution, fontFamily: Theme.fontHeading,
+        fontSize: '18px', fontStyle: 'bold', color: hex(Theme.textOnDark)
+      }).setOrigin(0.5);
+      const z = this.add.zone(bx, by, 40, 40).setInteractive({ useHandCursor: true });
+      z.on('pointerup', () => { onTap(); showScope(); });
+      return [g, t, z];
+    };
+
+    // Dev-only light tuning. Arrow keys move the key light and the readout
+    // shows where it is, so the angle can be found by eye and then baked into
+    // RoomView3D's defaults. Stripped from production builds.
+    if (import.meta.env?.DEV) {
+      const keys = this.input.keyboard;
+      const onKey = (e: KeyboardEvent): void => {
+        const step = e.shiftKey ? 0.02 : 0.08;
+        let dz = 0;
+        let de = 0;
+        if (e.key === 'ArrowLeft') dz = -step;
+        else if (e.key === 'ArrowRight') dz = step;
+        else if (e.key === 'ArrowUp') de = step;
+        else if (e.key === 'ArrowDown') de = -step;
+        else return;
+        e.preventDefault();
+        const at = this.roomView?.nudgeLight(dz, de);
+        if (at) inspect.setText(`LIGHT  OFFSET ${at.offset}   ELEVATION ${at.elevation}`);
+      };
+      keys?.on('keydown', onKey);
+      orbitZone.once('destroy', () => keys?.off('keydown', onKey));
+    }
+
+    roomParts.push(orbitZone);
+    roomParts.push(...zoomBtn(-24, '+', () => this.roomView?.zoomIn()));
+    roomParts.push(...zoomBtn(24, '−', () => this.roomView?.zoomOut()));
     roomParts.push(inspect);
+    this.time.delayedCall(80, showScope);
+    void ROOM_SCOPES;
 
     const close = this.add.text(22, 28, '‹ BOARD', {
       resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px', fontStyle: 'bold', color: hex(Theme.textOnDark)
     }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     const closeProject = () => {
+      // The 3D canvas is a DOM sibling of the game canvas, so it is not owned
+      // by the Phaser overlay and has to be disposed explicitly.
+      this.restoreBoardAfterRoom();
+      this.roomView?.dispose();
+      this.roomView = null;
       overlay.destroy(true);
       this.projectOverlay = null;
       this.modalOpen = false;
@@ -2702,132 +3138,210 @@ ${familyTierLabel(typeId, tier)}`
     };
     close.on('pointerdown', closeProject);
 
-    const stageDef = PROJECT_STAGES[this.projectStage];
-    const complete = stageDef == null;
-    const shortfall = stageDef ? this.projectShortfall(stageDef) : 0;
-    const affordable = stageDef != null && this.economy.coins >= stageDef.coins;
-    const buildable = stageDef != null && affordable && shortfall === 0;
+    // ---- Footer ----
+    //
+    // Two modes, and the state picks which: while the open stage still has
+    // furniture for sale it is a SHOPPING LIST, and once that stage is fully
+    // furnished it becomes the unlock for the next one. Both draw into one
+    // container that re-renders after every purchase, because buying the last
+    // piece of a stage has to turn the list into the unlock without the player
+    // closing the panel.
+    const footer = this.add.container(0, 0);
+    const rewardOrigin = { x: w / 2, y: artCy };
 
-    // The bill of materials sits between the room and the button, so the
-    // player reads WHAT the stage costs before the control that spends it.
-    const billParts: Phaser.GameObjects.GameObject[] = [];
-    const PLATE = 42;
-    const GAP = 10;
-    const billY = artCy + artH / 2 + 30;
-    if (stageDef) {
-      // Greyed rather than faded when the credits are short, so the row
-      // itself says which half of the bill is missing. Fading the whole chip
-      // to 42% kept it gold, and gold still reads as "affordable" at a
-      // glance - the colour is what carries the state, not the opacity. This
-      // is the same treatment the inventory slots use.
-      const chipColor = affordable ? CURRENCY_COLOR.credit : Theme.textOnDarkMuted;
-      const coinChip = currencyPill(this, stageDef.coins.toLocaleString(), 'credit', {
-        ...currencyChipOptions('credit'),
-        fontSize: 13, iconSize: 20, height: PLATE,
-        textColor: chipColor, stroke: chipColor
+    const renderShoppingList = (pieces: RoomPiece[]): void => {
+      const rowW = Math.min(330, w - 28);
+      const rowH = 28;
+      const top = artCy + artH / 2 + 26;
+      footer.add(this.add.text(w / 2, top - 16, 'FURNISH THIS STAGE', {
+        resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
+        fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
+      }).setOrigin(0.5));
+
+      pieces.forEach((piece, i) => {
+        const y = top + rowH / 2 + i * (rowH + 3);
+        const owned = this.builtPieces.has(piece.key);
+        const affordable = !owned && this.economy.coins >= piece.price;
+        // Colour carries the state, not opacity - the same rule the order
+        // cards and the inventory slots follow.
+        const tone = owned ? Theme.accentGreen : affordable ? Theme.accentAmber : Theme.borderOnDark;
+        const row = this.add.graphics();
+        row.fillStyle(owned ? Theme.accentGreen : Theme.bgElevated, owned ? 0.16 : 1);
+        row.fillRoundedRect(w / 2 - rowW / 2, y - rowH / 2, rowW, rowH, Theme.radiusChip);
+        row.lineStyle(1, tone, owned ? 0.85 : affordable ? 0.8 : 0.5);
+        row.strokeRoundedRect(w / 2 - rowW / 2, y - rowH / 2, rowW, rowH, Theme.radiusChip);
+        footer.add(row);
+
+        footer.add(this.add.text(w / 2 - rowW / 2 + 12, y, piece.label.toUpperCase(), {
+          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '11px', fontStyle: 'bold',
+          color: hex(owned ? Theme.accentGreen : affordable ? Theme.textOnDark : Theme.textOnDarkMuted)
+        }).setOrigin(0, 0.5));
+
+        if (owned) {
+          footer.add(this.add.text(w / 2 + rowW / 2 - 12, y, 'BUILT', {
+            resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
+            fontStyle: 'bold', color: hex(Theme.accentGreen)
+          }).setOrigin(1, 0.5));
+          return;
+        }
+
+        const priceColor = affordable ? CURRENCY_COLOR.credit : Theme.textOnDarkMuted;
+        const price = currencyPill(this, piece.price.toLocaleString(), 'credit', {
+          ...currencyChipOptions('credit'),
+          fontSize: 11, iconSize: 16, height: 20,
+          textColor: priceColor, stroke: priceColor
+        });
+        price.setPosition(w / 2 + rowW / 2 - 10 - price.width / 2, y);
+        // `currencyPill` has no colour hook for the mark itself, so the icon -
+        // its third child - is dimmed directly to match an unaffordable price.
+        const mark = price.list[2] as Partial<Phaser.GameObjects.Components.Alpha> | undefined;
+        if (!affordable) mark?.setAlpha?.(0.45);
+        footer.add(price);
+
+        if (!affordable) return;
+        const zone = this.add.zone(w / 2, y, rowW, rowH).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', () => {
+          if (this.buyRoomPiece(piece, rewardOrigin)) renderFooter();
+        });
+        footer.add(zone);
       });
-      // `currencyPill` has no colour hook for the mark itself, so the icon -
-      // its third child - is dimmed directly to match.
-      // Duck-typed rather than checked against Image: `currencyIcon` falls
-      // back to a Graphics mark when the texture has not loaded, and that
-      // fallback needs dimming too.
-      const chipMark = coinChip.list[2] as Partial<Phaser.GameObjects.Components.Alpha> | undefined;
-      if (!affordable) chipMark?.setAlpha?.(0.45);
-      const totalW = coinChip.width + stageDef.requirements.length * (PLATE + GAP);
-      let x = w / 2 - totalW / 2;
-      coinChip.setPosition(x + coinChip.width / 2, billY);
-      billParts.push(coinChip);
-      x += coinChip.width + GAP;
+    };
 
-      for (const req of stageDef.requirements) {
-        const cx = x + PLATE / 2;
-        const have = this.grid.countAtTier(req.tier, req.typeId);
-        const met = have >= req.count;
-        const def = getTierDef(req.typeId, req.tier);
+    const renderUnlock = (stageDef: ProjectStage | undefined): void => {
+      const complete = stageDef == null;
+      const shortfall = stageDef ? this.projectShortfall(stageDef) : 0;
+      const affordable = stageDef != null && this.economy.coins >= stageDef.coins;
+      const buildable = stageDef != null && affordable && shortfall === 0;
 
-        // Same recessed-slot-goes-green language as the order cards, so a
-        // requirement reads identically wherever the game asks for one.
-        const plate = this.add.graphics();
-        plate.fillStyle(met ? Theme.accentGreen : 0x14120f, met ? 0.2 : 1);
-        plate.fillRoundedRect(cx - PLATE / 2, billY - PLATE / 2, PLATE, PLATE, Theme.radiusChip);
-        plate.lineStyle(1, met ? Theme.accentGreen : Theme.borderOnDark, met ? 0.9 : 0.6);
-        plate.strokeRoundedRect(cx - PLATE / 2, billY - PLATE / 2, PLATE, PLATE, Theme.radiusChip);
+      // The bill of materials sits between the room and the button, so the
+      // player reads WHAT the stage costs before the control that spends it.
+      const PLATE = 42;
+      const GAP = 10;
+      const billY = artCy + artH / 2 + 30;
+      if (stageDef) {
+        // Only the surfaces stage charges credits at its unlock; every later
+        // stage takes its credits through the furniture, so it draws no coin
+        // chip at all rather than an honest-looking 0.
+        const chips: Phaser.GameObjects.Container[] = [];
+        if (stageDef.coins > 0) {
+          // Greyed rather than faded when the credits are short: fading kept
+          // the chip gold, and gold still reads as "affordable" at a glance.
+          const chipColor = affordable ? CURRENCY_COLOR.credit : Theme.textOnDarkMuted;
+          const coinChip = currencyPill(this, stageDef.coins.toLocaleString(), 'credit', {
+            ...currencyChipOptions('credit'),
+            fontSize: 13, iconSize: 20, height: PLATE,
+            textColor: chipColor, stroke: chipColor
+          });
+          const chipMark = coinChip.list[2] as Partial<Phaser.GameObjects.Components.Alpha> | undefined;
+          if (!affordable) chipMark?.setAlpha?.(0.45);
+          chips.push(coinChip);
+        }
+        const chipsW = chips.reduce((sum, chip) => sum + chip.width + GAP, 0);
+        const totalW = chipsW + stageDef.requirements.length * (PLATE + GAP) - GAP;
+        let x = w / 2 - totalW / 2;
+        for (const chip of chips) {
+          chip.setPosition(x + chip.width / 2, billY);
+          footer.add(chip);
+          x += chip.width + GAP;
+        }
 
-        const art = PLATE + 14;
-        const icon = this.add.graphics();
-        const { materialAlpha } = drawTierIcon(
-          icon, req.typeId, req.tier, art, materialLighting(def?.color ?? Theme.panelAlt, req.tier)
-        );
-        icon.setAlpha(met ? materialAlpha : materialAlpha * 0.5);
-        const present = iconPresentation(req.typeId, req.tier, art);
-        icon.setScale(present.scale).setPosition(cx + present.offsetX, billY + present.offsetY);
+        for (const req of stageDef.requirements) {
+          const cx = x + PLATE / 2;
+          const have = this.grid.countAtTier(req.tier, req.typeId);
+          const met = have >= req.count;
+          const def = getTierDef(req.typeId, req.tier);
 
-        const count = this.add.text(cx, billY + PLATE / 2 + 10, `${Math.min(have, req.count)}/${req.count}`, {
-          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px', fontStyle: 'bold',
-          color: hex(met ? Theme.accentGreen : Theme.textOnDarkMuted)
-        }).setOrigin(0.5);
+          // Same recessed-slot-goes-green language as the order cards, so a
+          // requirement reads identically wherever the game asks for one.
+          const plate = this.add.graphics();
+          plate.fillStyle(met ? Theme.accentGreen : 0x14120f, met ? 0.2 : 1);
+          plate.fillRoundedRect(cx - PLATE / 2, billY - PLATE / 2, PLATE, PLATE, Theme.radiusChip);
+          plate.lineStyle(1, met ? Theme.accentGreen : Theme.borderOnDark, met ? 0.9 : 0.6);
+          plate.strokeRoundedRect(cx - PLATE / 2, billY - PLATE / 2, PLATE, PLATE, Theme.radiusChip);
 
-        billParts.push(plate, icon, count);
-        x += PLATE + GAP;
+          const art = PLATE + 14;
+          const icon = this.add.graphics();
+          const { materialAlpha } = drawTierIcon(
+            icon, req.typeId, req.tier, art, materialLighting(def?.color ?? Theme.panelAlt, req.tier)
+          );
+          icon.setAlpha(met ? materialAlpha : materialAlpha * 0.5);
+          const present = iconPresentation(req.typeId, req.tier, art);
+          icon.setScale(present.scale).setPosition(cx + present.offsetX, billY + present.offsetY);
+
+          const count = this.add.text(cx, billY + PLATE / 2 + 10, `${Math.min(have, req.count)}/${req.count}`, {
+            resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px', fontStyle: 'bold',
+            color: hex(met ? Theme.accentGreen : Theme.textOnDarkMuted)
+          }).setOrigin(0.5);
+
+          footer.add([plate, icon, count]);
+          x += PLATE + GAP;
+        }
       }
-    }
 
-    const rewardParts: Phaser.GameObjects.GameObject[] = [];
-    const rewardY = billY + PLATE / 2 + 30;
-    if (stageDef) {
-      const rewardLabel = this.add.text(w / 2 - 40, rewardY, 'REWARD', {
-        resolution: textResolution,
-        fontFamily: Theme.fontMono,
-        fontSize: '10px',
-        fontStyle: 'bold',
-        color: hex(Theme.textOnDarkMuted)
-      }).setOrigin(1, 0.5);
-      rewardParts.push(rewardLabel);
+      const rewardY = billY + PLATE / 2 + 30;
+      if (stageDef) {
+        footer.add(this.add.text(w / 2 - 40, rewardY, 'REWARD', {
+          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
+          fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
+        }).setOrigin(1, 0.5));
 
-      if (this.projectStage === 0 || this.projectStage === 2) {
-        const kind = this.projectStage === 0 ? 'energy' : 'gem';
-        const amount = this.projectStage === 0 ? 25 : 10;
-        const rewardPill = currencyPill(this, String(amount), kind, {
-          ...currencyChipOptions(kind),
-          fontSize: 12,
-          iconSize: 21,
-          height: 34
-        }).setPosition(w / 2 + 30, rewardY);
-        rewardParts.push(rewardPill);
-      } else {
-        const tier: CrateTier = this.projectStage === 1 ? 'bronze' : 'gold';
-        const rewardIcon = this.add.graphics().setPosition(w / 2 - 18, rewardY);
-        drawCrate(rewardIcon, 38, tier);
-        const rewardName = this.add.text(w / 2 + 5, rewardY, `${tier.toUpperCase()} CRATE`, {
-          resolution: textResolution,
-          fontFamily: Theme.fontHeading,
-          fontSize: '11px',
-          fontStyle: 'bold',
-          color: hex(Theme.textOnDark)
-        }).setOrigin(0, 0.5);
-        rewardParts.push(rewardIcon, rewardName);
+        if (this.projectStage === 0 || this.projectStage === 2) {
+          const kind = this.projectStage === 0 ? 'energy' : 'gem';
+          const amount = this.projectStage === 0 ? 25 : 10;
+          footer.add(currencyPill(this, String(amount), kind, {
+            ...currencyChipOptions(kind), fontSize: 12, iconSize: 21, height: 34
+          }).setPosition(w / 2 + 30, rewardY));
+        } else {
+          const tier: CrateTier = this.projectStage === 1 ? 'bronze' : 'gold';
+          const rewardIcon = this.add.graphics().setPosition(w / 2 - 18, rewardY);
+          drawCrate(rewardIcon, 38, tier);
+          footer.add([rewardIcon, this.add.text(w / 2 + 5, rewardY, `${tier.toUpperCase()} CRATE`, {
+            resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '11px',
+            fontStyle: 'bold', color: hex(Theme.textOnDark)
+          }).setOrigin(0, 0.5)]);
+        }
       }
-    }
 
-    const buttonY = Math.min(h - 46, rewardY + 48);
-    const buttonW = Math.min(250, w - 60);
-    const buttonBg = this.add.graphics();
-    const buttonText = this.add.text(w / 2, buttonY, '', {
-      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px', fontStyle: 'bold', color: hex(Theme.bg)
-    }).setOrigin(0.5);
-    const buttonZone = this.add.zone(w / 2, buttonY, buttonW, 42).setInteractive({ useHandCursor: true });
-    buttonBg.fillStyle(complete ? Theme.panelAlt : buildable ? Theme.accentGreen : Theme.textOnDarkMuted, 1);
-    buttonBg.fillRoundedRect(w / 2 - buttonW / 2, buttonY - 21, buttonW, 42, Theme.radiusChip);
-    // The label names the MISSING half rather than repeating the price, which
-    // the bill above it already shows.
-    const label = complete
-      ? 'PROJECT COMPLETE  ·  NEXT ROOM COMING SOON'
-      : buildable ? 'COMPLETE'
-      : shortfall > 0 ? 'MISSING REQUIREMENTS'
-      : 'NOT ENOUGH CREDITS';
-    buttonText.setText(label).setColor(hex(complete ? Theme.textOnDarkMuted : Theme.bg));
-    if (buildable && stageDef) buttonZone.on('pointerdown', () => this.confirmProjectPurchase(stageDef));
-    overlay.add([dim, artPanel, ...roomParts, title, stage, close, ...billParts, ...rewardParts, buttonBg, buttonText, buttonZone]);
+      const buttonY = Math.min(h - 46, rewardY + 48);
+      const buttonW = Math.min(250, w - 60);
+      const buttonBg = this.add.graphics();
+      const buttonColor = complete ? Theme.panelAlt : buildable ? Theme.accentGreen : Theme.textOnDarkMuted;
+      const buttonLighting = materialLighting(buttonColor, buildable ? 5 : 2);
+      buttonBg.fillGradientStyle(
+        buttonLighting.highlight, buttonLighting.light,
+        buttonLighting.dark, buttonLighting.shadow, 1
+      );
+      buttonBg.fillRoundedRect(w / 2 - buttonW / 2, buttonY - 21, buttonW, 42, Theme.radiusChip);
+      // The label names the MISSING half rather than repeating the price, which
+      // the bill above it already shows. It says OPEN rather than BUILD now:
+      // the button no longer builds a stage, it unlocks one to be furnished.
+      const label = complete
+        ? 'PROJECT COMPLETE  ·  NEXT ROOM COMING SOON'
+        : buildable ? `OPEN ${PROJECT_STAGE_NAMES[this.projectStage + 1]}`
+        : shortfall > 0 ? 'MISSING REQUIREMENTS'
+        : 'NOT ENOUGH CREDITS';
+      const buttonText = this.add.text(w / 2, buttonY, label, {
+        resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
+        fontStyle: 'bold', color: hex(complete ? Theme.textOnDarkMuted : Theme.bg)
+      }).setOrigin(0.5);
+      const buttonZone = this.add.zone(w / 2, buttonY, buttonW, 42).setInteractive({ useHandCursor: true });
+      if (buildable && stageDef) buttonZone.on('pointerdown', () => this.confirmProjectPurchase(stageDef));
+      footer.add([buttonBg, buttonText, buttonZone]);
+    };
+
+    const renderFooter = (): void => {
+      footer.removeAll(true);
+      stage.setText(`STAGE ${this.projectStage + 1}/5  ·  ${PROJECT_STAGE_NAMES[this.projectStage]}`);
+      const pieces = roomPiecesForStage(this.projectStage);
+      if (pieces.some((piece) => !this.builtPieces.has(piece.key))) {
+        renderShoppingList(pieces);
+        return;
+      }
+      renderUnlock(PROJECT_STAGES[this.projectStage]);
+    };
+
+    overlay.add([dim, artPanel, ...roomParts, title, stage, close, footer]);
+    renderFooter();
   }
 
   private confirmProjectPurchase(stageDef: ProjectStage): void {
@@ -2842,7 +3356,7 @@ ${familyTierLabel(typeId, tier)}`
     panel.fillStyle(Theme.bgElevated, 1).fillRoundedRect(w / 2 - pw / 2, h / 2 - 92, pw, 184, Theme.radiusPanel);
     panel.lineStyle(1, Theme.borderOnDark, 1).strokeRoundedRect(w / 2 - pw / 2, h / 2 - 92, pw, 184, Theme.radiusPanel);
     const rewardNames = ['25 ENERGY', 'BRONZE CRATE', '10 GEMS', 'GOLD CRATE'];
-    const title = this.add.text(w / 2, h / 2 - 55, `BUILD ${PROJECT_STAGE_NAMES[this.projectStage + 1]}?`, {
+    const title = this.add.text(w / 2, h / 2 - 55, `OPEN ${PROJECT_STAGE_NAMES[this.projectStage + 1]}?`, {
       resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '14px', fontStyle: 'bold', color: hex(Theme.textOnDark), align: 'center', wordWrap: { width: pw - 30 }
     }).setOrigin(0.5);
     // Spells out the items as well as the credits: they leave the board on
@@ -2850,10 +3364,20 @@ ${familyTierLabel(typeId, tier)}`
     const materials = stageDef.requirements
       .map((req) => `${req.count}x ${req.typeId.toUpperCase()} ${String(req.tier).padStart(2, '0')}`)
       .join('  ·  ');
+    // The credits line is dropped when the unlock is materials-only, which is
+    // every stage but the surfaces one - printing "0 CREDITS" would read as a
+    // price rather than as the absence of one. The reward line says when it
+    // arrives, because for a stage with furniture it is no longer paid here:
+    // it waits for the last piece of that stage to be bought.
+    const price = cost > 0 ? `${cost.toLocaleString()} CREDITS  ·  ${materials}` : materials;
+    const pieceCount = roomPiecesForStage(this.projectStage + 1).length;
+    const rewardLine = pieceCount > 0
+      ? `REWARD ${rewardNames[this.projectStage]} WHEN FURNISHED`
+      : `REWARD ${rewardNames[this.projectStage]}`;
     const detail = this.add.text(
       w / 2, h / 2 - 12,
-      `${cost.toLocaleString()} CREDITS  ·  ${materials}
-REWARD ${rewardNames[this.projectStage]}`,
+      `${price}
+${rewardLine}`,
       {
         resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '10px',
         color: hex(Theme.textOnDarkMuted), align: 'center', lineSpacing: 4
@@ -2881,6 +3405,11 @@ REWARD ${rewardNames[this.projectStage]}`,
         return;
       }
       confirm.destroy(true);
+      // Reopening the panel builds a fresh RoomView3D, so the current one must
+      // be disposed or its canvas stays in the DOM forever.
+      this.restoreBoardAfterRoom();
+      this.roomView?.dispose();
+      this.roomView = null;
       this.projectOverlay?.destroy(true);
       this.projectOverlay = null;
       this.modalOpen = false;
@@ -2895,26 +3424,22 @@ REWARD ${rewardNames[this.projectStage]}`,
     reopenProject = false
   ): boolean {
     if (stageDef !== PROJECT_STAGES[this.projectStage]) return false;
+    if (!this.projectStageFurnished(this.projectStage)) return false;
     if (this.projectShortfall(stageDef) > 0 || !spendCoinsGeneric(this.economy, stageDef.coins)) return false;
     this.consumeProjectItems(stageDef);
     this.refreshOrderBar();
     this.checkDeadlock();
-    const completedStage = ++this.projectStage;
-    this.time.delayedCall(0, () => {
-      if (completedStage === 1) {
-        addEnergy(this.energy, 25);
-        this.playProjectCurrencyReward('energy', 25, from);
-      } else if (completedStage === 2) {
-        this.awardCrate('bronze', 'PROJECT REWARD', from);
-      } else if (completedStage === 3) {
-        addGems(this.economy, 10);
-        this.playProjectCurrencyReward('gem', 10, from);
-      } else if (completedStage === 4) {
-        this.awardCrate('gold', 'PROJECT REWARD', from);
-      }
-      this.updateCurrencyText();
-      this.saveState();
-    });
+    const unlockedStage = ++this.projectStage;
+    // The surfaces stage sells no furniture, so unlocking it is the whole of
+    // it - there is no later purchase for its reward to wait on. Every other
+    // stage pays out when its last piece is bought.
+    if (roomPiecesForStage(unlockedStage).length === 0) {
+      this.time.delayedCall(0, () => {
+        this.grantStageReward(unlockedStage, from);
+        this.updateCurrencyText();
+        this.saveState();
+      });
+    }
     if (reopenProject) {
       this.time.delayedCall(900, () => {
         if (!this.modalOpen) this.openProject();
@@ -3479,7 +4004,12 @@ REWARD ${rewardNames[this.projectStage]}`,
     const slotSize = Math.min(54, (innerW - slotGap * 2) / 3);
     const familyW = slotSize * 3 + slotGap * 2;
     const familyLeft = left + (panelW - familyW) / 2;
-    let nextGridTop = top + 85;
+    // Derived from the viewport, not a fixed offset from the panel. Family
+    // labels are drawn 25px ABOVE their grid, so a hardcoded `top + 85` put the
+    // first one at top+60 while the scroll mask began at top+65 - clipping
+    // "WOOD" and its count in half. Anchoring to the mask keeps them clear
+    // however the header above changes.
+    let nextGridTop = viewportTop + 34;
     let collectionDragMoved = 0;
 
     CHAINS.filter((chain) => !isCurrencyChain(chain.typeId)).forEach((chain) => {
@@ -3782,7 +4312,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
    * the reveal happens on the board rather than in a modal that hands over
    * everything at once.
    */
-  private deployStoredCrate(index: number, tier: CrateTier, kept?: CratePayloadEntry[]): void {
+  private deployStoredCrate(index: number, tier: CrateTier, kept?: CratePayloadEntry[], readyAt?: number): void {
     const empties = this.grid.emptyCells();
     if (empties.length === 0) {
       this.refreshActionTray('BOARD FULL  ·  MAKE SPACE FIRST\nTHE CRATE IS SAFE IN YOUR INVENTORY');
@@ -3795,7 +4325,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       tier, playerLevel(this.orderState), Math.random, this.ownedDispenserTypeIds()
     ));
     const pos = this.firstFreeCellInReadingOrder() ?? empties[0];
-    this.placeCrate(pos, tier, payload).playArrive();
+    // An absolute timestamp, so the wait kept running while it sat in the
+    // inventory rather than pausing or restarting.
+    this.placeCrate(pos, tier, payload, readyAt).playArrive();
     this.refreshInventoryButton();
     this.saveState();
     this.refreshActionTray(
@@ -3865,33 +4397,54 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     }
   }
 
-  private buySupplyCrate(offer: SupplyCrateOffer): void {
+  private buySupplyCrate(offer: SupplyCrateOffer, from?: { x: number; y: number }): boolean {
     const price = supplyCratePrice(offer, playerLevel(this.orderState));
     if (this.economy.coins < price) {
       this.refreshActionTray(`NOT ENOUGH CREDITS  ·  ${CRATE_LABELS[offer.tier]}`);
-      return;
+      return false;
     }
-    if (this.waitingSupplyCrateCount() >= SUPPLY_CRATE_LIMIT) {
+    if (!supplyCrateReady(this.supplyCooldownUntil, Date.now())) {
       this.refreshActionTray(
-        `${SUPPLY_CRATE_LIMIT} SUPPLY CRATES ALREADY SEALED\nOPEN ONE BEFORE BUYING ANOTHER`
+        `SUPPLY DEPOT RESTOCKING\nNEXT CRATE IN ${formatCrateWait(supplyCooldownRemaining(this.supplyCooldownUntil, Date.now()))}`
       );
-      return;
+      return false;
     }
     const pos = this.firstFreeCellInReadingOrder();
     if (!pos) {
       this.refreshActionTray('BOARD FULL  ·  MAKE SPACE\nA SUPPLY CRATE NEEDS A CELL TO SIT IN');
-      return;
+      return false;
     }
-    if (!spendCoinsGeneric(this.economy, price)) return;
+    if (!spendCoinsGeneric(this.economy, price)) return false;
     const payload = cratePayload(rollCrate(
       offer.tier, playerLevel(this.orderState), Math.random, this.ownedDispenserTypeIds()
     ));
-    this.placeCrate(pos, offer.tier, payload, Date.now() + offer.delayMs).playArrive();
+
+    // Flies in from wherever it was bought, the same arrival earned crates get.
+    // Without this the whole purchase happened behind the shop panel and the
+    // player saw nothing for their credits.
+    // No readyAt: a bought crate is openable the moment it lands. The wait
+    // lives on the SHOP now, not on the player's board.
+    this.supplyCooldownUntil = Date.now() + offer.cooldownMs;
+    const view = this.placeCrate(pos, offer.tier, payload);
+    const target = this.cellToWorld(pos);
+    const origin = from ?? this.vaultPosition();
+    view.setPosition(origin.x, origin.y).setScale(0.5).setAlpha(0.2);
+    this.tweens.add({
+      targets: view,
+      x: target.x, y: target.y, scale: 1, alpha: 1,
+      duration: 460, ease: 'Cubic.Out',
+      onComplete: () => {
+        view.playArrive();
+        burstParticles(this, target.x, target.y, this.crateAccent(offer.tier), 2);
+      }
+    });
+
     this.updateCurrencyText();
     this.saveState();
     this.refreshActionTray(
-      `${CRATE_LABELS[offer.tier]} BOUGHT\nOPENS IN ${formatCrateWait(offer.delayMs)}`
+      `${CRATE_LABELS[offer.tier]} BOUGHT\nNEXT CRATE IN ${formatCrateWait(offer.cooldownMs)}`
     );
+    return true;
   }
 
   /**
@@ -4326,7 +4879,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
           inventoryItemPressed = false;
           if (wasDragged) return;
           this.time.delayedCall(0, () => {
-            if (item.kind === 'crate') this.deployStoredCrate(slot, item.tier as CrateTier, item.remaining);
+            if (item.kind === 'crate') this.deployStoredCrate(slot, item.tier as CrateTier, item.remaining, item.readyAt);
             else this.retrieveStoredItem(slot);
             reopen();
           });
@@ -5148,8 +5701,8 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const supplyRow = (): void => {
       const slotW = (innerW - 16) / SUPPLY_CRATES.length;
       const slotH = 92;
-      const waiting = this.waitingSupplyCrateCount();
-      const atLimit = waiting >= SUPPLY_CRATE_LIMIT;
+      const cooling = supplyCooldownRemaining(this.supplyCooldownUntil, Date.now());
+      const atLimit = cooling > 0;
 
       SUPPLY_CRATES.forEach((offer, index) => {
         const cx = left + slotW / 2 + index * (slotW + 8);
@@ -5172,10 +5725,10 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         art.setPosition(cx, cy - 22);
         if (!buyable) art.setAlpha(0.45);
 
-        // The wait is stated up front. It is the whole point of the feature -
-        // Credits buy a crate, not items - so hiding it until after the
-        // purchase would read as a bait.
-        const wait = this.add.text(cx, cy + 4, `OPENS IN ${formatCrateWait(offer.delayMs)}`, {
+        // States what buying costs you in TIME - the restock wait before the
+        // next crate, not a wait on the crate itself, which now opens
+        // immediately.
+        const wait = this.add.text(cx, cy + 4, `RESTOCK ${formatCrateWait(offer.cooldownMs)}`, {
           resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
           color: hex(Theme.textOnDarkMuted)
         }).setOrigin(0.5);
@@ -5194,8 +5747,11 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
           const zone = this.add.zone(cx, cy, slotW, slotH).setInteractive({ useHandCursor: true });
           zone.on('pointerup', () => this.time.delayedCall(0, () => {
             if (!wasTap()) return;
-            this.buySupplyCrate(offer);
-            this.reopenShop(null);
+            // Bought from this slot, so the crate flies from here. Close on
+            // success so the flight is visible; stay open on failure so the
+            // reason stays readable.
+            if (this.buySupplyCrate(offer, { x: cx, y: cy })) this.closeShop();
+            else this.reopenShop(null);
           }));
           content.add(zone);
         }
@@ -5206,8 +5762,8 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       // Says WHY the row is dead when it is, rather than leaving three greyed
       // buttons with no explanation.
       const note = atLimit
-        ? `${waiting}/${SUPPLY_CRATE_LIMIT} SEALED  ·  OPEN ONE TO BUY ANOTHER`
-        : `${waiting}/${SUPPLY_CRATE_LIMIT} SEALED  ·  EACH ONE HOLDS A BOARD CELL`;
+        ? `RESTOCKING  ·  NEXT CRATE IN ${formatCrateWait(cooling)}`
+        : 'CRATES OPEN IMMEDIATELY  ·  ONE PURCHASE PER RESTOCK';
       const noteText = this.add.text(panelX, cursor, note, {
         resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
         color: hex(atLimit ? Theme.accentAmber : Theme.textOnDarkMuted)
@@ -5838,6 +6394,8 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
           forcedSpawnVault?: ForcedSpawn[];
           boardExpansion?: { unlockedCells?: string[] };
           projectStage?: number;
+          builtPieces?: string[];
+          supplyCooldownUntil?: number;
         };
         this.grid.loadFrom(parsed.grid);
         const savedCells = this.grid.serialize();
@@ -5850,6 +6408,20 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         this.applyBoardExpansionLocks(savedCells);
         this.dispenserCollectCount = parsed.dispenserCollectCount ?? 0;
         this.projectStage = Phaser.Math.Clamp(Math.floor(parsed.projectStage ?? 0), 0, PROJECT_STAGES.length);
+        // Saves written before the room was itemized have no piece list: back
+        // then reaching stage N meant owning everything up to N, so that is
+        // what they migrate to. Without this a returning player's furnished
+        // room would empty itself out and ask to be bought again.
+        const validKeys = new Set(ROOM_PIECES.map((piece) => piece.key));
+        this.builtPieces = Array.isArray(parsed.builtPieces)
+          ? new Set(parsed.builtPieces.filter((key): key is string => validKeys.has(key)))
+          : new Set(
+              ROOM_PIECES
+                .filter((piece) => piece.stage <= this.projectStage)
+                .map((piece) => piece.key)
+            );
+        this.supplyCooldownUntil = typeof parsed.supplyCooldownUntil === 'number'
+          ? parsed.supplyCooldownUntil : 0;
         this.rewards = normalizeRewardsState(parsed.rewards);
         const legacyCollection = parsed.collection == null;
         this.collection = normalizeCollectionState(parsed.collection);
@@ -5978,11 +6550,24 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
             Date.now(), typeIds, this.collection.discovered, this.specialShopTypeIds()
           );
         }
+        // Captured only once the load has fully succeeded, so `.prev` always
+        // holds a save that is known to be readable.
+        stashSave(PREVIOUS_SAVE_KEY, raw);
         if (saveMigration) this.saveState();
         this.updateLevelBadge();
         return;
-      } catch {
-        // fall through to fresh seed on any parse error
+      } catch (error) {
+        // The save is KEPT, not discarded. This catch covers the whole load,
+        // not just the JSON.parse: any shape an older build wrote that a newer
+        // one mishandles ends up here, and seeding a fresh board means the
+        // next autosave is seconds away from overwriting real progress. The
+        // copy survives that, so a player who reports "my game reset" can be
+        // put back rather than consoled.
+        stashSave(UNREADABLE_SAVE_KEY, raw);
+        console.error(
+          `[save] could not be loaded and was copied to "${UNREADABLE_SAVE_KEY}"`,
+          error
+        );
       }
     }
     // A fresh game begins with one physical source and a ready-made first
@@ -6014,6 +6599,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       forcedSpawnVault: this.forcedSpawnVault,
       boardExpansion: { unlockedCells: [...this.boardExpansionUnlocked] }
       ,projectStage: this.projectStage
+      ,builtPieces: [...this.builtPieces]
+      // Absolute, so the restock keeps running while the game is closed.
+      ,supplyCooldownUntil: this.supplyCooldownUntil
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
   }
@@ -6206,7 +6794,11 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       gauge.fillStyle(Theme.bg, 0.92);
       gauge.fillRoundedRect(-GAUGE_W / 2, GAUGE_Y - GAUGE_H / 2, GAUGE_W, GAUGE_H, GAUGE_H / 2);
       if (fraction > 0) {
-        gauge.fillStyle(Theme.currencyEnergy, 1);
+        const energyLighting = materialLighting(Theme.currencyEnergy, 5);
+        gauge.fillGradientStyle(
+          energyLighting.highlight, energyLighting.light,
+          energyLighting.dark, energyLighting.base, 1
+        );
         // Never narrower than its own cap radius, so one point of energy is
         // still a visible sliver rather than nothing.
         const w = Math.max(GAUGE_H, GAUGE_W * fraction);
@@ -6364,7 +6956,11 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     xpBar.fillStyle(Theme.bg, 0.7);
     xpBar.fillRoundedRect(barX, barY, barW, barH, Theme.radiusChip);
     if (progress > 0) {
-      xpBar.fillStyle(Theme.currencyXp, 1);
+      const xpLighting = materialLighting(Theme.currencyXp, 5);
+      xpBar.fillGradientStyle(
+        xpLighting.light, xpLighting.highlight,
+        xpLighting.dark, xpLighting.base, 1
+      );
       xpBar.fillRoundedRect(barX, barY, Math.max(4, barW * progress), barH, Theme.radiusChip);
     }
     xpBar.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);

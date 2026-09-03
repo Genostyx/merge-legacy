@@ -17,7 +17,7 @@ describe('supply crate pricing', () => {
     for (let i = 1; i < SUPPLY_CRATES.length; i++) {
       expect(supplyCratePrice(SUPPLY_CRATES[i], 30))
         .toBeGreaterThan(supplyCratePrice(SUPPLY_CRATES[i - 1], 30));
-      expect(SUPPLY_CRATES[i].delayMs).toBeGreaterThan(SUPPLY_CRATES[i - 1].delayMs);
+      expect(SUPPLY_CRATES[i].cooldownMs).toBeGreaterThan(SUPPLY_CRATES[i - 1].cooldownMs);
     }
   });
 
@@ -51,26 +51,43 @@ describe('supply crate pricing', () => {
     }
   });
 
-  it('caps the piece rate that Credits can buy', () => {
-    // The guard that matters. Baseline is ~20.4 piece-units per family per
-    // day and a tier-5 source costs 256, so ~12.5 days. Pieces roll across
-    // four eligible families, so a crate contributes a quarter of its units
-    // to the family being built.
-    const BASELINE_PER_FAMILY_PER_DAY = 20.4;
-    const ELIGIBLE_FAMILIES = 4;
-    const best = cratePieceUnits('gold');
-    const boughtPerDay = (best * SUPPLY_CRATE_LIMIT) / ELIGIBLE_FAMILIES;
-    // Spending should help meaningfully...
-    expect(boughtPerDay).toBeGreaterThan(BASELINE_PER_FAMILY_PER_DAY * 0.2);
-    // ...without being able to more than double a free player's rate. If the
-    // limit or the piece odds are ever raised, this is the line that breaks.
-    expect(boughtPerDay).toBeLessThan(BASELINE_PER_FAMILY_PER_DAY);
+  it('caps the piece rate a restock cooldown allows', () => {
+    // The guard that matters. Baseline is ~20.4 piece-units per family per day
+    // and a tier-5 source costs 256, so ~12.5 days. Pieces roll across four
+    // eligible families, so a crate gives a quarter of its units to the family
+    // being built.
+    //
+    // This replaced a three-sealed-crates cap, which bounded throughput by
+    // CYCLE TIME rather than directly: three concurrent gold crates at six
+    // hours each complete twelve times a day, not three, so spending could
+    // nearly double a free player's rate. A cooldown gives an exact ceiling.
+    const BASELINE = 20.4;
+    const FAMILIES = 4;
+    const DAY_MS = 86_400_000;
+    for (const offer of SUPPLY_CRATES) {
+      const perDay = DAY_MS / offer.cooldownMs;
+      const units = (perDay * cratePieceUnits(offer.tier)) / FAMILIES;
+      // Spending must help...
+      expect(units, offer.tier).toBeGreaterThan(BASELINE * 0.3);
+      // ...but never double a free player's rate, whichever tier is spammed.
+      expect(units, offer.tier).toBeLessThan(BASELINE);
+    }
+  });
+
+  it('leaves no tier the obvious exploit', () => {
+    // Cooldowns are tuned so units-per-hour is close across all three; if one
+    // drifts far ahead, buying stops being a choice about credits and becomes
+    // a single correct answer.
+    const rates = SUPPLY_CRATES.map((o) => cratePieceUnits(o.tier) / (o.cooldownMs / 3_600_000));
+    expect(Math.max(...rates) / Math.min(...rates)).toBeLessThan(1.5);
   });
 });
 
-describe('crate opening delay', () => {
-  it('leaves earned crates openable immediately', () => {
-    // Earned crates carry no `readyAt`: the wait is a property of buying.
+describe('the sealed-crate helpers, now unused by supply crates', () => {
+  it('leaves crates with no timestamp openable immediately', () => {
+    // Supply crates no longer set `readyAt` at all - a bought crate opens the
+    // moment it lands, and the wait moved to the shop. These helpers stay for
+    // the timed event crates in TODO.md, so they are still pinned.
     expect(crateReady(undefined, 0)).toBe(true);
     expect(crateRemainingMs(undefined, 0)).toBe(0);
   });

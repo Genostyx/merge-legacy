@@ -54,8 +54,21 @@ export interface SupplyCrateOffer {
    * the seam just above it.
    */
   minPriceCoins: number;
-  /** Wait between buying and the first tap, in ms. */
-  delayMs: number;
+  /**
+   * How long buying this crate blocks the NEXT purchase, in ms.
+   *
+   * This replaced a timer on the crate itself. A bought crate used to sit
+   * sealed on the board for hours - which took the resource the player is most
+   * short of, board space, and gave nothing back for it. That reads as a
+   * punishment for spending.
+   *
+   * The cooldown does the same job better. The old cap was three sealed crates
+   * at once, and that bounded throughput far more loosely than intended: three
+   * concurrent gold crates at six hours each complete TWELVE times a day, not
+   * three, which let spending nearly double a free player's piece rate. One
+   * purchase per cooldown gives an exact ceiling instead.
+   */
+  cooldownMs: number;
 }
 
 const MINUTE = 60_000;
@@ -67,10 +80,19 @@ const HOUR = 60 * MINUTE;
  * against the old flat 1,500 / 4,000 / 9,000 - while staying affordable
  * earlier, where the flat numbers were out of reach.
  */
+/**
+ * Cooldowns are tuned so piece-throughput per hour is about equal across the
+ * three, near 13 units per family per day against a ~20.4 baseline. No tier is
+ * the obvious exploit, and the choice is about how many credits you want to
+ * spend at once rather than which crate games the timer.
+ *
+ * Silver moved from two hours to three for exactly this reason - at two it
+ * reached the baseline on its own.
+ */
 export const SUPPLY_CRATES: SupplyCrateOffer[] = [
-  { tier: 'bronze', ordersWorth: 1, minPriceCoins: 250, delayMs: 30 * MINUTE },
-  { tier: 'silver', ordersWorth: 2.5, minPriceCoins: 600, delayMs: 2 * HOUR },
-  { tier: 'gold', ordersWorth: 5, minPriceCoins: 1_200, delayMs: 6 * HOUR }
+  { tier: 'bronze', ordersWorth: 1, minPriceCoins: 250, cooldownMs: 25 * MINUTE },
+  { tier: 'silver', ordersWorth: 2.5, minPriceCoins: 600, cooldownMs: 3 * HOUR },
+  { tier: 'gold', ordersWorth: 5, minPriceCoins: 1_200, cooldownMs: 6 * HOUR }
 ];
 
 /**
@@ -87,14 +109,20 @@ export function supplyCratePrice(offer: SupplyCrateOffer, level: number): number
 }
 
 /**
- * How many bought crates may be unopened at once, counting both the board and
- * the inventory.
- *
- * This is the real balance lever - price is not. Without it the opening delay
- * caps nothing: a player would buy ten at once and open them all when the same
- * timer expired, paying one wait rather than ten.
+ * Retired. The concurrency cap is replaced by the per-purchase cooldown above,
+ * which bounds throughput exactly rather than by cycle time. Kept only so the
+ * constant does not vanish from any save or test that still references it.
  */
 export const SUPPLY_CRATE_LIMIT = 3;
+
+/** Whether another supply crate can be bought yet. */
+export function supplyCrateReady(cooldownUntil: number | undefined, now: number): boolean {
+  return cooldownUntil == null || now >= cooldownUntil;
+}
+
+export function supplyCooldownRemaining(cooldownUntil: number | undefined, now: number): number {
+  return cooldownUntil == null ? 0 : Math.max(0, cooldownUntil - now);
+}
 
 export function supplyCrateFor(tier: string): SupplyCrateOffer | undefined {
   return SUPPLY_CRATES.find((offer) => offer.tier === tier);

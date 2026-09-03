@@ -129,6 +129,24 @@ describe('crates share the slots', () => {
     expect(retrieveItem(state, 0)).toEqual({ kind: 'crate', tier: 'gold' });
   });
 
+  it('keeps a sealed crate sealed through the inventory', () => {
+    // Storing a supply crate and taking it back out used to drop `readyAt`,
+    // so the wait vanished and the crate opened immediately - which also
+    // sidestepped the sealed-crate cap, since a crate in the inventory with no
+    // timer no longer counted against it.
+    const state = createDefaultInventory();
+    const readyAt = 1_800_000;
+    expect(storeItem(state, { kind: 'crate', tier: 'bronze', readyAt })).toBe(true);
+    expect(retrieveItem(state, 0)).toEqual({ kind: 'crate', tier: 'bronze', readyAt });
+  });
+
+  it('leaves an earned crate with no timer at all', () => {
+    // Only BOUGHT crates carry a wait; a milestone reward must not gain one.
+    const state = createDefaultInventory();
+    storeItem(state, { kind: 'crate', tier: 'gold' });
+    expect((retrieveItem(state, 0) as { readyAt?: number }).readyAt).toBeUndefined();
+  });
+
   it('counts crates against the same squeeze as items', () => {
     const state = createDefaultInventory();
     for (let i = 0; i < INVENTORY_START_SLOTS; i++) storeItem(state, { kind: 'crate', tier: 'bronze' });

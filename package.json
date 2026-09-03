@@ -16,7 +16,9 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
-    "phaser": "^3.80.1"
+    "@types/three": "^0.185.4",
+    "phaser": "^3.80.1",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@capacitor/android": "^6.1.2",

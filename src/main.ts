@@ -5,6 +5,11 @@ const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.WEBGL,
   parent: 'game-root',
   backgroundColor: '#1c1a17',
+  // The canvas clears to alpha rather than a solid colour, so a WebGL layer
+  // placed BEHIND it (the 3D room) can show through wherever the scene draws
+  // nothing. The board is unaffected: its backdrop photo covers the screen, and
+  // the body's own #1c1a17 sits behind everything else.
+  transparent: true,
   render: {
     antialias: true,
     antialiasGL: true,
