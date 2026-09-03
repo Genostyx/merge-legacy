@@ -311,7 +311,7 @@ const ORDER_CARD_GAP = 6;
  * slots losing a single pixel.
  */
 /** Room photo behind the board. Lives at `public/bg.png`. */
-const BG_FILE = 'bg.png';
+const BG_FILE = 'bg.jpg';
 const BG_FALLBACK_FILE = 'minimalist-spa-interior-meditation-space_23-2151935107.avif';
 const BG_FALLBACK_KEY = 'bgPhotoFallback';
 
