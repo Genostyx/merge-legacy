@@ -833,6 +833,14 @@ export class BoardScene extends Phaser.Scene {
     const headerRight = this.boardOriginX + COLS * this.cellSize;
     this.headerRight = headerRight;
     const rowY = this.contentTop + 18 * this.hudScale;
+    // The rule under the header row. Declared here because the currency chips
+    // hang off it rather than off `rowY`.
+    const ruleY = this.contentTop + 42 * this.hudScale;
+    // Chips sit just ABOVE that rule instead of level with the badge and the
+    // shop button. A phone's camera cut-out is centred in the status bar,
+    // which is exactly where the chips used to sit; dropping them to the
+    // bottom of the header band clears it.
+    const chipTopY = ruleY - 18;
 
     this.levelBadgeText = this.buildLevelBadge(headerX + 18 * this.hudScale, rowY);
 
@@ -843,17 +851,17 @@ export class BoardScene extends Phaser.Scene {
     // Energy belongs in the same compact resource row as coins and gems.
     // The previous second-row strip read as a progress bar and pushed the
     // board downward, unlike the reference merge-game HUDs.
-    const coinChip = this.buildCurrencyChip(rowY - 10 * this.hudScale, Theme.currencyCredit, 'coin', () => {
+    const coinChip = this.buildCurrencyChip(chipTopY, Theme.currencyCredit, 'coin', () => {
       this.shopNotice = null;
       this.openShop('coin');
     });
     this.coinText = coinChip.text;
-    const gemChip = this.buildCurrencyChip(rowY - 10 * this.hudScale, Theme.currencyGem, 'gem', () => {
+    const gemChip = this.buildCurrencyChip(chipTopY, Theme.currencyGem, 'gem', () => {
       this.shopNotice = null;
       this.openShop('gem');
     });
     this.gemText = gemChip.text;
-    const energyChip = this.buildEnergyChip(rowY - 10);
+    const energyChip = this.buildEnergyChip(chipTopY);
     this.energyText = energyChip.text;
     // Right-to-left from the shop button: energy nearest it, then gems, then
     // credits, which is the widest and so gets the most room to grow into.
@@ -877,7 +885,7 @@ export class BoardScene extends Phaser.Scene {
 
     const headerRule = this.add.graphics();
     headerRule.lineStyle(1, Theme.borderOnDark, 0.8);
-    headerRule.lineBetween(headerX, this.contentTop + 42 * this.hudScale, headerRight, this.contentTop + 42 * this.hudScale);
+    headerRule.lineBetween(headerX, ruleY, headerRight, ruleY);
 
     this.buildCrateMeter();
     this.buildInventoryButton();
