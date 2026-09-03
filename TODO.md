@@ -42,6 +42,14 @@
   - PARTIAL: a settings panel exists behind the header gear, holding one
     setting (fullscreen). It is not yet the container this item describes.
 
+- [ ] **Overhaul the player profile menu**
+  - Currently a stack of unrelated blocks: level disc and XP bar, a reward
+    crate row, the daily strip, then two small buttons for the project and the
+    collection tucked in a corner. Nothing about the layout says which of
+    those is the important one, and the two buttons carry real destinations.
+  - Decide what the panel is FOR first - a status readout, or the hub the
+    project and collection hang off - then lay it out to say so.
+
 - [ ] **Add a Customization tab to Settings**
   - Requires the Settings menu.
 

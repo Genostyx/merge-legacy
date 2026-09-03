@@ -518,8 +518,12 @@ export interface IconPresentation {
  * by shape, facet count and lighting contrast, and size only needs to not
  * contradict them.
  */
-const SIZE_AT_TIER_ONE = 0.46;
-const SIZE_AT_TIER_NINE = 0.62;
+// Raised from 0.46/0.62. At those values a tier-1 piece filled under half its
+// cell, which is why the board read as small objects in big empty squares -
+// and why every reference merge game draws its items closer to, or past, the
+// cell edge. The band stays narrow for the reason above; it just sits higher.
+const SIZE_AT_TIER_ONE = 0.60;
+const SIZE_AT_TIER_NINE = 0.78;
 
 /**
  * Items sit on a common ground line rather than being centred in their cell.
@@ -530,11 +534,18 @@ const SIZE_AT_TIER_NINE = 0.62;
  */
 const GROUND_LINE = 0.32;
 
-/** Widest an icon may be, as a fraction of the box. */
-const MAX_WIDTH = 0.92;
+/**
+ * Widest an icon may be, as a fraction of the box.
+ *
+ * Above 1: a piece is allowed to overhang its cell slightly. The cell is a
+ * hit target and a grid position, not a frame - the genre draws items that
+ * break their square, and detail below ~40px of drawn art stops being
+ * readable at all on a phone.
+ */
+const MAX_WIDTH = 1.04;
 
-/** How far above centre a shape may reach. `s` is already 0.96 of the cell, so 0.52 of it is still inside the cell. */
-const MAX_RISE = 0.52;
+/** How far above centre a shape may reach. `s` is already 0.96 of the cell, so this is measured against that. */
+const MAX_RISE = 0.74;
 
 /**
  * Tallest an icon may be. Derived, not chosen: a shape standing on
