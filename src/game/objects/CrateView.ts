@@ -51,11 +51,11 @@ export class CrateView extends Phaser.GameObjects.Container {
   }
 
   private draw(): void {
-    // 1.44, not 0.9: `drawCrate` draws its box at 0.5 of the size it is given,
+    // 1.30, not 0.9: `drawCrate` draws its box at 0.5 of the size it is given,
     // so at 0.9 the crate came out 0.45 of a cell wide - little more than half
     // the board items now standing beside it. This asks for the size that
-    // DRAWS at about 0.72 of the cell, matching them.
-    const size = this.cellSize * 1.44;
+    // DRAWS at about 0.65 of the cell.
+    const size = this.cellSize * 1.30;
     this.shadow.clear();
     // Same stacked-ellipse contact shadow language the tiles use, sized to
     // the crate rather than to the cell.
@@ -71,7 +71,11 @@ export class CrateView extends Phaser.GameObjects.Container {
         shadowSize * (0.6 - i * 0.03), shadowSize * 0.16
       );
     }
-    this.art.clear();
+    // Shifted LEFT by half the isometric depth. `drawCrate` builds its front
+    // face around the origin and then extends the top and side faces to the
+    // upper right, so the finished block's visual centre sits right of where
+    // it was drawn from; without this the crate rides off-centre in its cell.
+    this.art.clear().setPosition(-size * 0.085, 0);
     drawCrate(this.art, size, this.crateTier);
   }
 
