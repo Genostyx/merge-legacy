@@ -38,9 +38,15 @@ This document stores context, constraints, and open decisions for tasks listed i
     - **Every crate bought from the store carries a wait before it can be opened** (owner's requirement). Without it, coins convert directly into board items at will and the advantage is far too great - the timer is what keeps a bought crate a decision rather than a bypass.
     - Shares the timer framework described under Deferred work, including the absolute open-at timestamp so it counts down while the game is closed.
 
+- **Shredder** (ordinary items). Feed anything in; a bar fills; a full bar pays out.
+    - It is deliberately NOT better value than selling (owner, 2026-09-03). The point is perceived value and time-on-task: selling to clear space carries no reward beat at all - often the opposite, since the figure is insultingly small late on - so this turns the chore into an activity with a payout. The bar is the product; the payout only has to be enough to justify it.
+    - Which means it must not be tuned as an economy. If it ever beats selling on value it stops being a ritual and becomes the optimal way to convert items, and the sell price becomes dead UI.
+    - Separate facility from the max-tier consumer, each costing its own board cell.
+
 - **Max-tier consumer** (working name; called the Scrap machine in earlier notes). Feed MAX-TIER items in; a bar fills; a full bar pays out a crate.
     - Max tier ONLY (owner's call, 2026-09-03). It is not a shredder for unwanted stock: an item at the top of its chain cannot merge again, so it is the one thing on the board with no remaining use, and this is what it is for. Anything below max tier still has a merge path and stays out.
     - That restriction is also what keeps it from undoing board-space scarcity: a general dump would relieve the pressure the loop runs on, while a max-tier-only intake only clears what the player already finished.
+    - Pays LESS per max-tier item than the board-aware orders other merge games use for the same job, and that is accepted (owner, 2026-09-03). The trade is frequency: their orders fire only when a generator notices, this is always there. Worth watching that the per-item gap never grows wide enough for a late player coming from those games to read it as stinginess.
     - The best answer to the dead state because it consumes items ALREADY ON THE BOARD - it needs no energy and does not touch the recharge, so it fills the gap beside the wait rather than removing it.
     - Solves a real problem the build has now: a board of low-tier leftovers whose only use is `sellSelectedItem`. Items get a second sink besides credits.
     - Mechanically it is the crate meter that already ships - `CRATE_THRESHOLDS`, a filling bar, a crate at the end - pointed at fed items instead of source runs. Most of it exists.
