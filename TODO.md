@@ -163,10 +163,13 @@
     keeps it strategic rather than a bin: what you feed it and when is a real
     choice, because every item put in is progress toward a payout instead of
     just space reclaimed. Board-space relief is the by-product, not the point.
-  - Open: whether this is one facility with two intakes or two separate ones,
-    and how the value curves compare - a shredder that takes anything has to
-    pay less per unit of work than the max-tier consumer, or finishing a chain
-    stops being worth it.
+  - TWO SEPARATE FACILITIES, not one machine with two intakes (owner's call,
+    2026-09-03): they are different decisions and each costs its own board
+    cell, which is what keeps running both a real trade rather than a free
+    upgrade.
+  - The max-tier consumer pays MORE per unit of work than the shredder. A
+    finished chain has to be worth finishing; if disposal paid the same, the
+    top of every ladder would be pointless.
 
 - [ ] **Add the max-tier consumer** (working name; was "Scrap machine")
   - Accepts MAX-TIER ITEMS ONLY, without spending Energy. Not a shredder: it
