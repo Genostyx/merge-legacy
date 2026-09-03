@@ -190,19 +190,42 @@ export class TileView extends Phaser.GameObjects.Container {
       // not - but gems and drops do NOT. They hold one size at every tier and
       // are allowed to overlap, because a higher tier reading as physically
       // smaller undercuts the merge that produced it.
+      // Energy asks for MORE than the gems do. `currencyBoxFor` sizes by the
+      // mark's height, and the bolt is the one currency far narrower than it
+      // is tall - 55% of its box wide against 78% tall - so at a matched
+      // height it covers about a third less area than a coin or a gem, which
+      // is why it read as the smallest thing in the cell.
       const drawnFraction = this.typeId === 'currency-credit'
         ? [0.62, 0.54, 0.46, 0.42, 0.38, 0.36][layout.length - 1] ?? 0.36
-        : 0.54;
+        : this.typeId === 'currency-energy' ? 0.66 : 0.54;
       const kind: CurrencyKind = this.typeId === 'currency-credit'
         ? 'credit'
         : this.typeId === 'currency-gem' ? 'gem' : 'energy';
       const iconSize = currencyBoxFor(kind, this.cellSize * drawnFraction);
+      // The cluster offsets were authored against round marks, which hang
+      // evenly around their centre. A bolt's mass sits low, so the same
+      // offsets drop the whole group below the middle of the cell; energy
+      // lifts by a few percent to put it back.
+      const clusterLift = this.typeId === 'currency-energy' ? -0.04 : 0;
       layout.forEach(([x, y]) => {
         const px = x * this.cellSize;
-        const py = y * this.cellSize;
+        const py = (y + clusterLift) * this.cellSize;
+        // Art plus a white top-cropped gloss copy, matching the HUD chips.
+        // NOT their third layer - the black silhouette behind the art reads as
+        // contact shading on a chip, but on the board it only muddied the mark.
         const image = this.scene.add.image(px, py, textureKey).setDisplaySize(iconSize, iconSize);
         this.currencyIcons.push(image);
         this.addAt(image, 2);
+        const gloss = this.scene.add.image(px, py, textureKey)
+          .setDisplaySize(iconSize, iconSize)
+          .setTintFill(0xffffff)
+          .setAlpha(0.2);
+        gloss.setCrop(0, 0, gloss.width, gloss.height * 0.42);
+        this.currencyIcons.push(gloss);
+        // Directly ABOVE its own art. Inserting at a fixed index put it under
+        // the image it is meant to catch the light on, because the image had
+        // just been inserted at that same index and pushed up.
+        this.addAt(gloss, this.getIndex(image) + 1);
       });
       return;
     }

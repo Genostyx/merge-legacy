@@ -327,12 +327,27 @@ function drawCurrencyTier(g: Phaser.GameObjects.Graphics, typeId: string, tier: 
     // to fit more in made a tier-5 gem read as smaller and cheaper than a
     // tier-2 one - the opposite of what a merge should say. A cluster is
     // allowed to overlap and crowd instead.
-    const r = s * 0.16;
+    // Energy runs slightly larger than the round marks: a bolt is a narrow
+    // zigzag, so at an equal radius it carries far less ink and reads smaller.
+    const r = s * (typeId === 'currency-energy' ? 0.19 : 0.16);
     const x = px * s, y = py * s;
     if (typeId === 'currency-energy') {
+      // ONE bolt, as a single path, and the same silhouette the HUD chips use
+      // (`drawCurrencyGlyph` in CurrencyGlyph.ts). It was two overlapping
+      // triangles whose edges did not meet, which is what made it look bent -
+      // and it was a different bolt from the one on the chips, so the same
+      // currency had two shapes depending on where you saw it.
+      const u = r / 11;
       g.fillStyle(i === 0 ? p.light : p.base, 1);
-      g.fillTriangle(x - r * 0.2, y - r, x - r, y + r * 0.15, x + r * 0.08, y + r * 0.04);
-      g.fillTriangle(x + r * 0.08, y - r * 0.04, x + r, y - r * 0.15, x + r * 0.2, y + r);
+      g.beginPath();
+      g.moveTo(x + 2.5 * u, y - 11 * u);
+      g.lineTo(x - 7 * u, y + 1 * u);
+      g.lineTo(x - 1.5 * u, y + 1 * u);
+      g.lineTo(x - 3 * u, y + 11 * u);
+      g.lineTo(x + 7 * u, y - 1 * u);
+      g.lineTo(x + 1.5 * u, y - 1 * u);
+      g.closePath();
+      g.fillPath();
     } else if (typeId === 'currency-gem') {
       g.fillStyle(i === 0 ? p.light : p.base, 1);
       g.fillTriangle(x, y - r, x - r * 0.75, y, x, y + r);
@@ -624,7 +639,11 @@ export function iconPresentation(typeId: string, tier: number, s: number): IconP
  * a crate must never be mistaken for something you can merge.
  */
 const CRATE_COLORS: Record<string, number> = {
-  bronze: 0xb87a45,
+  // Bronze, not cardboard. 0xb87a45 was a mid brown with nothing metallic in
+  // it, and against the flat card faces it read as a shipping carton - the one
+  // thing a reward crate must not look like. This is redder and more
+  // saturated, which is what separates cast bronze from packaging.
+  bronze: 0xc86a2e,
   silver: 0xb9c2ca,
   gold: 0xe0a929,
   vault: 0x8f5ad6,
@@ -664,7 +683,10 @@ export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: strin
     return;
   }
   const base = CRATE_COLORS[tier] ?? CRATE_COLORS.bronze;
-  const p = materialLighting(base, tier === 'vault' ? 9 : tier === 'gold' ? 7 : tier === 'silver' ? 5 : 3);
+  // Bronze sits at 6 rather than 3. The tier argument drives CONTRAST, not
+  // hue: at 3 the spread across the crate's three faces was so narrow that the
+  // block read as flat brown paper. Metal needs the faces to separate.
+  const p = materialLighting(base, tier === 'vault' ? 9 : tier === 'gold' ? 7 : tier === 'silver' ? 6 : 6);
 
   const w = s * 0.5;
   const h = s * 0.42;
