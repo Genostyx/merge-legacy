@@ -2240,7 +2240,7 @@ export class BoardScene extends Phaser.Scene {
       y: fullscreenElement()
         ? fullscreenY
         : this.contentTop + Math.round(48 * this.chromeScale),
-      viewW: COLS * this.cellSize - CRATE_RING_LANE
+      viewW: COLS * this.cellSize - this.crateLaneW()
     };
   }
 
@@ -2298,7 +2298,7 @@ export class BoardScene extends Phaser.Scene {
     // Tall enough for the overhanging pill above and the GO chip below,
     // or the scroll mask clips exactly the parts that moved outside.
     maskShape.fillRect(
-      this.boardOriginX + CRATE_RING_LANE,
+      this.boardOriginX + this.crateLaneW(),
       y - (ORDER_GO_H + 2) * this.chromeScale,
       viewW,
       (cardH + ORDER_GO_H + 6) * this.chromeScale
@@ -2456,7 +2456,7 @@ export class BoardScene extends Phaser.Scene {
     this.children.bringToTop(hint);
     const fadeW = 18;
     const bands = 6;
-    const laneX = this.boardOriginX + (isMeterCooling(this.rewards) ? 0 : CRATE_RING_LANE);
+    const laneX = this.boardOriginX + (isMeterCooling(this.rewards) ? 0 : this.crateLaneW());
     const visibleW = isMeterCooling(this.rewards) ? COLS * this.cellSize : viewW;
     if (this.orderScroll > 1) {
       for (let i = 0; i < bands; i++) {
@@ -2520,7 +2520,7 @@ export class BoardScene extends Phaser.Scene {
     const source = this.orderProgressSource();
     const { cardH, y, viewW } = this.orderBarMetrics();
     const cooling = isMeterCooling(this.rewards);
-    const laneX = this.boardOriginX + (cooling ? 0 : CRATE_RING_LANE);
+    const laneX = this.boardOriginX + (cooling ? 0 : this.crateLaneW());
     const visibleW = cooling ? COLS * this.cellSize : viewW;
     if (this.orderBarMaskShape) {
       this.orderBarMaskShape.clear();
@@ -2992,7 +2992,7 @@ export class BoardScene extends Phaser.Scene {
           ease: 'Quad.Out'
         });
       }
-      cursor = targetLeft + CRATE_RING_LANE;
+      cursor = targetLeft + this.crateLaneW();
     } else if (!cooling && this.crateMeterContainer?.parentContainer === this.orderBarContainer) {
       const worldX = this.orderBarContainer.x + this.crateMeterContainer.x;
       this.orderBarContainer.remove(this.crateMeterContainer);
@@ -3952,7 +3952,7 @@ ${rewardLine}`,
     this.crateMeterProgress = this.add.graphics();
     this.crateMeterIcon = this.add.graphics();
     const { cx, cy } = this.crateRingCentre();
-    this.crateMeterZone = this.add.zone(cx, cy, CRATE_RING_R * 2 + 8, CRATE_RING_R * 2 + 8)
+    this.crateMeterZone = this.add.zone(cx, cy, this.crateRingR() * 2 + 8, this.crateRingR() * 2 + 8)
       .setInteractive({ useHandCursor: true });
     this.crateMeterZone.on('pointerdown', () => this.claimMeterCrate());
     this.crateMeterContainer.add([
@@ -3969,10 +3969,28 @@ ${rewardLine}`,
    * than in a strip of its own. The cards scroll past it; the ring does not
    * move, because it is not one of them.
    */
+  /**
+   * Width of the crate meter's lane at the current chrome scale.
+   *
+   * The order cards are drawn at their tuned size and scaled as a unit, so
+   * anything that has to line up beside them - this lane, the bar's mask, the
+   * cursor the cards are packed from - has to grow by the same factor. Left
+   * fixed, the lane stayed 56px while the cards grew, and the meter ended up
+   * overlapping the first card with its own ring clipped.
+   */
+  private crateLaneW(): number {
+    return Math.round(CRATE_RING_LANE * this.chromeScale);
+  }
+
+  /** Ring radius at the current chrome scale. */
+  private crateRingR(): number {
+    return CRATE_RING_R * this.chromeScale;
+  }
+
   private crateRingCentre(): { cx: number; cy: number } {
     const { cardH, y } = this.orderBarMetrics();
     return {
-      cx: this.boardOriginX + (CRATE_RING_LANE - 8) / 2,
+      cx: this.boardOriginX + (this.crateLaneW() - Math.round(8 * this.chromeScale)) / 2,
       cy: y + (ORDER_HEADER_H + (cardH - ORDER_HEADER_H) / 2) * this.chromeScale
     };
   }
@@ -3997,16 +4015,19 @@ ${rewardLine}`,
     for (const text of this.crateMeterRuns) text.destroy();
     this.crateMeterRuns = [];
     const { cardH: laneH, y: laneY } = this.orderBarMetrics();
-    const boxY = laneY + ORDER_HEADER_H;
-    const boxH = laneH - ORDER_HEADER_H;
+    // Same scale the cards are drawn at, so the meter's box lines up with the
+    // card band beside it instead of sitting short and high.
+    const boxY = laneY + ORDER_HEADER_H * this.chromeScale;
+    const boxH = (laneH - ORDER_HEADER_H) * this.chromeScale;
+    const boxW = this.crateLaneW() - Math.round(8 * this.chromeScale);
     g.fillStyle(Theme.bg, 0.9);
-    g.fillRoundedRect(this.boardOriginX, boxY, CRATE_RING_LANE - 8, boxH, Theme.radiusChip);
+    g.fillRoundedRect(this.boardOriginX, boxY, boxW, boxH, Theme.radiusChip);
     g.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
-    g.strokeRoundedRect(this.boardOriginX, boxY, CRATE_RING_LANE - 8, boxH, Theme.radiusChip);
+    g.strokeRoundedRect(this.boardOriginX, boxY, boxW, boxH, Theme.radiusChip);
     this.drawCrateMeterProgress(now);
     const showTier = earned ?? next?.tier ?? 'bronze';
     this.crateMeterIcon.clear().setPosition(cx - 3, cy + 1).setAlpha(cooling ? 0.3 : earned ? 1 : 0.55);
-    drawCrate(this.crateMeterIcon, CRATE_RING_R * 1.25 + 14, showTier);
+    drawCrate(this.crateMeterIcon, (CRATE_RING_R * 1.25 + 14) * this.chromeScale, showTier);
     if (cooling) {
       const timer = this.add.text(cx, boxY + boxH - 6, formatCountdown(cooldownRemaining), {
         resolution: textResolution,
@@ -4053,9 +4074,10 @@ ${rewardLine}`,
     const start = -Math.PI / 2;
 
     g.clear();
-    g.lineStyle(CRATE_RING_W, Theme.bgElevated, 1);
+    const ringR = this.crateRingR();
+    g.lineStyle(CRATE_RING_W * this.chromeScale, Theme.bgElevated, 1);
     g.beginPath();
-    g.arc(cx, cy, CRATE_RING_R, 0, tau);
+    g.arc(cx, cy, ringR, 0, tau);
     g.strokePath();
 
     if (fill > 0) {
@@ -4065,15 +4087,15 @@ ${rewardLine}`,
         cooling ? 0.65 : earned ? 1 : 0.8
       );
       g.beginPath();
-      g.arc(cx, cy, CRATE_RING_R, start, start + tau * fill);
+      g.arc(cx, cy, ringR, start, start + tau * fill);
       g.strokePath();
     }
 
     for (const step of CRATE_THRESHOLDS) {
       const angle = start + tau * (step.collects / METER_MAX);
       const reached = !cooling && this.rewards.meterCollects >= step.collects;
-      const inner = CRATE_RING_R - CRATE_RING_W / 2 - 1;
-      const outer = CRATE_RING_R + CRATE_RING_W / 2 + 1;
+      const inner = ringR - (CRATE_RING_W * this.chromeScale) / 2 - 1;
+      const outer = ringR + (CRATE_RING_W * this.chromeScale) / 2 + 1;
       g.lineStyle(2, reached ? Theme.textOnDark : Theme.borderOnDark, 1);
       g.lineBetween(
         cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner,
