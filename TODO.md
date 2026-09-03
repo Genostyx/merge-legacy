@@ -50,6 +50,16 @@
   - Decide what the panel is FOR first - a status readout, or the hub the
     project and collection hang off - then lay it out to say so.
 
+- [ ] **Revamp the shop menus**
+  - Sections stack in one scrolling column - credits row, gems row, special
+    items, supply crates - all in the same card shape, so nothing about the
+    layout says which is the interesting one or which refreshes when. The
+    focused `coin`/`gem` modes reuse that same body at a shorter height rather
+    than being designed as their own view.
+  - Decide what a player comes to the shop FOR, section by section, then give
+    each one a shape that says it: a rotating stock row and a permanent
+    catalogue should not look alike.
+
 - [ ] **Add a Customization tab to Settings**
   - Requires the Settings menu.
 
