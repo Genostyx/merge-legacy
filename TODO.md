@@ -155,6 +155,17 @@
   - Later rooms should draw on families beyond Wood once more than one family
     is guaranteed owned.
 
+- [ ] **Add a shredder for ordinary items**
+  - Separate from the max-tier consumer below. Late on, low-tier stock is
+    worth so few Credits that selling it is not a real choice - a player wants
+    it GONE, and the sell price is not why. This is the disposal route.
+  - Open, and the whole design: what it COSTS. `docs/TODO_DETAILS.md` argues
+    board-space scarcity is what makes the board a strategy game, and a free
+    unlimited shredder removes exactly that. Candidates: it occupies a cell, it
+    shreds on a timer rather than instantly, it has a daily throughput cap, or
+    it pays nothing at all so selling still wins wherever the Credits matter.
+  - Decide that before building it; the rest is small.
+
 - [ ] **Add the max-tier consumer** (working name; was "Scrap machine")
   - Accepts MAX-TIER ITEMS ONLY, without spending Energy. Not a shredder: it
     is not somewhere to dump leftovers, it is the one thing a finished chain
