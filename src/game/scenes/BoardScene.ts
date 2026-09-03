@@ -2487,14 +2487,16 @@ export class BoardScene extends Phaser.Scene {
     if (this.orderScroll > 1) {
       for (let i = 0; i < bands; i++) {
         hint.fillStyle(Theme.bg, 0.55 * (1 - i / bands));
-        hint.fillRect(laneX + (fadeW / bands) * i, y - 2, fadeW / bands + 1, cardH + 4);
+        // Scaled, like the cards it fades: the raw band sat high and stopped
+        // short of the bottom of a scaled card.
+        hint.fillRect(laneX + (fadeW / bands) * i, y - 2 * this.chromeScale, fadeW / bands + 1, (cardH + 4) * this.chromeScale);
       }
     }
     if (this.orderScroll < this.orderScrollMax - 1) {
       const right = laneX + visibleW;
       for (let i = 0; i < bands; i++) {
         hint.fillStyle(Theme.bg, 0.55 * (1 - i / bands));
-        hint.fillRect(right - (fadeW / bands) * (i + 1), y - 2, fadeW / bands + 1, cardH + 4);
+        hint.fillRect(right - (fadeW / bands) * (i + 1), y - 2 * this.chromeScale, fadeW / bands + 1, (cardH + 4) * this.chromeScale);
       }
     }
 
