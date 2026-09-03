@@ -3428,7 +3428,13 @@ ${familyTierLabel(typeId, tier)}`
     this.projectOverlay = overlay;
     const w = this.scale.width;
     const h = this.scale.height;
-    const dim = this.add.rectangle(w / 2, h / 2, w, h, 0x111619, 0.98).setInteractive();
+    // Fully TRANSPARENT: it exists to swallow taps that miss the panel's own
+    // controls, not to darken anything. It was opaque and went unnoticed only
+    // because the board-hiding sweep ran after it and swept it up too; with
+    // the sweep moved earlier it became a sheet of paint over the room.
+    // Phaser hit-tests interactive shapes by geometry, so alpha 0 still
+    // catches the pointer.
+    const dim = this.add.rectangle(w / 2, h / 2, w, h, 0x111619, 0).setInteractive();
     const title = this.add.text(w / 2, 34, 'LIVING ROOM', {
       resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '21px', fontStyle: 'bold', color: hex(Theme.textOnDark)
     }).setOrigin(0.5);
