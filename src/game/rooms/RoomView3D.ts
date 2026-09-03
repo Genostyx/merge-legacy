@@ -601,7 +601,6 @@ export class RoomView3D {
     this.disposed = true;
     for (const flash of this.flashes.values()) cancelAnimationFrame(flash.frame);
     this.flashes.clear();
-    this.renderer.dispose();
     this.root?.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.geometry.dispose();
@@ -610,6 +609,15 @@ export class RoomView3D {
         else m.dispose();
       }
     });
+    this.renderer.dispose();
+    // `dispose()` frees three's own resources but LEAVES THE WEBGL CONTEXT
+    // alive; only this hands it back. Every open of the project panel builds a
+    // new view, so without it the contexts pile up until the browser hits its
+    // per-page limit and kills the oldest - which is Phaser's own game canvas.
+    // That is the grey screen after opening a stage: not a crash, a lost
+    // context, and it survives until the page is reloaded. Phones cap far
+    // lower than desktops, which is why it showed up there first.
+    this.renderer.forceContextLoss();
     this.canvas.remove();
   }
 }
