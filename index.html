@@ -40,10 +40,12 @@
       height: 100dvh;
       width: 100vw;
     }
-    /* The notch and the home indicator otherwise sit on top of the game. */
     body {
-      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-      box-sizing: border-box;
+      /* No safe-area padding here. Insetting the BODY shrank the game on
+         every device to protect against a notch that only two of them have,
+         and combined with a 100dvh child it pushed the bottom of the board
+         off screen. The scene lays out with its own margins and centres its
+         content vertically, which is what keeps the HUD clear of a notch. */
       /* Stops the pull-to-refresh gesture firing mid-drag on a merge. */
       overscroll-behavior: none;
       -webkit-user-select: none;

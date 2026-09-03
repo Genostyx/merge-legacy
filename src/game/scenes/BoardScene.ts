@@ -846,8 +846,31 @@ export class BoardScene extends Phaser.Scene {
       });
     };
     this.scale.on(Phaser.Scale.Events.RESIZE, onViewportResize);
+
+    // Entering or leaving fullscreen moves the canvas in the page as well as
+    // resizing it. `refresh()` makes the scale manager re-read that geometry;
+    // without it Phaser keeps hit-testing pointers against the canvas's old
+    // position, so taps land somewhere other than where they were made. The
+    // resize listener above cannot cover this: it fires on the same burst,
+    // but its own 160ms debounce means input is wrong for those 160ms, and if
+    // the viewport happens to land within 2px of its old size it never
+    // rebuilds at all.
+    const onFullscreenChange = () => {
+      this.scale.refresh();
+      // The HUD is laid out against the viewport, so it has to be rebuilt for
+      // the new one. Bypasses the debounce's "no meaningful change" guard,
+      // which is about ignoring resize noise, not a deliberate mode change.
+      this.time.delayedCall(60, () => {
+        if (this.scale.width > 2 && this.scale.height > 2) this.scene.restart();
+      });
+    };
+    this.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
+    this.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, onViewportResize);
+      this.scale.off(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
+      this.scale.off(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
       resizeDebounce?.remove();
       resizeDebounce = null;
     });
@@ -871,7 +894,13 @@ export class BoardScene extends Phaser.Scene {
   }
 
   private computeLayout(): void {
-    const margin = Phaser.Math.Clamp(Math.round(this.scale.width * 0.035), 12, 24);
+    // 1.2%, floor 4: at 3.5% with a 12px floor a 390px phone spent 28px on
+    // side margins, and since the board is width-limited on a phone - nine
+    // rows fit the height easily, seven columns do not fit the width - every
+    // one of those pixels came straight off the cell size. The board is meant
+    // to reach for the screen edges; the HUD row above it keeps its own
+    // insets, so nothing lands under a rounded corner.
+    const margin = Phaser.Math.Clamp(Math.round(this.scale.width * 0.012), 4, 10);
     // Header row, then the order cards with their GO chips above them. The
     // crate ring shares the cards' row now, so it costs no height of its own.
     // The order row is lifted 10px below, leaving four pixels between its
@@ -1764,6 +1793,12 @@ export class BoardScene extends Phaser.Scene {
 
     card.add([cardBg, title, label, toggleBg, toggleText, note, close]);
 
+    const dismiss = () => {
+      overlay.destroy();
+      card.destroy();
+      this.modalOpen = false;
+    };
+
     if (available) {
       const toggleZone = this.add.zone(toggleX, rowY, toggleW, toggleH)
         .setInteractive({ useHandCursor: true });
@@ -1773,16 +1808,17 @@ export class BoardScene extends Phaser.Scene {
       // out of the gesture and the browser refuses the request.
       toggleZone.on('pointerdown', () => {
         this.scale.toggleFullscreen();
-        paintToggle();
+        // Closed immediately rather than left open to be torn down by the
+        // resize-driven restart. Entering fullscreen moves and resizes the
+        // canvas, and until the scale manager re-reads its bounds every
+        // pointer hit lands at the old coordinates - so CLOSE stops
+        // responding and the panel becomes a trap with the game running
+        // behind it. Nothing to be trapped in if it is already gone.
+        dismiss();
       });
       card.add(toggleZone);
     }
 
-    const dismiss = () => {
-      overlay.destroy();
-      card.destroy();
-      this.modalOpen = false;
-    };
     const deferDismiss = () => this.time.delayedCall(0, dismiss);
     overlay.on('pointerdown', deferDismiss);
     close.on('pointerdown', deferDismiss);
