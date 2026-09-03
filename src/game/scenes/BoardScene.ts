@@ -601,9 +601,6 @@ export class BoardScene extends Phaser.Scene {
    * small phone should keep exactly the layout it has today.
    */
   private chromeScale = 1;
-  /** Dev counters for the locked-item bug. See `buildLockedDebugText`. */
-  private static createRuns = 0;
-  private lastLoadInfo = 'v? m? p?';
   /** Fullscreen-only HUD scale, derived from the extra vertical room. */
   private hudScale = 1;
   private projectStage = 0;
@@ -876,7 +873,6 @@ export class BoardScene extends Phaser.Scene {
     this.buildSettingsButton();
     this.buildDevResetButton();
     this.buildAutoMergeButton();
-    this.buildLockedDebugText();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
     const headerRule = this.add.graphics();
@@ -2106,34 +2102,6 @@ export class BoardScene extends Phaser.Scene {
       localStorage.setItem(AUTO_MERGE_KEY, String(this.autoMergeEnabled));
       refresh();
     });
-  }
-
-  /**
-   * Dev-only counter for the locked-item bug: grid cells / drawn views.
-   *
-   * Sits with the other dev texts in the bottom corner and is deleted with
-   * them. It exists because the failure only shows on a real phone in real
-   * fullscreen, which cannot be reproduced from here - the two numbers say
-   * immediately whether the board lost the CELLS or only their views.
-   */
-  private buildLockedDebugText(): void {
-    BoardScene.createRuns++;
-    const label = this.add.text(8, this.scale.height - 8, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontMono,
-      fontSize: '10px',
-      color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(0, 1).setAlpha(0.65).setDepth(10);
-    const refresh = (): void => {
-      if (!label.active) return;
-      const cells = this.grid.serialize().flat()
-        .filter((cell) => cell?.kind === 'locked-item').length;
-      const views = [...this.views.values()]
-        .filter((view) => view instanceof TileView && view.locked).length;
-      label.setText(`lk ${cells}/${views} ${this.lastLoadInfo} c${BoardScene.createRuns}`);
-    };
-    refresh();
-    this.time.addEvent({ delay: 500, loop: true, callback: refresh });
   }
 
   /** Performs one legal merge through the same drop path used by the player. */
@@ -6986,7 +6954,6 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         let saveMigration = false;
         const needsLockedBoardMigration = (parsed.boardVersion ?? 0) < 8;
         const needsBoardWidthMigration = (parsed.boardVersion ?? 0) < 9;
-        let placedLocked = 0;
         let spawnerCount = 0;
         for (let row = 0; row < ROWS; row++) {
           for (let col = 0; col < COLS; col++) {
@@ -7001,10 +6968,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
               // frontier after the two expansion rows were added. Discard
               // only old locked cells here; player-owned pieces and sources
               // survive and the locks are reseeded below.
-              if (!needsLockedBoardMigration && !needsBoardWidthMigration) {
-                this.placeLockedTile(pos, cell.typeId, cell.tier);
-                placedLocked++;
-              }
+              if (!needsLockedBoardMigration && !needsBoardWidthMigration) this.placeLockedTile(pos, cell.typeId, cell.tier);
             } else if (cell.kind === 'crate') {
               this.placeCrate(pos, cell.tier, cell.remaining, cell.readyAt);
             } else if (cell.kind === 'spawner-piece') {
@@ -7075,7 +7039,6 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
             Date.now(), typeIds, this.collection.discovered, this.specialShopTypeIds()
           );
         }
-        this.lastLoadInfo = `v${parsed.boardVersion ?? 0} m${needsLockedBoardMigration ? 1 : 0}${needsBoardWidthMigration ? 1 : 0} p${placedLocked}`;
         // Captured only once the load has fully succeeded, so `.prev` always
         // holds a save that is known to be readable.
         stashSave(PREVIOUS_SAVE_KEY, raw);
@@ -7116,7 +7079,6 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     this.placeTile({ col: 1, row: 0 }, TYPE_ID, 1, false);
     this.placeTile({ col: 2, row: 1 }, TYPE_ID, 1, false);
     this.seedLockedBoard(0);
-    this.lastLoadInfo = 'seed';
     this.updateLevelBadge();
     // Persist the starting board immediately, so a rebuild - a rotation, a
     // resize, entering fullscreen - restores it through the load path instead
