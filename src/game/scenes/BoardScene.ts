@@ -960,16 +960,30 @@ export class BoardScene extends Phaser.Scene {
     let resizeDebounce: Phaser.Time.TimerEvent | null = null;
     let lastW = this.scale.width;
     let lastH = this.scale.height;
+    // Set by the fullscreen handler: a mode change must rebuild even when the
+    // viewport lands within the noise threshold below.
+    let forceRebuild = false;
+    // Latched once a rebuild is committed. `scene.restart()` does not tear the
+    // scene down synchronously, so a second restart queued behind the first
+    // used to re-enter create() while the first was still placing pieces off
+    // the save - which is how the locked board items vanished on entering
+    // fullscreen and stayed gone until a page reload. The save was never
+    // wrong; the half-built grid was.
+    let rebuilding = false;
     const onViewportResize = () => {
+      if (rebuilding) return;
       resizeDebounce?.remove();
       resizeDebounce = this.time.delayedCall(160, () => {
         resizeDebounce = null;
         const w = this.scale.width;
         const h = this.scale.height;
         if (w < 2 || h < 2) return; // canvas not composited yet - nothing safe to lay out against
-        if (Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return; // no meaningful change
+        const changed = Math.abs(w - lastW) >= 2 || Math.abs(h - lastH) >= 2;
+        if (!changed && !forceRebuild) return; // no meaningful change
         lastW = w;
         lastH = h;
+        forceRebuild = false;
+        rebuilding = true;
         this.scene.restart();
       });
     };
@@ -1020,13 +1034,17 @@ export class BoardScene extends Phaser.Scene {
     // the viewport happens to land within 2px of its old size it never
     // rebuilds at all.
     const onFullscreenChange = () => {
+      // `refresh()` makes the scale manager re-read the canvas geometry, which
+      // a fullscreen transition changes as well as the size; without it Phaser
+      // keeps hit-testing pointers against the old position.
       this.scale.refresh();
-      // The HUD is laid out against the viewport, so it has to be rebuilt for
-      // the new one. Bypasses the debounce's "no meaningful change" guard,
-      // which is about ignoring resize noise, not a deliberate mode change.
-      this.time.delayedCall(60, () => {
-        if (this.scale.width > 2 && this.scale.height > 2) this.scene.restart();
-      });
+      // Rebuild through the SAME debounced path as any other resize rather
+      // than restarting on a timer of its own. Entering fullscreen fires this
+      // handler, Phaser's RESIZE event and the canvas ResizeObserver within a
+      // few frames of each other, and three independent restarts is what left
+      // the board half built.
+      forceRebuild = true;
+      onViewportResize();
     };
     this.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, onFullscreenChange);
     this.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
