@@ -160,8 +160,6 @@ import type { CollectionState } from '../collection/Collection';
 const COLS = 7;
 const ROWS = 9;
 const BOARD_TO_TRAY_GAP = 6;
-/** Cell size the chrome constants below are tuned against. */
-const CHROME_BASE_CELL = 54;
 const EXPANSION_ROW_ONE = 7;
 const EXPANSION_ROW_TWO = 8;
 /** Player level the second expansion row opens at - the label quotes this, so the two cannot drift. */
@@ -522,16 +520,6 @@ export class BoardScene extends Phaser.Scene {
    * nothing to spare.
    */
   private boardToTrayGap = BOARD_TO_TRAY_GAP;
-  /**
-   * How much bigger the chrome is than its tuned size.
-   *
-   * Cells grow with screen WIDTH while the order cards and reserves were
-   * fixed pixels, so a big phone got a big board surrounded by small UI and
-   * an ever-larger dead band. This ties the chrome to the same unit the board
-   * uses. Never below 1: the constants are tuned for a ~54px cell, and a
-   * small phone should keep exactly the layout it has today.
-   */
-  private chromeScale = 1;
   private projectStage = 0;
   /** Keys of every room piece bought so far. Drives what the 3D room shows. */
   private builtPieces = new Set<string>();
@@ -928,6 +916,7 @@ export class BoardScene extends Phaser.Scene {
     // crate ring shares the cards' row now, so it costs no height of its own.
     // The order row is lifted 10px below, leaving four pixels between its
     // 68px cards and the board pane while reclaiming that height for cells.
+    const headerReserve = 124;
     // The inventory/vault rail and 66px information tray end roughly 82px
     // below the board. The old 116px reserve left unused space underneath;
     // reclaim it for the two additional board rows.
@@ -935,21 +924,12 @@ export class BoardScene extends Phaser.Scene {
     const trayGap = 0;
     const outerReserve = 4;
     const availW = this.scale.width - margin * 2;
-
-    // TWO passes, because the two sizes depend on each other: the chrome
-    // scales off the cell, and the cell has to fit in what the chrome leaves.
-    // Pass one sizes the cell against the untouched reserve, which fixes the
-    // chrome scale; pass two re-fits the cell inside the scaled reserve, and
-    // only ever shrinks it - on a phone the board is width-limited, so this
-    // changes nothing there.
+    const availH = this.scale.height - headerReserve - trayReserve - trayGap - outerReserve;
     const widthCellSize = Math.floor(Math.min(96, availW / COLS));
-    const cellFor = (header: number): number => Math.max(38, Math.min(
-      widthCellSize,
-      Math.floor((this.scale.height - header - trayReserve - trayGap - outerReserve) / ROWS)
-    ));
-    this.chromeScale = Phaser.Math.Clamp(cellFor(124) / CHROME_BASE_CELL, 1, 1.35);
-    const headerReserve = Math.round(124 * this.chromeScale);
-    this.cellSize = cellFor(headerReserve);
+    const heightCellSize = Math.floor(availH / ROWS);
+    // Preserve the width-derived board scale whenever the viewport is tall
+    // enough. Only genuinely short/wide windows shrink it to avoid clipping.
+    this.cellSize = Math.max(38, Math.min(widthCellSize, heightCellSize));
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
 
@@ -2065,11 +2045,8 @@ export class BoardScene extends Phaser.Scene {
   private orderBarMetrics(): { cardH: number; y: number; viewW: number } {
     // `viewW` is the CARD lane only - the ring sits outside it at the left.
     return {
-      // LOCAL height: the cards are drawn at their tuned size and scaled as a
-      // unit, so everything inside them - rows, plates, GO chip, text - grows
-      // together instead of a taller card holding the same small contents.
       cardH: ORDER_CARD_H,
-      y: this.contentTop + Math.round(48 * this.chromeScale),
+      y: this.contentTop + 48,
       viewW: COLS * this.cellSize - CRATE_RING_LANE
     };
   }
@@ -2127,12 +2104,7 @@ export class BoardScene extends Phaser.Scene {
     maskShape.fillStyle(0xffffff);
     // Tall enough for the overhanging pill above and the GO chip below,
     // or the scroll mask clips exactly the parts that moved outside.
-    maskShape.fillRect(
-      this.boardOriginX + CRATE_RING_LANE,
-      y - (ORDER_GO_H + 2) * this.chromeScale,
-      viewW,
-      (cardH + ORDER_GO_H + 6) * this.chromeScale
-    );
+    maskShape.fillRect(this.boardOriginX + CRATE_RING_LANE, y - ORDER_GO_H - 2, viewW, cardH + ORDER_GO_H + 6);
     this.orderBarMaskShape = maskShape;
     container.setMask(maskShape.createGeometryMask());
     container.x = -this.orderScroll;
@@ -2231,7 +2203,7 @@ export class BoardScene extends Phaser.Scene {
     if (!view || !this.orderBarContainer) return null;
     return {
       x: this.orderBarContainer.x + view.root.x + view.width / 2,
-      y: view.root.y + (ORDER_CARD_H / 2) * this.chromeScale
+      y: view.root.y + ORDER_CARD_H / 2
     };
   }
 
@@ -2713,10 +2685,7 @@ export class BoardScene extends Phaser.Scene {
       const entry = built[queueSlot];
       if (!entry) continue;
       const { view, status, rows, width } = entry;
-      view.root.setScale(this.chromeScale);
-      // Bookkeeping is WORLD width - callers use it to find a card's centre
-      // on screen - while everything inside the card stays in local units.
-      view.width = width * this.chromeScale;
+      view.width = width;
 
       view.bg.clear();
       // NO outer card panel. There were three stacked shapes - an outer card,
@@ -2801,7 +2770,7 @@ export class BoardScene extends Phaser.Scene {
         view.root.y = y;
         this.tweens.add({ targets: view.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out' });
       }
-      cursor += width * this.chromeScale + ORDER_CARD_GAP;
+      cursor += width + ORDER_CARD_GAP;
     }
 
     if (cooling && this.orderBarContainer && this.crateMeterContainer) {
@@ -3803,7 +3772,7 @@ ${rewardLine}`,
     const { cardH, y } = this.orderBarMetrics();
     return {
       cx: this.boardOriginX + (CRATE_RING_LANE - 8) / 2,
-      cy: y + (ORDER_HEADER_H + (cardH - ORDER_HEADER_H) / 2) * this.chromeScale
+      cy: y + ORDER_HEADER_H + (cardH - ORDER_HEADER_H) / 2
     };
   }
 
