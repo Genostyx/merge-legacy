@@ -897,7 +897,9 @@ export class BoardScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
     const img = this.add.image(w / 2, h / 2, 'bgPhoto').setDepth(-100);
-    const scale = Math.max(w / img.width, h / img.height);
+    // Overscanned. Cover-scaling to the exact viewport left the photo short of
+    // the bottom edge whenever the canvas grew after the scene was laid out.
+    const scale = Math.max(w / img.width, h / img.height) * 1.15;
     img.setScale(scale);
     // Slight dim so foreground UI/tiles stay readable over whatever the
     // photo's brightest areas are.
