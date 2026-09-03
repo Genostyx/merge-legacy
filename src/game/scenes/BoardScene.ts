@@ -873,6 +873,7 @@ export class BoardScene extends Phaser.Scene {
     this.buildSettingsButton();
     this.buildDevResetButton();
     this.buildAutoMergeButton();
+    this.buildLockedDebugText();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
     const headerRule = this.add.graphics();
@@ -2102,6 +2103,33 @@ export class BoardScene extends Phaser.Scene {
       localStorage.setItem(AUTO_MERGE_KEY, String(this.autoMergeEnabled));
       refresh();
     });
+  }
+
+  /**
+   * Dev-only counter for the locked-item bug: grid cells / drawn views.
+   *
+   * Sits with the other dev texts in the bottom corner and is deleted with
+   * them. It exists because the failure only shows on a real phone in real
+   * fullscreen, which cannot be reproduced from here - the two numbers say
+   * immediately whether the board lost the CELLS or only their views.
+   */
+  private buildLockedDebugText(): void {
+    const label = this.add.text(8, this.scale.height - 8, '', {
+      resolution: textResolution,
+      fontFamily: Theme.fontMono,
+      fontSize: '10px',
+      color: hex(Theme.textOnDarkMuted)
+    }).setOrigin(0, 1).setAlpha(0.65).setDepth(10);
+    const refresh = (): void => {
+      if (!label.active) return;
+      const cells = this.grid.serialize().flat()
+        .filter((cell) => cell?.kind === 'locked-item').length;
+      const views = [...this.views.values()]
+        .filter((view) => view instanceof TileView && view.locked).length;
+      label.setText(`lk ${cells}/${views}`);
+    };
+    refresh();
+    this.time.addEvent({ delay: 500, loop: true, callback: refresh });
   }
 
   /** Performs one legal merge through the same drop path used by the player. */
