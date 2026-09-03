@@ -2226,12 +2226,20 @@ export class BoardScene extends Phaser.Scene {
   /** Geometry shared by the order bar's build and refresh passes. */
   private orderBarMetrics(): { cardH: number; y: number; viewW: number } {
     // `viewW` is the CARD lane only - the ring sits outside it at the left.
+    const fullscreenY = this.boardOriginY
+      - ORDER_CARD_H * this.chromeScale
+      - Math.round(10 * this.hudScale);
     return {
       // LOCAL height: the cards are drawn at their tuned size and scaled as a
       // unit, so everything inside them - rows, plates, GO chip, text - grows
       // together instead of a taller card holding the same small contents.
       cardH: ORDER_CARD_H,
-      y: this.contentTop + Math.round(48 * this.chromeScale),
+      // In fullscreen the board gains vertical breathing room. Keep the
+      // orders attached to the board instead of leaving them behind under
+      // the header, which created the large empty band seen on tall phones.
+      y: fullscreenElement()
+        ? fullscreenY
+        : this.contentTop + Math.round(48 * this.chromeScale),
       viewW: COLS * this.cellSize - CRATE_RING_LANE
     };
   }
