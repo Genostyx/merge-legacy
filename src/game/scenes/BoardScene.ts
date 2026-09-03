@@ -511,6 +511,15 @@ export class BoardScene extends Phaser.Scene {
   private crateMeterWasCooling = false;
   private crateMeterSecond = -1;
   /** Highest stage the player has unlocked; its pieces are the buyable ones. */
+  /**
+   * Space between the board's bottom edge and the tray rail.
+   *
+   * Computed rather than constant: the tray is anchored to the bottom of the
+   * screen and the board is centred above it, so on a tall phone this is
+   * whatever is left over. `BOARD_TO_TRAY_GAP` is its floor, for screens with
+   * nothing to spare.
+   */
+  private boardToTrayGap = BOARD_TO_TRAY_GAP;
   private projectStage = 0;
   /** Keys of every room piece bought so far. Drives what the 3D room shows. */
   private builtPieces = new Set<string>();
@@ -920,9 +929,33 @@ export class BoardScene extends Phaser.Scene {
     // enough. Only genuinely short/wide windows shrink it to avoid clipping.
     this.cellSize = Math.max(38, Math.min(widthCellSize, heightCellSize));
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
-    this.contentTop = Math.max(10, Math.floor((this.scale.height - contentH) / 2));
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
-    this.boardOriginY = this.contentTop + headerReserve;
+
+    // Anchored, not centred as one block.
+    //
+    // A seven-column board is WIDTH-limited on a phone - nine rows fit the
+    // height with room to spare - so on a 20:9 screen the block came out
+    // several hundred pixels shorter than the viewport, and centring split
+    // that leftover evenly above and below. The half below the tray read as a
+    // black bar along the bottom of the phone, because nothing is drawn there.
+    //
+    // Instead: the header sits near the top, the tray is pinned to the bottom,
+    // and the board is centred in the band between them. The same pixels are
+    // still spare, but they become breathing room around the board rather than
+    // a dead strip at one end.
+    this.contentTop = Phaser.Math.Clamp(
+      Math.floor((this.scale.height - contentH) / 2), 10, 28
+    );
+    const headerBottom = this.contentTop + headerReserve;
+    const trayTop = this.scale.height - outerReserve - trayReserve;
+    const band = trayTop - headerBottom;
+    // `max(0, ...)` for short screens, where the band is smaller than the
+    // board: there the board keeps its old position directly under the header
+    // and the gap falls back to its floor, exactly as before.
+    this.boardOriginY = headerBottom + Math.max(0, Math.floor((band - ROWS * this.cellSize) / 2));
+    this.boardToTrayGap = Math.max(
+      BOARD_TO_TRAY_GAP, trayTop - (this.boardOriginY + ROWS * this.cellSize)
+    );
   }
 
   /**
@@ -2069,7 +2102,7 @@ export class BoardScene extends Phaser.Scene {
 
   private inventoryButtonBounds(): Phaser.Geom.Rectangle {
     const x = this.boardOriginX;
-    const y = this.boardOriginY + ROWS * this.cellSize + BOARD_TO_TRAY_GAP;
+    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     // Generous on purpose: a drop target the size of the drawn chip is
     // fiddly to hit with a fingertip that is already holding a tile.
     return new Phaser.Geom.Rectangle(x - 3, y - 3, 48, 37);
@@ -3891,7 +3924,7 @@ ${rewardLine}`,
    */
   private buildInventoryButton(): void {
     const x = this.boardOriginX;
-    const y = this.boardOriginY + ROWS * this.cellSize + BOARD_TO_TRAY_GAP;
+    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     this.invBg = this.add.graphics();
     // Icon-only, like the SHOP button: the word was the least interesting
     // thing on the screen and the case says it faster.
@@ -3905,7 +3938,7 @@ ${rewardLine}`,
   private vaultPosition(): { x: number; y: number } {
     return {
       x: this.boardOriginX + 21,
-      y: this.boardOriginY + ROWS * this.cellSize + BOARD_TO_TRAY_GAP + 50.5
+      y: this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap + 50.5
     };
   }
 
@@ -4400,7 +4433,7 @@ ${rewardLine}`,
   private refreshInventoryButton(hovered = false): void {
     if (!this.invBg) return;
     const x = this.boardOriginX;
-    const y = this.boardOriginY + ROWS * this.cellSize + BOARD_TO_TRAY_GAP;
+    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     const full = isFull(this.inventory);
     const accent = full ? Theme.accentAmber : Theme.textOnDarkMuted;
 
@@ -5132,7 +5165,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
   private buildActionTray(): void {
     const railW = 48;
     const x = this.boardOriginX + railW;
-    const y = this.boardOriginY + ROWS * this.cellSize + BOARD_TO_TRAY_GAP;
+    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     const w = COLS * this.cellSize - railW;
     const h = 66;
 
@@ -5353,7 +5386,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     this.sellButtonZone.setVisible(false);
 
     const trayX = this.boardOriginX + 48;
-    const trayY = this.boardOriginY + ROWS * this.cellSize + BOARD_TO_TRAY_GAP;
+    const trayY = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     const left = trayX + 14;
     const right = trayX + COLS * this.cellSize - 14;
     this.actionText
