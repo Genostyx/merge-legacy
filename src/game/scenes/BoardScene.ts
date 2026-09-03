@@ -3760,13 +3760,12 @@ ${familyTierLabel(typeId, tier)}`
           ...currencyChipOptions('gem'), fontSize: 11, iconSize: 16, height: 22
         }).setPosition(w / 2 + 26, lineY));
       } else {
+        // The crate art carries its own tier, so it is shown WITHOUT a label.
+        // Text belongs here only where a number is the reward, as with gems.
         const tier: CrateTier = this.projectStage === 4 ? 'gold' : 'bronze';
-        const icon = this.add.graphics().setPosition(w / 2 + 12, lineY);
-        drawCrate(icon, 24, tier);
-        footer.add([icon, this.add.text(w / 2 + 26, lineY, `${tier.toUpperCase()} CRATE`, {
-          resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '10px',
-          fontStyle: 'bold', color: hex(Theme.textOnDark)
-        }).setOrigin(0, 0.5)]);
+        const icon = this.add.graphics().setPosition(w / 2 + 14, lineY);
+        drawCrate(icon, 26, tier);
+        footer.add(icon);
       }
     };
 
