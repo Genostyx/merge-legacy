@@ -833,8 +833,8 @@ export class BoardScene extends Phaser.Scene {
     const headerRight = this.boardOriginX + COLS * this.cellSize;
     this.headerRight = headerRight;
     const rowY = this.contentTop + 18 * this.hudScale;
-    // The rule under the header row. Declared here because the currency chips
-    // hang off it rather than off `rowY`.
+    // Where the header band ends. There is no longer a rule drawn on it - the
+    // line is gone - but the currency chips still hang off this baseline.
     const ruleY = this.contentTop + 42 * this.hudScale;
     // Chips sit just ABOVE that rule instead of level with the badge and the
     // shop button. A phone's camera cut-out is centred in the status bar,
@@ -882,10 +882,6 @@ export class BoardScene extends Phaser.Scene {
     this.buildDevResetButton();
     this.buildAutoMergeButton();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
-
-    const headerRule = this.add.graphics();
-    headerRule.lineStyle(1, Theme.borderOnDark, 0.8);
-    headerRule.lineBetween(headerX, ruleY, headerRight, ruleY);
 
     this.buildCrateMeter();
     this.buildInventoryButton();
