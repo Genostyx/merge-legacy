@@ -7727,8 +7727,11 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const collectionIcon = this.add.image(collectionX, collectionY, 'home-icon')
       .setDisplaySize(46, 46)
       .setAlpha(projectUnlocked ? 1 : 0.38);
+    // The badge means "something is waiting for you". A locked button has
+    // nothing waiting - it says so with the padlock and the line beside it, so
+    // the dot no longer doubles as a level requirement.
     const collectionBadge = this.add.text(collectionX + 18, collectionY - 13,
-      profileProjectReady ? '!' : !projectUnlocked ? '3' : '', {
+      profileProjectReady ? '!' : '', {
         resolution: textResolution,
         fontFamily: Theme.fontNumeric,
         fontSize: '8px',
@@ -7737,7 +7740,32 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         backgroundColor: hex(Theme.accentAmber),
         padding: { x: 3, y: 1 }
       }).setOrigin(0.5);
-    collectionBadge.setVisible(profileProjectReady || !projectUnlocked);
+    collectionBadge.setVisible(profileProjectReady);
+
+    // Padlock over the greyed mark, and the requirement spelled out beside it.
+    // Two lines: one would run under the collection button sitting at x = 0.
+    const collectionLock = this.add.graphics().setPosition(collectionX, collectionY);
+    const collectionLockNote = this.add.text(collectionX + 30, collectionY, 'UNLOCKS AT\nLEVEL 3', {
+      resolution: textResolution,
+      fontFamily: Theme.fontMono,
+      fontSize: '8px',
+      fontStyle: 'bold',
+      color: hex(Theme.textOnDarkMuted),
+      lineSpacing: 2
+    }).setOrigin(0, 0.5);
+    if (projectUnlocked) {
+      collectionLockNote.setVisible(false);
+    } else {
+      // Body, then the shackle as a stroked half-circle above it.
+      collectionLock.fillStyle(Theme.textOnDark, 0.9);
+      collectionLock.fillRoundedRect(-7, -1, 14, 11, 2);
+      collectionLock.lineStyle(2.5, Theme.textOnDark, 0.9);
+      collectionLock.beginPath();
+      collectionLock.arc(0, -1, 4.5, Math.PI, 0);
+      collectionLock.strokePath();
+      collectionLock.fillStyle(Theme.bg, 0.9);
+      collectionLock.fillCircle(0, 4, 1.6);
+    }
     const collectionZone = this.add.zone(collectionX, collectionY, 48, 36)
       .setInteractive({ useHandCursor: true });
 
@@ -7774,7 +7802,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       cardBg, titleRule, title, profileBand, levelDisc, levelText, levelLabel, xpBar,
       rewardCrate, divider, guidance,
       dailyStrip, ...dailyIcons, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
-      collectionPanel, collectionIcon, collectionBadge, collectionZone,
+      collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
       bookPanel, bookIcon, bookBadge, bookZone, closeBtn
     ]);
 
