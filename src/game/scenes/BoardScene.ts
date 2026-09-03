@@ -1120,8 +1120,12 @@ export class BoardScene extends Phaser.Scene {
     // board: there the board keeps its old position directly under the header
     // and the gap falls back to its floor, exactly as before.
     this.boardOriginY = headerBottom + Math.max(0, Math.floor((band - ROWS * this.cellSize) / 2));
-    this.boardToTrayGap = Math.max(
-      BOARD_TO_TRAY_GAP, trayTop - (this.boardOriginY + ROWS * this.cellSize)
+    // The rail and the information tray belong to the BOARD, not to the screen
+    // edge. Letting the gap absorb all the leftover height pushed them to the
+    // bottom of the phone with a canyon between them and the last row, so the
+    // readout for the piece you just tapped was nowhere near the piece.
+    this.boardToTrayGap = Phaser.Math.Clamp(
+      trayTop - (this.boardOriginY + ROWS * this.cellSize), BOARD_TO_TRAY_GAP, 12
     );
   }
 
@@ -1463,14 +1467,14 @@ export class BoardScene extends Phaser.Scene {
     const accent = Theme.currencyEnergy;
     const numberColor = materialLighting(accent, 4).light;
     const bg = this.add.graphics().setDepth(20);
-    const iconSize = glyphBoxFor('energy', 26);
+    const iconSize = glyphBoxFor('energy', 17);
     const iconShadow = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
     const icon = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setDepth(22);
     const iconGloss = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
     iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
     const text = this.add.text(0, 0, '', {
       fontFamily: Theme.fontNumeric,
-      fontSize: '12px',
+      fontSize: '10.5px',
       fontStyle: 'bold',
       color: hex(numberColor),
       resolution: textResolution
@@ -1478,9 +1482,9 @@ export class BoardScene extends Phaser.Scene {
     const hit = this.add.rectangle(0, 0, 10, 20, 0x000000, 0).setDepth(25).setInteractive({ useHandCursor: true });
     hit.on('pointerdown', () => this.time.delayedCall(0, () => this.offerEnergyRefill()));
 
-    const naturalWidth = (): number => Math.max(50, Math.ceil(text.width) + 40);
+    const naturalWidth = (): number => Math.max(38, Math.ceil(text.width) + 24);
     const draw = (rightX: number, w: number): void => {
-      const h = 20;
+      const h = 16;
       const x = rightX - w;
 
       bg.clear();
@@ -1497,12 +1501,12 @@ export class BoardScene extends Phaser.Scene {
       );
       bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
 
-      iconShadow.setPosition(x + 10, y + h / 2 + 1.25);
-      icon.setPosition(x + 10, y + h / 2);
-      iconGloss.setPosition(x + 10, y + h / 2);
+      iconShadow.setPosition(x + 8, y + h / 2 + 1.25);
+      icon.setPosition(x + 8, y + h / 2);
+      iconGloss.setPosition(x + 8, y + h / 2);
 
-      text.setScale(Math.min(1, Math.max(0.72, (w - 34) / Math.max(1, text.width))), 1);
-      text.setPosition(x + w - 7, y + h / 2);
+      text.setScale(Math.min(1, Math.max(0.72, (w - 22) / Math.max(1, text.width))), 1);
+      text.setPosition(x + w - 6, y + h / 2);
       hit.setPosition(x + w / 2, y + h / 2).setSize(w, h);
       hit.input!.hitArea.setTo(0, 0, w, h);
     };
@@ -1556,14 +1560,14 @@ export class BoardScene extends Phaser.Scene {
     const iconKey = glyph === 'coin' ? 'currency-coin' : 'currency-gem';
     // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
     // why that is not the same as a 24px display size.
-    const iconSize = glyphBoxFor(glyph, 24);
+    const iconSize = glyphBoxFor(glyph, 15);
     const iconShadow = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
     const icon = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
     const iconGloss = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
     iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
     const text = this.add.text(0, 0, '', {
       fontFamily: Theme.fontNumeric,
-      fontSize: '13px',
+      fontSize: '11px',
       fontStyle: 'bold',
       color: hex(numberColor),
       resolution: textResolution
@@ -1571,9 +1575,9 @@ export class BoardScene extends Phaser.Scene {
     const hit = this.add.rectangle(0, 0, 10, 28, 0x000000, 0).setDepth(25).setInteractive({ useHandCursor: true });
     hit.on('pointerdown', () => this.time.delayedCall(0, onTap));
 
-    const naturalWidth = (): number => Math.max(50, Math.ceil(text.width) + 40);
+    const naturalWidth = (): number => Math.max(38, Math.ceil(text.width) + 24);
     const draw = (rightX: number, w: number): void => {
-      const h = 20;
+      const h = 16;
       const x = rightX - w;
 
       bg.clear();
@@ -1590,12 +1594,12 @@ export class BoardScene extends Phaser.Scene {
       );
       bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
 
-      iconShadow.setPosition(x + 12, y + h / 2 + 1.25);
-      icon.setPosition(x + 12, y + h / 2);
-      iconGloss.setPosition(x + 12, y + h / 2);
+      iconShadow.setPosition(x + 9, y + h / 2 + 1.25);
+      icon.setPosition(x + 9, y + h / 2);
+      iconGloss.setPosition(x + 9, y + h / 2);
 
-      text.setScale(Math.min(1, Math.max(0.72, (w - 34) / Math.max(1, text.width))), 1);
-      text.setPosition(x + w - 7, y + h / 2);
+      text.setScale(Math.min(1, Math.max(0.72, (w - 22) / Math.max(1, text.width))), 1);
+      text.setPosition(x + w - 6, y + h / 2);
       hit.setPosition(x + w / 2, y + h / 2).setSize(w, 28);
       hit.input!.hitArea.setTo(0, 0, w, 28);
     };
@@ -1630,7 +1634,7 @@ export class BoardScene extends Phaser.Scene {
 
   /** Layered vector badge showing the player's current level number. */
   private buildLevelBadge(cx: number, cy: number): Phaser.GameObjects.Text {
-    const radius = 19;
+    const radius = 15;
     const lighting = materialLighting(Theme.playerLevel, 5);
     this.levelXpRing = this.add.graphics();
     const badgePoints = (centerY: number, outer: number, inner: number): Phaser.Geom.Point[] => {
@@ -1652,12 +1656,12 @@ export class BoardScene extends Phaser.Scene {
     bg.lineStyle(1.5, lighting.highlight, 0.75);
     bg.strokeCircle(cx, cy, radius - 5);
     bg.fillStyle(lighting.highlight, 0.3);
-    bg.fillEllipse(cx - 4, cy - 6, 10, 5);
+    bg.fillEllipse(cx - 3, cy - 5, 8, 4);
     this.levelKeystone = this.add.graphics();
 
     const text = this.add.text(cx, cy, '1', {
       fontFamily: Theme.fontNumeric,
-      fontSize: '16px',
+      fontSize: '13px',
       fontStyle: 'bold',
       color: hex(Theme.textOnDark),
       resolution: textResolution
@@ -1670,10 +1674,10 @@ export class BoardScene extends Phaser.Scene {
     // because milestone crates are earned by levelling and claimed from the
     // profile; no second header currency or detached inbox is introduced.
     this.levelMilestoneDot = this.add.graphics();
-    this.levelMilestoneCount = this.add.text(cx + 14, cy - 14, '', {
+    this.levelMilestoneCount = this.add.text(cx + 11, cy - 11, '', {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric,
-      fontSize: '9px',
+      fontSize: '8px',
       fontStyle: 'bold',
       color: hex(Theme.bg)
     }).setOrigin(0.5).setDepth(3);
@@ -1707,7 +1711,7 @@ export class BoardScene extends Phaser.Scene {
       ring.lineStyle(wave.width, wave.tone, 1);
       // Centred on the graphics' own origin so `scale` grows it from the
       // badge rather than sliding it across the header.
-      ring.strokeCircle(0, 0, 20.5);
+      ring.strokeCircle(0, 0, 16.5);
       this.tweens.add({
         targets: ring,
         alpha: { from: 0.9, to: 0 },
@@ -1753,9 +1757,9 @@ export class BoardScene extends Phaser.Scene {
     const ringX = this.levelBadgeText.x;
     const ringY = this.levelBadgeText.y + 1.5;
     this.levelXpRing.clear();
-    this.levelXpRing.lineStyle(6, Theme.borderOnDark, 0.8);
+    this.levelXpRing.lineStyle(5, Theme.borderOnDark, 0.8);
     this.levelXpRing.beginPath();
-    this.levelXpRing.arc(ringX, ringY, 20.5, start, start + span);
+    this.levelXpRing.arc(ringX, ringY, 16.5, start, start + span);
     this.levelXpRing.strokePath();
     if (progress > 0) {
       const xpLighting = materialLighting(Theme.currencyXp, 5);
@@ -1763,18 +1767,18 @@ export class BoardScene extends Phaser.Scene {
       for (let i = 0; i < segments; i++) {
         const from = start + span * progress * (i / segments);
         const to = start + span * progress * ((i + 1) / segments);
-        this.levelXpRing.lineStyle(6, toneAt(xpLighting, 0.25 + 0.75 * (i / Math.max(1, segments - 1))), 1);
+        this.levelXpRing.lineStyle(5, toneAt(xpLighting, 0.25 + 0.75 * (i / Math.max(1, segments - 1))), 1);
         this.levelXpRing.beginPath();
-        this.levelXpRing.arc(ringX, ringY, 20.5, from, to + 0.002);
+        this.levelXpRing.arc(ringX, ringY, 16.5, from, to + 0.002);
         this.levelXpRing.strokePath();
       }
     }
     const capLighting = materialLighting(Theme.playerLevel, 5);
     const keystone = [
-      new Phaser.Geom.Point(ringX - 9, ringY - 25),
-      new Phaser.Geom.Point(ringX + 9, ringY - 25),
-      new Phaser.Geom.Point(ringX + 6, ringY - 16),
-      new Phaser.Geom.Point(ringX - 6, ringY - 16)
+      new Phaser.Geom.Point(ringX - 7, ringY - 20),
+      new Phaser.Geom.Point(ringX + 7, ringY - 20),
+      new Phaser.Geom.Point(ringX + 5, ringY - 13),
+      new Phaser.Geom.Point(ringX - 5, ringY - 13)
     ];
     this.levelKeystone.clear();
     // Shaded as horizontal slices rather than one flat fill. Graphics has no
@@ -1787,13 +1791,13 @@ export class BoardScene extends Phaser.Scene {
     // meets the ring: the same upper-left key light the dome, rim and XP
     // ring below it are all shaded by. A flat cap was the one surface on
     // this badge that read as a sticker sitting on the art.
-    const capTop = ringY - 25;
-    const capBottom = ringY - 16;
+    const capTop = ringY - 20;
+    const capBottom = ringY - 13;
     const capSlices = 9;
     for (let i = 0; i < capSlices; i++) {
       const t0 = i / capSlices;
       const t1 = (i + 1) / capSlices;
-      const halfAt = (t: number) => 9 - 3 * t;
+      const halfAt = (t: number) => 7 - 2 * t;
       const yAt = (t: number) => capTop + (capBottom - capTop) * t;
       this.levelKeystone.fillStyle(toneAt(capLighting, 0.88 - 0.55 * ((t0 + t1) / 2)), 1);
       this.levelKeystone.fillPoints([
@@ -1816,12 +1820,12 @@ export class BoardScene extends Phaser.Scene {
     this.levelMilestoneDot.clear();
     this.levelMilestoneCount.setText('');
     if (readyCount > 0) {
-      const x = this.levelBadgeText.x + 14;
-      const y = this.levelBadgeText.y - 14;
+      const x = this.levelBadgeText.x + 11;
+      const y = this.levelBadgeText.y - 11;
       this.levelMilestoneDot.fillStyle(Theme.accentAmber, 1);
-      this.levelMilestoneDot.fillCircle(x, y, 7);
+      this.levelMilestoneDot.fillCircle(x, y, 6);
       this.levelMilestoneDot.lineStyle(1, Theme.textOnDark, 0.75);
-      this.levelMilestoneDot.strokeCircle(x, y, 7);
+      this.levelMilestoneDot.strokeCircle(x, y, 6);
       this.levelMilestoneDot.setDepth(2);
       this.levelMilestoneCount
         .setPosition(x, y - 0.75)
