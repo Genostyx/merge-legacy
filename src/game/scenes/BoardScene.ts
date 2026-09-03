@@ -3398,6 +3398,32 @@ ${familyTierLabel(typeId, tier)}`
       return;
     }
     this.modalOpen = true;
+
+    // FULL SCREEN. The room fills the whole game area rather than sitting in an
+    // inset panel, so the 3D canvas matches the game canvas exactly and the
+    // panel's own UI draws on top of it.
+    //
+    // That means the 3D canvas goes UNDER Phaser's (which now clears to alpha)
+    // and the board has to be hidden while the panel is open, or it would be
+    // drawn over the room. Everything below depth 3000 is board content; the
+    // overlay itself is 4000.
+    //
+    // Swept FIRST, before any of the panel's own objects exist. Run later, it
+    // caught the panel's title, its stage line and the inspect readout - they
+    // are created at depth 0 and only afterwards handed to the overlay - and
+    // left them permanently invisible. Tapping a piece in the room highlighted
+    // it and set a name that could never be seen.
+    const hiddenForRoom: Phaser.GameObjects.GameObject[] = [];
+    for (const child of this.children.list) {
+      const obj = child as Phaser.GameObjects.GameObject & { depth?: number; visible?: boolean };
+      if ((obj.depth ?? 0) < 3000 && obj.visible !== false) {
+        obj.visible = false;
+        hiddenForRoom.push(child);
+      }
+    }
+    this.roomHiddenForPanel = hiddenForRoom;
+    this.roomPanelOpen = true;
+
     const overlay = this.add.container(0, 0).setDepth(4000);
     this.projectOverlay = overlay;
     const w = this.scale.width;
@@ -3452,25 +3478,6 @@ ${familyTierLabel(typeId, tier)}`
         }
       });
     };
-
-    // FULL SCREEN. The room fills the whole game area rather than sitting in an
-    // inset panel, so the 3D canvas matches the game canvas exactly and the
-    // panel's own UI draws on top of it.
-    //
-    // That means the 3D canvas goes UNDER Phaser's (which now clears to alpha)
-    // and the board has to be hidden while the panel is open, or it would be
-    // drawn over the room. Everything below depth 3000 is board content; the
-    // overlay itself is 4000.
-    const hiddenForRoom: Phaser.GameObjects.GameObject[] = [];
-    for (const child of this.children.list) {
-      const obj = child as Phaser.GameObjects.GameObject & { depth?: number; visible?: boolean };
-      if ((obj.depth ?? 0) < 3000 && obj.visible !== false) {
-        obj.visible = false;
-        hiddenForRoom.push(child);
-      }
-    }
-    this.roomHiddenForPanel = hiddenForRoom;
-    this.roomPanelOpen = true;
 
     const canvasRect = this.game.canvas.getBoundingClientRect();
     const roomCanvas = document.createElement('canvas');
