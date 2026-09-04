@@ -4459,7 +4459,11 @@ ${rewardLine}`,
     g.strokeRoundedRect(this.boardOriginX, boxY, boxW, boxH, Theme.radiusChip);
     this.drawCrateMeterProgress(now);
     const showTier = earned ?? next?.tier ?? 'bronze';
-    this.crateMeterIcon.clear().setPosition(cx - 3, cy + 1).setAlpha(cooling ? 0.3 : earned ? 1 : 0.55);
+    // Dead centre on the ring. The -3/+1 nudge dated from when `drawCrate`
+    // built its art off to one side of the origin and every caller corrected
+    // for it by hand; the art centres itself now, so the correction was the
+    // only thing left pushing it off.
+    this.crateMeterIcon.clear().setPosition(cx, cy).setAlpha(cooling ? 0.3 : earned ? 1 : 0.55);
     drawCrate(this.crateMeterIcon, (CRATE_RING_R * 1.25 + 14) * this.chromeScale, showTier);
     if (cooling) {
       const timer = this.add.text(cx, boxY + boxH - 6, formatCountdown(cooldownRemaining), {
@@ -9127,7 +9131,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     if (order.rewardShippingContainer) {
       this.enqueueForcedSpawn({
         kind: 'crate', tier: 'shipping',
-        remaining: shippingContainerPayload(this.ownedDispenserTypeIds()),
+        remaining: shippingContainerPayload(this.ownedDispenserTypeIds(), playerLevel(this.orderState)),
         source: 'ORDER REWARD'
       }, rewardAt ?? undefined);
     }

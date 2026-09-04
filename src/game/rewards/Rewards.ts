@@ -470,8 +470,17 @@ export function availableSpawnerPieceFamilies(ownedFamilies: readonly string[] =
 }
 
 /** Seven limited-use dispenser pieces: 80% Piece 01, 20% Piece 02. */
+/**
+ * `level` is REQUIRED, and second, on purpose. The Decagon roll lives in here
+ * rather than in `rollCrate` because the game awards a container by calling
+ * this directly - `rollCrate`'s shipping branch is only one of two callers,
+ * and putting the roll there meant the container the player actually receives
+ * never got any. A required parameter is what makes the compiler find the
+ * next caller instead of it silently paying nothing.
+ */
 export function shippingContainerPayload(
   ownedFamilies: readonly string[],
+  level: number,
   rng: () => number = Math.random
 ): CratePayloadEntry[] {
   const eligible = availableSpawnerPieceFamilies(ownedFamilies);
@@ -482,11 +491,13 @@ export function shippingContainerPayload(
     const pool = owned.length > 0 ? owned : eligible;
     return pool[Math.floor(rng() * pool.length)] ?? 'wood';
   };
-  return Array.from({ length: 7 }, () => ({
+  const payload: CratePayloadEntry[] = Array.from({ length: SHIPPING_PIECE_SLOTS }, () => ({
     kind: 'spawner-piece' as const,
     typeId: chooseFamily(),
     tier: rng() < 0.8 ? 1 : 2
   }));
+  appendDecagonPieces(payload, 'shipping', level, rng, SHIPPING_PIECE_SLOTS);
+  return payload;
 }
 
 function rollSpawnerPieceTier(tier: CrateTier, rng: () => number): number | null {
@@ -537,13 +548,48 @@ function rollNormalChestEntry(
  */
 export const DECAGON_MIN_LEVEL = 5;
 
+/**
+ * Chance per slot of a DECAGON piece, worked backwards from one anchor: a
+ * VAULT slot should have a 1% chance of yielding a tier-3 piece. Tier 3 is 7%
+ * of the tier split, so the vault's per-slot chance is 0.01 / 0.07 and the
+ * lower crates step down from there.
+ *
+ * The flat 5% this replaces put a tier-3 at 0.35% of a vault slot, which is
+ * why pieces were barely appearing: a Decagon costs sixteen tier-1
+ * equivalents, and at that rate the crates were never going to supply them.
+ *
+ * SHIPPING CONTAINERS ARE THE MAIN SOURCE. A container rolls seven slots, so
+ * its chance is set to land on the same expected count a gold crate gives -
+ * 12 x 0.10 = 1.2 pieces - which is 1.2 / 7.
+ */
 const DECAGON_PIECE_CHANCE: Partial<Record<CrateTier, number>> = {
   bronze: 0.05,
-  silver: 0.05,
-  gold: 0.05,
-  vault: 0.05,
-  shipping: 0.08
+  silver: 0.075,
+  gold: 0.10,
+  vault: 0.143,
+  shipping: 0.171
 };
+
+/** A shipping container's payload is always this many dispenser pieces. */
+const SHIPPING_PIECE_SLOTS = 7;
+
+/**
+ * Appends Decagon pieces on their own roll - one chance per slot, ADDED to the
+ * payload rather than taking a slot from it. Substituting would quietly cut
+ * whatever the crate already gives by the same percentage, which is the
+ * dilution a separate roll exists to avoid.
+ */
+function appendDecagonPieces(
+  out: CratePayloadEntry[], tier: CrateTier, level: number, rng: () => number, slots: number
+): void {
+  if (level < DECAGON_MIN_LEVEL) return;
+  const chance = DECAGON_PIECE_CHANCE[tier] ?? 0;
+  for (let i = 0; i < slots; i++) {
+    if (rng() < chance) {
+      out.push({ kind: 'spawner-piece', typeId: 'decagon', tier: rollDecagonPieceTier(rng) });
+    }
+  }
+}
 
 /** Decagon pieces arrive low: the merging is the cost, not the finding. */
 function rollDecagonPieceTier(rng: () => number): number {
@@ -579,23 +625,9 @@ function rollChestPayload(tier: CrateTier, level: number, rng: () => number, unl
     out[replaceable[i]] = { kind: 'resource-producer', producerId, remaining: RESOURCE_PRODUCERS[producerId].capacity };
   }
 
-  // Decagon pieces are APPENDED, not substituted, and rolled last.
-  //
-  // Rolling them inside the slot loop would have taken a slot from the
-  // ordinary loot, which quietly cuts the family piece rate by the same 5% -
-  // the exact dilution this roll is supposed to avoid. Appending costs the
-  // player an extra cell instead, which is the currency this whole family is
-  // priced in anyway. Rolling last also leaves every existing crate's random
-  // sequence untouched, so the approved piece-rate numbers still hold.
-  // Gated to level 5. Early enough that the Decagon is part of the game a
-  // player learns rather than something bolted on later, and late enough that
-  // the three ordinary families and a first source come first.
-  const decagonChance = level >= DECAGON_MIN_LEVEL ? (DECAGON_PIECE_CHANCE[tier] ?? 0) : 0;
-  for (let i = 0; i < count; i++) {
-    if (rng() < decagonChance) {
-      out.push({ kind: 'spawner-piece', typeId: 'decagon', tier: rollDecagonPieceTier(rng) });
-    }
-  }
+  // Rolled LAST and appended, so every existing crate's random sequence is
+  // untouched and the approved piece-rate numbers still hold.
+  appendDecagonPieces(out, tier, level, rng, count);
   return out;
 }
 
@@ -617,7 +649,9 @@ function summarizePayload(tier: CrateTier, payload: CratePayloadEntry[]): CrateL
  * same gates orders do, so a deep player never opens a crate full of gravel.
  */
 export function rollCrate(tier: CrateTier, level: number, rng: () => number = Math.random, unlockedFamilies?: readonly string[]): CrateLoot {
-  if (tier === 'shipping') return summarizePayload(tier, shippingContainerPayload(unlockedFamilies ?? ['wood'], rng));
+  if (tier === 'shipping') {
+    return summarizePayload(tier, shippingContainerPayload(unlockedFamilies ?? ['wood'], level, rng));
+  }
   // Every tier has a CHEST_SLOT_COUNTS entry and shipping returns above, so
   // this is total. The old fallback that rolled a flat shape is gone.
   return summarizePayload(tier, rollChestPayload(tier, level, rng, unlockedFamilies) ?? []);

@@ -673,117 +673,108 @@ export const CRATE_DRAWN = {
 
 export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: string): void {
   if (tier === 'shipping') {
-    // An INTERMODAL CONTAINER, and deliberately not built from any of the hard
-    // case's parts. The silver crate is now a polished case with latches,
-    // bumpers and a specular sweep, and the old container - a light blue-grey
-    // block with a few vertical lines - had drifted close enough to be
-    // mistaken for it. A container is a different object: longer and lower,
-    // deeply fluted end to end, corner castings at all four corners, and a
-    // pair of doors with locking bars at one end. None of that vocabulary is
-    // shared with a crate, so the two can never be confused again.
-    // A RECTANGULAR PRISM, in a container's own proportions.
-    //
-    // This has been wrong in both directions. At 0.84 long by 0.13 deep the
-    // receding planes were slivers and it read as a flat panel; correcting
-    // that took it to 0.66 by 0.32 by 0.26, which is barely 2:1:1 - a box.
-    // A real ISO container is nearer 5:1:1, so this runs 3.3:1:1: long enough
-    // to be unmistakably a container, with the depth still carrying the
-    // three-quarter view.
-    const w = s * 0.72;
-    const h = s * 0.22;
-    const d = s * 0.22;
-    const x = -(w + d) / 2;
-    const y = (d - h) / 2;
-    const front = materialLighting(CRATE_COLORS.shipping, 5);
+    // A TRUE ISOMETRIC CONTAINER: the door end facing front-left, the long
+    // corrugated side receding front-right, the roof on top. The previous
+    // version was a flat-front box with its doors on a sliver of a side
+    // plane; this is built from three real faces off one near vertical edge,
+    // which is what the reference reads as.
+    // 2.1 : 1 length to height. At 0.62 by 0.24 it ran 2.6:1 and read as a
+    // trailer rather than a container; the reference sits nearer two.
+    const L = s * 0.55;   // length, receding right
+    const W = s * 0.24;   // width, receding left  (the door end)
+    const H = s * 0.26;   // height
 
-    // Shell: front, receding end, and top, all centred on the origin.
-    g.fillGradientStyle(front.light, front.light, front.shadow, front.dark, 1);
-    g.fillRect(x, y, w, h);
-    g.fillStyle(toneForNormal(front, 0), 1);
-    g.beginPath();
-    g.moveTo(x + w, y);
-    g.lineTo(x + w + d, y - d);
-    g.lineTo(x + w + d, y + h - d);
-    g.lineTo(x + w, y + h);
-    g.closePath();
-    g.fillPath();
-    g.fillGradientStyle(front.highlight, front.highlight, front.light, front.light, 1);
-    g.beginPath();
-    g.moveTo(x, y);
-    g.lineTo(x + d, y - d);
-    g.lineTo(x + w + d, y - d);
-    g.lineTo(x + w, y);
-    g.closePath();
-    g.fillPath();
+    // Isometric basis. `right` and `left` recede at 30 degrees; `up` is flat.
+    const RX = Math.cos(Math.PI / 6), RY = -Math.sin(Math.PI / 6);
+    // The near bottom corner, offset so the whole drawn box is centred on the
+    // origin - every caller positions these by their centre.
+    // y runs from `oy` at the near bottom corner down to
+    // `oy - (L + W) / 2 - H` at the far top one, so half that span puts the
+    // drawn box on the origin.
+    const ox = -(L * RX - W * RX) / 2;
+    const oy = (L * 0.5 + W * 0.5 + H) / 2;
+    const P = (l: number, w: number, h: number): Phaser.Geom.Point =>
+      new Phaser.Geom.Point(
+        ox + l * L * RX - w * W * RX,
+        oy + l * L * RY + w * W * RY - h * H
+      );
 
-    // Corrugation on the long side: many narrow flutes, which is what a
-    // container reads as from across a yard and what a machined case never
-    // has.
-    const flutes = 13;
-    for (let i = 0; i < flutes; i++) {
-      const px = x + w * 0.05 + ((w * 0.9) * i) / flutes;
-      g.fillStyle(front.highlight, 0.14);
-      g.fillRect(px, y + h * 0.14, Math.max(1, s * 0.012), h * 0.72);
-      g.fillStyle(front.shadow, 0.42);
-      g.fillRect(px + Math.max(1, s * 0.012), y + h * 0.14, Math.max(1, s * 0.01), h * 0.72);
+    const steel = materialLighting(CRATE_COLORS.shipping, 5);
+    // The blue block at the far end, as in the reference. Its own ramp rather
+    // than a tint, so it shades across the three faces like the steel does.
+    const blue = materialLighting(0x2f6fd0, 5);
+    const SPLIT = 0.66;   // where the steel ends and the blue begins
+
+    const quad = (a: Phaser.Geom.Point, b: Phaser.Geom.Point, c: Phaser.Geom.Point, d: Phaser.Geom.Point,
+                  colour: number, alpha = 1): void => {
+      g.fillStyle(colour, alpha);
+      g.fillPoints([a, b, c, d], true);
+    };
+
+    // ---- long side (front right), split steel then blue -------------------
+    quad(P(0, 0, 0), P(SPLIT, 0, 0), P(SPLIT, 0, 1), P(0, 0, 1), steel.base);
+    quad(P(SPLIT, 0, 0), P(1, 0, 0), P(1, 0, 1), P(SPLIT, 0, 1), blue.base);
+
+    // Corrugation: narrow vertical flutes the whole length, each a lit edge
+    // against a shadowed one. The density is what says "container".
+    const FLUTES = 15;
+    for (let i = 0; i < FLUTES; i++) {
+      const t = 0.04 + (i / FLUTES) * 0.92;
+      const t2 = t + 0.028;
+      const p2 = t > SPLIT ? blue : steel;
+      quad(P(t, 0, 0.08), P(t2, 0, 0.08), P(t2, 0, 0.92), P(t, 0, 0.92), p2.light, 0.5);
+      quad(P(t2, 0, 0.08), P(t2 + 0.012, 0, 0.08), P(t2 + 0.012, 0, 0.92), P(t2, 0, 0.92), p2.shadow, 0.55);
     }
 
-    // The DOORS go on the receding end plane, not on the long side - that is
-    // where a container's doors are, and putting them on the plane that
-    // recedes is what sells the three-quarter view.
-    const doorInset = 0.16;
-    const dp = (u: number, v: number): [number, number] => [
-      x + w + d * u,
-      y - d * u + (h - 0) * v
-    ];
-    const [dx0, dy0] = dp(doorInset, 0.12);
-    const [dx1, dy1] = dp(1 - doorInset, 0.12);
-    const [dx2, dy2] = dp(1 - doorInset, 0.88);
-    const [dx3, dy3] = dp(doorInset, 0.88);
-    g.fillStyle(front.shadow, 0.4);
-    g.beginPath();
-    g.moveTo(dx0, dy0);
-    g.lineTo(dx1, dy1);
-    g.lineTo(dx2, dy2);
-    g.lineTo(dx3, dy3);
-    g.closePath();
-    g.fillPath();
-    // Locking bars, running down the doors along the same recede.
-    g.lineStyle(Math.max(1, s * 0.014), front.highlight, 0.55);
-    for (const u of [0.34, 0.46, 0.6, 0.72]) {
-      const [bx0, by0] = dp(u, 0.14);
-      const [bx1, by1] = dp(u, 0.86);
-      g.lineBetween(bx0, by0, bx1, by1);
-    }
-    g.lineStyle(Math.max(1, s * 0.016), front.dark, 0.85);
-    const [sx0, sy0] = dp(0.53, 0.12);
-    const [sx1, sy1] = dp(0.53, 0.88);
-    g.lineBetween(sx0, sy0, sx1, sy1);
-
-    // Rails along the top of the long side, and the ridges across the roof -
-    // the two lines that state the top plane is a plane.
-    g.lineStyle(Math.max(1, s * 0.014), front.shadow, 0.45);
-    for (const t2 of [0.3, 0.7]) {
-      const rx = x + w * t2;
-      g.lineBetween(rx + d * 0.15, y - d * 0.15, rx + d * 0.9, y - d * 0.9);
+    // ---- roof (top), same split, ridges running along the length ----------
+    quad(P(0, 0, 1), P(SPLIT, 0, 1), P(SPLIT, 1, 1), P(0, 1, 1), steel.highlight);
+    quad(P(SPLIT, 0, 1), P(1, 0, 1), P(1, 1, 1), P(SPLIT, 1, 1), blue.highlight);
+    for (let i = 0; i < FLUTES; i++) {
+      const t = 0.04 + (i / FLUTES) * 0.92;
+      const t2 = t + 0.03;
+      const p2 = t > SPLIT ? blue : steel;
+      quad(P(t, 0.1, 1), P(t2, 0.1, 1), P(t2, 0.9, 1), P(t, 0.9, 1), p2.light, 0.55);
     }
 
-    // Corner castings: the heavy blocks a container is lifted and stacked by.
-    // Sized off the HEIGHT rather than the icon, so shortening the body does
-    // not leave the castings eating a quarter of the end wall.
-    const cast = h * 0.2;
-    g.fillStyle(front.dark, 1);
-    for (const cxp of [x, x + w - cast]) {
-      for (const cyp of [y, y + h - cast]) g.fillRect(cxp, cyp, cast, cast);
+    // ---- door end (front left) --------------------------------------------
+    quad(P(0, 0, 0), P(0, 1, 0), P(0, 1, 1), P(0, 0, 1), steel.shadow);
+    // Two leaves, each with its own frame.
+    for (const [w0, w1] of [[0.06, 0.48], [0.52, 0.94]] as const) {
+      quad(P(0, w0, 0.07), P(0, w1, 0.07), P(0, w1, 0.93), P(0, w0, 0.93), steel.dark, 0.55);
+      g.lineStyle(Math.max(1, s * 0.012), steel.light, 0.55);
+      g.strokePoints([P(0, w0, 0.07), P(0, w1, 0.07), P(0, w1, 0.93), P(0, w0, 0.93)], true);
     }
-    g.fillStyle(toneForNormal(front, 0), 1);
-    for (const v of [0, 1]) {
-      const [ox, oy] = dp(1, v);
-      g.fillRect(ox - cast, oy - (v === 0 ? 0 : cast), cast, cast);
+    // Locking bars: two to a leaf, the detail that says which end opens.
+    g.lineStyle(Math.max(1, s * 0.016), steel.highlight, 0.8);
+    for (const w of [0.16, 0.34, 0.62, 0.82]) {
+      g.lineBetween(P(0, w, 0.1).x, P(0, w, 0.1).y, P(0, w, 0.9).x, P(0, w, 0.9).y);
+    }
+    // The placard, the one warm mark on the whole object.
+    quad(P(0, 0.12, 0.56), P(0, 0.3, 0.56), P(0, 0.3, 0.72), P(0, 0.12, 0.72), 0xf2c53d);
+
+    // ---- corner castings ---------------------------------------------------
+    const CAST = 0.09;
+    for (const [l, w] of [[0, 0], [1, 0], [0, 1]] as const) {
+      for (const h of [0, 1] as const) {
+        const lo = l === 0 ? 0 : 1 - CAST * 0.5;
+        const hi = l === 0 ? CAST * 0.5 : 1;
+        const wo = w === 0 ? 0 : 1 - CAST * 1.4;
+        const wi = w === 0 ? CAST * 1.4 : 1;
+        const ho = h === 0 ? 0 : 1 - CAST * 1.3;
+        const hi2 = h === 0 ? CAST * 1.3 : 1;
+        const cp = l === 1 ? blue : steel;
+        quad(P(lo, wo, ho), P(hi, wo, ho), P(hi, wo, hi2), P(lo, wo, hi2), cp.dark);
+        if (w === 0) {
+          quad(P(lo, wo, ho), P(lo, wi, ho), P(lo, wi, hi2), P(lo, wo, hi2), cp.dark, 0.9);
+        }
+      }
     }
 
-    g.lineStyle(Math.max(1.2, s * 0.02), front.dark, 0.85);
-    g.strokeRect(x, y, w, h);
+    // ---- edges -------------------------------------------------------------
+    g.lineStyle(Math.max(1, s * 0.014), steel.dark, 0.9);
+    g.strokePoints([P(0, 0, 0), P(1, 0, 0), P(1, 0, 1), P(0, 0, 1)], true);
+    g.strokePoints([P(0, 0, 0), P(0, 1, 0), P(0, 1, 1), P(0, 0, 1)], true);
+    g.strokePoints([P(0, 0, 1), P(1, 0, 1), P(1, 1, 1), P(0, 1, 1)], true);
     return;
   }
 

@@ -272,7 +272,9 @@ describe('crate loot', () => {
   });
 
   it('fills a shipping container with exactly seven tier-1-or-2 pieces', () => {
-    const payload = shippingContainerPayload(['wood'], seq([
+    // Level 0 keeps the Decagon roll out of it, so this still measures the
+    // dispenser-piece payload alone.
+    const payload = shippingContainerPayload(['wood'], 0, seq([
       0.1, 0.1, 0.9, 0.9, 0.2, 0.1, 0.8, 0.1,
       0.3, 0.1, 0.7, 0.1, 0.4, 0.1
     ]));
@@ -411,5 +413,33 @@ describe('decagon piece drops', () => {
 
   it('drops from level 5 on', () => {
     expect(pieces(5).length).toBeGreaterThan(0);
+  });
+});
+
+describe('decagon rates', () => {
+  const decagons = (loot: ReturnType<typeof cratePayload>) =>
+    loot.filter((e) => e.kind === 'spawner-piece' && e.typeId === 'decagon');
+
+  it('gives shipping containers their own roll, on top of the seven dispenser pieces', () => {
+    // `seq([0])` makes every chance roll succeed, so the container yields its
+    // seven family pieces AND seven decagon pieces rather than seven total.
+    const payload = cratePayload(rollCrate('shipping', 30, seq([0]), ['wood']));
+    expect(decagons(payload)).toHaveLength(7);
+    expect(payload.filter((e) => e.kind === 'spawner-piece' && e.typeId !== 'decagon')).toHaveLength(7);
+  });
+
+  it('still gives shipping containers nothing below the level gate', () => {
+    const payload = cratePayload(rollCrate('shipping', 4, seq([0]), ['wood']));
+    expect(decagons(payload)).toHaveLength(0);
+  });
+});
+
+describe('the container the game actually awards', () => {
+  it('rolls decagon pieces from the payload builder, not only through rollCrate', () => {
+    // This is the path BoardScene uses when an order pays a container. The
+    // roll used to live in `rollCrate`, which that path never touches.
+    const payload = shippingContainerPayload(['wood'], 30, seq([0]));
+    expect(payload.filter((e) => e.kind === 'spawner-piece' && e.typeId === 'decagon')).toHaveLength(7);
+    expect(payload.filter((e) => e.kind === 'spawner-piece' && e.typeId !== 'decagon')).toHaveLength(7);
   });
 });
