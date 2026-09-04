@@ -975,62 +975,87 @@ export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: strin
 }
 
 /**
- * THE DECAGON. A ten-sided machined token - the one item in the game that
- * cannot merge, so its silhouette has to say "this is not a tier of
- * anything". Every family's art is organic or structural; this is a cut
- * regular polygon with a bevelled rim and a bored centre, which reads as a
- * counter or a token rather than a material.
+ * THE DECAGON. A real polyhedron, projected rather than faked.
  *
- * Ten sides, drawn as ten, because a player holding ten of them to fill a
- * ten-item meter should be able to count the sides and see the joke.
+ * The first version was a flat ten-sided token, which read as a coin - the
+ * worst possible association for the one item in the game that cannot merge,
+ * since coins are what the currency families are made of. The second was a
+ * shaded sphere, which read as a ball.
+ *
+ * This is an icosahedron: twenty flat triangular faces, held in a fixed
+ * three-quarter orientation, back-faces culled, each face given ONE flat tone
+ * from its own normal against the upper-left key every drawn object in this
+ * game shares. Flat-shaded facets with visible edges are what makes a solid
+ * read as cut rather than smooth, and its silhouette lands as a ten-sided
+ * outline - which is where the name stays honest.
  */
 export function drawDecagon(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const R = s * 0.34;
-  const SIDES = 10;
-  // Flat side up, so the token sits rather than points.
-  const start = -Math.PI / 2 + Math.PI / SIDES;
-  const ring = (radius: number): Phaser.Geom.Point[] => {
-    const pts: Phaser.Geom.Point[] = [];
-    for (let i = 0; i < SIDES; i++) {
-      const a = start + (i / SIDES) * Math.PI * 2;
-      pts.push(new Phaser.Geom.Point(Math.cos(a) * radius, Math.sin(a) * radius));
-    }
-    return pts;
-  };
+  const R = s * 0.36;
 
-  const outer = ring(R);
-  const inner = ring(R * 0.62);
+  // The twelve vertices of a regular icosahedron: three mutually
+  // perpendicular golden rectangles.
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const RAW: [number, number, number][] = [
+    [-1, PHI, 0], [1, PHI, 0], [-1, -PHI, 0], [1, -PHI, 0],
+    [0, -1, PHI], [0, 1, PHI], [0, -1, -PHI], [0, 1, -PHI],
+    [PHI, 0, -1], [PHI, 0, 1], [-PHI, 0, -1], [-PHI, 0, 1]
+  ];
+  const FACES: [number, number, number][] = [
+    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+  ];
 
-  // Body, with the light falling from upper left across the face.
-  g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
-  g.fillPoints(outer, true);
+  // Turned to a three-quarter view: enough yaw and pitch that a whole face
+  // sits toward the viewer with others falling away on both sides, which is
+  // what shows the solid off. Fixed, so every Decagon in the game is the same
+  // object seen from the same angle.
+  const YAW = 0.55;
+  const PITCH = -0.42;
+  const cy0 = Math.cos(YAW), sy0 = Math.sin(YAW);
+  const cp = Math.cos(PITCH), sp = Math.sin(PITCH);
+  const scale = R / Math.sqrt(1 + PHI * PHI);
 
-  // Bevelled rim: each of the ten edges gets its own facet, lit by how far
-  // its normal has turned away from the key. This is what stops a regular
-  // polygon reading as a flat sticker.
-  for (let i = 0; i < SIDES; i++) {
-    const a = outer[i];
-    const b = outer[(i + 1) % SIDES];
-    const ia = inner[i];
-    const ib = inner[(i + 1) % SIDES];
-    const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
-    // 1 facing the light (upper left), 0 facing away.
-    const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
-    g.fillStyle(toneForNormal(p, lit), 1);
-    g.fillPoints([a, b, ib, ia], true);
+  const verts = RAW.map(([x, y, z]) => {
+    const x1 = x * cy0 + z * sy0;
+    const z1 = -x * sy0 + z * cy0;
+    const y2 = y * cp - z1 * sp;
+    const z2 = y * sp + z1 * cp;
+    return { x: x1 * scale, y: -y2 * scale, z: z2 };
+  });
+
+  // Upper-left, tilted toward the viewer.
+  const LX = -0.5, LY = -0.68, LZ = 0.54;
+
+  for (const [i, j, k] of FACES) {
+    const a = verts[i], b = verts[j], c = verts[k];
+    // Face normal from the projected winding: a positive cross product means
+    // the triangle faces us, so this both culls the back and gives the depth
+    // ordering a convex solid needs (which is none).
+    const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    if (cross >= 0) continue;
+
+    // The true 3D normal, for shading. Averaging the three unit vertices is
+    // exact for a regular solid centred on the origin.
+    const nx = (a.x + b.x + c.x) / 3;
+    const ny = (a.y + b.y + c.y) / 3;
+    const nz = (a.z + b.z + c.z) / 3;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    const lit = Math.max(0, (nx / len) * LX + (ny / len) * LY + (nz / len) * LZ);
+
+    const points = [
+      new Phaser.Geom.Point(a.x, a.y),
+      new Phaser.Geom.Point(b.x, b.y),
+      new Phaser.Geom.Point(c.x, c.y)
+    ];
+    g.fillStyle(toneForNormal(p, Math.min(1, lit)), 1);
+    g.fillPoints(points, true);
+    // Every edge drawn, in the body's own dark tone: the edges are the whole
+    // point of a cut solid, and a black outline would make it a cartoon.
+    g.lineStyle(Math.max(1, s * 0.012), p.dark, 0.85);
+    g.strokePoints(points, true);
   }
-
-  // Bored centre - a countersunk hole, dark at the bottom with a lit far wall.
-  g.fillStyle(p.dark, 1);
-  g.fillCircle(0, 0, R * 0.3);
-  g.lineStyle(Math.max(1, s * 0.014), p.highlight, 0.5);
-  g.beginPath();
-  g.arc(0, 0, R * 0.3, Math.PI * 0.15, Math.PI * 0.85);
-  g.strokePath();
-
-  // Outline last so nothing sits on top of it.
-  g.lineStyle(Math.max(1.2, s * 0.016), p.dark, 0.9);
-  g.strokePoints(outer, true);
 }
 
 /**

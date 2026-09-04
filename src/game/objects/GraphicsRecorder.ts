@@ -108,4 +108,31 @@ export class GraphicsRecorder {
     for (const pt of points) this.point(pt.x, pt.y);
     return this;
   }
+
+  /**
+   * Both of these were MISSING, and a missing method here is not a silently
+   * wrong measurement - it is a TypeError thrown out of `iconFootprint`, so
+   * any art that used them could not be drawn on the board at all. The
+   * Decagon is drawn from polygons and a countersunk arc and hit exactly
+   * that.
+   */
+  fillPoints(points: PointLike[]): this {
+    for (const pt of points) this.point(pt.x, pt.y);
+    return this;
+  }
+
+  /**
+   * Sampled rather than taken as the full circle: an arc is usually a partial
+   * sweep, and boxing it as a whole circle would inflate the footprint of
+   * anything that used one for a rim or a lip.
+   */
+  arc(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): this {
+    const SAMPLES = 16;
+    const sweep = endAngle - startAngle;
+    for (let i = 0; i <= SAMPLES; i++) {
+      const a = startAngle + (sweep * i) / SAMPLES;
+      this.point(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+    }
+    return this;
+  }
 }

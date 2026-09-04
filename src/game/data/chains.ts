@@ -129,7 +129,12 @@ export const WATER_CHAIN: ChainDef = {
 export const DECAGON_CHAIN: ChainDef = {
   typeId: 'decagon',
   tiers: [
-    { tier: 1, key: 'decagon', label: 'Decagon', color: 0x8f7ad6 }
+    // Light for a violet, on purpose. Everything in this family - the solid,
+    // the five pieces and the machine - takes its ramp from this one colour,
+    // and a mid violet's shaded end lands too close to the dark board for a
+    // 40px piece to read. Starting the ramp higher fixes all three at once
+    // rather than patching each drawing's tones separately.
+    { tier: 1, key: 'decagon', label: 'Decagon', color: 0xb0a0ea }
   ]
 };
 

@@ -21,6 +21,18 @@ import type { MaterialLighting } from '../ui/Theme';
 function drawDecagonPiece(g: Phaser.GameObjects.Graphics, tier: number, s: number, p: MaterialLighting): void {
   const SIDES = 10;
   const start = -Math.PI / 2 + Math.PI / SIDES;
+
+  /**
+   * Facet tone with a FLOOR under it.
+   *
+   * Mapping a normal straight into `toneForNormal` sends every facet turned
+   * away from the key to the very bottom of the ramp, which on this family's
+   * mid-violet is near black - so half of every piece disappeared into a dark
+   * board. Compressing the range into 0.42-1 keeps the facets separated from
+   * each other while keeping all of them visible, which is what shading is
+   * for on a piece this small.
+   */
+  const tone = (lit: number): number => toneForNormal(p, 0.5 + 0.5 * Math.min(1, Math.max(0, lit)));
   const ringPoints = (radius: number): Phaser.Geom.Point[] => {
     const pts: Phaser.Geom.Point[] = [];
     for (let i = 0; i < SIDES; i++) {
@@ -38,7 +50,7 @@ function drawDecagonPiece(g: Phaser.GameObjects.Graphics, tier: number, s: numbe
       new Phaser.Geom.Point(cx + w * 0.34, cy - h / 2),
       new Phaser.Geom.Point(cx + w / 2, cy + h / 2)
     ];
-    g.fillStyle(toneForNormal(p, lit), 1);
+    g.fillStyle(tone(lit), 1);
     g.fillPoints(pts, true);
     g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.9);
     g.strokePoints(pts, true);
@@ -46,26 +58,29 @@ function drawDecagonPiece(g: Phaser.GameObjects.Graphics, tier: number, s: numbe
     g.lineBetween(cx - w * 0.3, cy - h / 2 + 1.5, cx + w * 0.3, cy - h / 2 + 1.5);
   };
 
+  // Sized against the generic family pieces, which span about 1.24s across
+  // their base plate. These were topping out at 0.92s - visibly the smallest
+  // pieces in the game while being the rarest.
   if (tier === 1) {
-    facet(0, 0, s * 0.5, s * 0.34, 0.85);
+    facet(0, 0, s * 0.78, s * 0.52, 0.95);
     return;
   }
 
   if (tier === 2) {
     // Two facets, hinged at an angle - the first thing that reads as joined.
-    facet(-s * 0.14, s * 0.04, s * 0.42, s * 0.3, 0.9);
-    facet(s * 0.16, -s * 0.06, s * 0.42, s * 0.3, 0.55);
+    facet(-s * 0.2, s * 0.06, s * 0.6, s * 0.44, 1);
+    facet(s * 0.22, -s * 0.08, s * 0.6, s * 0.44, 0.55);
     return;
   }
 
   if (tier === 3) {
     // The frame: the full ten-sided outline, empty in the middle.
-    const outer = ringPoints(s * 0.42);
-    const inner = ringPoints(s * 0.3);
+    const outer = ringPoints(s * 0.6);
+    const inner = ringPoints(s * 0.43);
     for (let i = 0; i < SIDES; i++) {
       const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
       const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
-      g.fillStyle(toneForNormal(p, lit), 1);
+      g.fillStyle(tone(lit), 1);
       g.fillPoints([outer[i], outer[(i + 1) % SIDES], inner[(i + 1) % SIDES], inner[i]], true);
     }
     g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.9);
@@ -76,40 +91,40 @@ function drawDecagonPiece(g: Phaser.GameObjects.Graphics, tier: number, s: numbe
 
   if (tier === 4) {
     // The core: the frame with a driven hub seated in it.
-    const outer = ringPoints(s * 0.42);
-    g.fillStyle(p.base, 0.5);
+    const outer = ringPoints(s * 0.6);
+    g.fillStyle(p.base, 0.85);
     g.fillPoints(outer, true);
     g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.9);
     g.strokePoints(outer, true);
     g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
-    g.fillCircle(0, 0, s * 0.2);
+    g.fillCircle(0, 0, s * 0.28);
     g.lineStyle(Math.max(1, s * 0.018), p.dark, 0.9);
-    g.strokeCircle(0, 0, s * 0.2);
+    g.strokeCircle(0, 0, s * 0.28);
     // Spokes out to the rim, so the hub reads as driving the ring.
     g.lineStyle(Math.max(1, s * 0.022), p.light, 0.8);
     for (let i = 0; i < 5; i++) {
       const a = start + (i / 5) * Math.PI * 2;
-      g.lineBetween(Math.cos(a) * s * 0.2, Math.sin(a) * s * 0.2, Math.cos(a) * s * 0.4, Math.sin(a) * s * 0.4);
+      g.lineBetween(Math.cos(a) * s * 0.28, Math.sin(a) * s * 0.28, Math.cos(a) * s * 0.58, Math.sin(a) * s * 0.58);
     }
     return;
   }
 
   // Tier 5, the housing: the whole assembly closed up, one merge from a
   // working machine.
-  const outer = ringPoints(s * 0.46);
-  const inner = ringPoints(s * 0.34);
+  const outer = ringPoints(s * 0.64);
+  const inner = ringPoints(s * 0.46);
   g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
   g.fillPoints(outer, true);
   for (let i = 0; i < SIDES; i++) {
     const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
     const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
-    g.fillStyle(toneForNormal(p, lit), 1);
+    g.fillStyle(tone(lit), 1);
     g.fillPoints([outer[i], outer[(i + 1) % SIDES], inner[(i + 1) % SIDES], inner[i]], true);
   }
   g.fillStyle(p.dark, 1);
-  g.fillCircle(0, 0, s * 0.16);
-  g.fillStyle(p.highlight, 0.85);
-  g.fillCircle(0, -s * 0.03, s * 0.09);
+  g.fillCircle(0, 0, s * 0.22);
+  g.fillStyle(p.highlight, 0.9);
+  g.fillCircle(0, -s * 0.04, s * 0.13);
   g.lineStyle(Math.max(1.2, s * 0.022), p.dark, 0.9);
   g.strokePoints(outer, true);
 }
@@ -120,8 +135,20 @@ export function drawSpawnerPieceIcon(
   tier: number,
   size: number
 ): void {
-  const base = getTierDef(typeId, Math.min(tier + 1, 9))?.color ?? Theme.panelAlt;
-  const p = materialLighting(base, Math.min(tier + 1, 9));
+  // Falls back to the family's TIER 1 colour before falling back to grey.
+  // The Decagon's chain is one tier long, so asking it for tier 2-6 returns
+  // nothing and every one of its five pieces was drawn in `panelAlt` - a dead
+  // grey-brown, which is why they were almost invisible on a dark board.
+  // Same fault, same fix, as the Decagon machine's palette.
+  const base = getTierDef(typeId, Math.min(tier + 1, 9))?.color
+    ?? getTierDef(typeId, 1)?.color
+    ?? Theme.panelAlt;
+  // Contrast climbs with the piece tier, but a one-tier family has no tier to
+  // climb, so it is given a mid-ramp value that keeps its facets separated.
+  // 4 rather than 5 for a one-tier family: the contrast argument sets how far
+  // the ramp spreads, and a wide spread on a single mid-violet drops its dark
+  // end past where a small piece can still be read.
+  const p = materialLighting(base, getTierDef(typeId, 2) ? Math.min(tier + 1, 9) : 4);
   // The Decagon is assembled from FIVE pieces rather than four, so the clamp
   // has to know the family it is clamping for.
   const t = Phaser.Math.Clamp(tier, 1, typeId === 'decagon' ? 5 : 4);

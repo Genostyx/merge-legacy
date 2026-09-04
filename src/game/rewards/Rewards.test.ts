@@ -399,3 +399,17 @@ describe('decagon meter', () => {
     expect(vaultPercent).toBeLessThan(8);
   });
 });
+
+describe('decagon piece drops', () => {
+  const pieces = (level: number) =>
+    cratePayload(rollCrate('gold', level, seq([0.0])))
+      .filter((entry) => entry.kind === 'spawner-piece' && entry.typeId === 'decagon');
+
+  it('drops nothing before level 10', () => {
+    expect(pieces(9)).toHaveLength(0);
+  });
+
+  it('drops from level 10 on', () => {
+    expect(pieces(10).length).toBeGreaterThan(0);
+  });
+});

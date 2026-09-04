@@ -2295,8 +2295,11 @@ export class BoardScene extends Phaser.Scene {
             break;
           }
           // Water already releases one stored item on its own one-second
-          // timer. Auto-tapping it here gave it a second production pass.
-          if (dispenser.spawner.typeId === 'water') continue;
+          // timer, so auto-tapping it normally hands it a second production
+          // pass. The one exception is an EMPTY ENERGY BAR: every other source
+          // is unusable at zero energy and water costs none, so tapping it is
+          // the only work left to do rather than a double dip.
+          if (dispenser.spawner.typeId === 'water' && this.energy.current > 0) continue;
           if (this.grid.emptyCells().length === 0 || dispenser.spawner.charges <= 0) continue;
           if (!canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) continue;
         } else if (dispenser instanceof ResourceProducerView) {
@@ -2321,7 +2324,13 @@ export class BoardScene extends Phaser.Scene {
       if (view instanceof SpawnerView) return view.spawner.tier;
       return Number.POSITIVE_INFINITY;
     };
+    // The SPLITTER is excluded. `canMergeViews` reports a splitter against any
+    // unlocked tier-2+ item as a legal pairing - which it is, for a player who
+    // chose to spend it - but it is a one-shot tool, not a merge. Left in, the
+    // auto merge saw a permanently "mergeable" pair and fed the player's
+    // splitter the first item it found, every time one was on the board.
     const entries = [...this.views.entries()]
+      .filter(([, view]) => !(view instanceof SplitterView))
       .sort(([, a], [, b]) => mergeTier(a) - mergeTier(b));
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
@@ -3303,6 +3312,29 @@ ${familyTierLabel(typeId, tier)}`
    * How many required items the board is still short, summed across lines.
    * Zero means the stage can be built.
    */
+  /**
+   * Shuts the project panel completely and hands the board back.
+   *
+   * Extracted because a reward CANNOT be watched while this panel is open:
+   * opening it hides every board object under depth 3000, and a crate created
+   * behind it is hidden by that same sweep, so its flight animation plays on
+   * an invisible object and is over before the player sees the board again.
+   * The BUILD button already closed the panel before its reward fired, which
+   * is the only reason hand-in rewards looked right and furniture rewards did
+   * not.
+   */
+  private closeProjectPanel(): void {
+    this.restoreBoardAfterRoom();
+    // Reopening builds a fresh RoomView3D, so the current one must be
+    // disposed or its canvas stays in the DOM forever.
+    this.roomView?.dispose();
+    this.roomView = null;
+    this.projectOverlay?.destroy(true);
+    this.projectOverlay = null;
+    this.projectFooterRefresh = null;
+    this.modalOpen = false;
+  }
+
   /** Puts the board back after the full-screen room panel closes. */
   private restoreBoardAfterRoom(): void {
     for (const obj of this.roomHiddenForPanel) {
@@ -3384,6 +3416,10 @@ ${familyTierLabel(typeId, tier)}`
     this.builtPieces.add(piece.key);
     this.roomView?.setBuilt(this.builtPieces);
     if (this.projectStageFurnished(piece.stage)) {
+      // The purchase that FINISHES a stage closes the panel before paying.
+      // There is nothing left to buy in that stage, and the reward has to
+      // land on a board the player can actually see - see closeProjectPanel.
+      this.closeProjectPanel();
       this.time.delayedCall(0, () => {
         this.grantFurnishReward(piece.stage, from);
         this.updateCurrencyText();
@@ -4155,15 +4191,7 @@ ${rewardLine}`,
         return;
       }
       confirm.destroy(true);
-      // Reopening the panel builds a fresh RoomView3D, so the current one must
-      // be disposed or its canvas stays in the DOM forever.
-      this.restoreBoardAfterRoom();
-      this.roomView?.dispose();
-      this.roomView = null;
-      this.projectOverlay?.destroy(true);
-      this.projectOverlay = null;
-      this.projectFooterRefresh = null;
-      this.modalOpen = false;
+      this.closeProjectPanel();
     });
     confirm.add([dim, panel, title, detail, cancel.bg, cancel.text, cancel.zone, build.bg, build.text, build.zone]);
     this.projectOverlay.add(confirm);
@@ -6594,14 +6622,18 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         content.bringToTop(label);
       }
 
-      if (enabled) {
-        const zone = this.add.zone(cx, top + h / 2, w, h).setInteractive({ useHandCursor: true });
-        zone.on('pointerup', () => this.time.delayedCall(0, () => {
-          if (!wasTap()) return;
-          onBuy(cx, top + h / 2);
-        }));
-        content.add(zone);
-      }
+      // The hit zone is built WHETHER OR NOT the card looks buyable, exactly
+      // as an offer slot's is. Creating it only when affordable meant a card
+      // the player could not use swallowed the tap silently - and any
+      // disagreement between what dims a card and what enables its zone showed
+      // up as a card that simply refused to respond, with nothing on screen
+      // explaining it.
+      const zone = this.add.zone(cx, top + h / 2, w, h).setInteractive({ useHandCursor: true });
+      zone.on('pointerup', () => this.time.delayedCall(0, () => {
+        if (!wasTap()) return;
+        onBuy(cx, top + h / 2);
+      }));
+      content.add(zone);
     };
 
     /** Lays a set of shelf cards across the panel on the offer row's grid. */
@@ -6661,9 +6693,31 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
           buyable,
           false,
           (bx, by) => {
+            // The refusal has to be said INSIDE the panel. `buySupplyCrate`
+            // writes its reasons to the action tray, which lives at the bottom
+            // of the board - behind the shop - so a player tapping a crate got
+            // a card that did nothing and an explanation they could not see.
+            // The offer slots have always used the shop's own notice line;
+            // this is that, for the same three gates the purchase enforces.
+            const now = Date.now();
+            const price = supplyCratePrice(offer, playerLevel(this.orderState));
+            if (this.economy.coins < price) {
+              this.reopenShop({ text: `NOT ENOUGH CREDITS  ·  NEEDS ${price.toLocaleString()}`, error: true });
+              return;
+            }
+            if (!supplyCrateReady(this.supplyCooldownUntil, now)) {
+              this.reopenShop({
+                text: `RESTOCKING  ·  NEXT CRATE IN ${formatCrateWait(supplyCooldownRemaining(this.supplyCooldownUntil, now))}`,
+                error: true
+              });
+              return;
+            }
+            if (!this.firstFreeCellInReadingOrder()) {
+              this.reopenShop({ text: 'BOARD FULL  ·  MAKE SPACE FIRST', error: true });
+              return;
+            }
             // Bought from this card, so the crate flies from here. Close on
-            // success so the flight is visible; stay open on failure so the
-            // reason stays readable.
+            // success so the flight is visible.
             if (this.buySupplyCrate(offer, { x: bx, y: by })) this.closeShop();
             else this.reopenShop(null);
           }
@@ -8250,7 +8304,16 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         dailyStrip.lineStyle(isActive ? 2 : 1, isActive ? accent : Theme.borderOnDark, isActive ? 1 : 0.9);
         dailyStrip.strokePoints(points, true);
 
-        const centerX = x + width / 2 + (index > 0 ? 2 : 0);
+        // Same centring the daily menu's tabs use, and for the same reason:
+        // a middle tab is notched on BOTH sides so it is symmetric and wants
+        // no offset, while the two end tabs are lopsided. The old flat
+        // `index > 0 ? 2 : 0` pushed all four right-hand tabs across.
+        const centerX = x + width / 2 + (index === 0 ? -7 / 4 : index === 4 ? 7 / 4 : 0);
+        // Vertically centred in the band the day label and the value line
+        // leave: the label sits at +10 and reaches +16, the value sits at
+        // +63 and starts at +57, so the free space runs +16 to +57 and its
+        // middle is +36.
+        const iconY = dailyStripY + 36;
         dailyDayLabels[index].setPosition(centerX, dailyStripY + 10)
           .setColor(hex(isActive ? accent : Theme.textOnDarkMuted));
         dailyIcons[index].clear().setScale(1).setAlpha(isClaimed ? 0.5 : 1);
@@ -8263,17 +8326,19 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         const STRIP_CRATE = 36 / CRATE_DRAWN.width;
         if (index === 0) {
           dailyCoin.setVisible(reward.kind === 'credits')
-            .setPosition(centerX, dailyStripY + 36)
+            .setPosition(centerX, iconY)
             .setAlpha(isClaimed ? 0.5 : 1);
         } else if (index === 1) {
           for (const part of dailyPair) {
             part.setVisible(reward.kind === 'credits')
-              .setPosition(centerX + part.getData('ox'), dailyStripY + 34 + part.getData('oy'))
+              // Lifted by the pair's own midpoint, so the PAIR is centred
+              // rather than its first coin.
+              .setPosition(centerX + part.getData('ox'), iconY - 4.4 + part.getData('oy'))
               .setAlpha(isClaimed ? 0.5 : part.isTinted ? 0.2 : 1);
           }
         }
         if (reward.kind !== 'credits') {
-          dailyIcons[index].setPosition(centerX, dailyStripY + 37);
+          dailyIcons[index].setPosition(centerX, iconY);
           drawCrate(dailyIcons[index], STRIP_CRATE, reward.tier);
         }
         // A day that has not opened yet shows '?' rather than a number. Its
@@ -8678,7 +8743,15 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       plate.strokePoints(points, true);
       tab.add(plate);
 
-      tab.add(this.add.text(index === 0 ? -2 : 2, -tabH / 2 + 14, index === 4 ? 'DAY 5+' : `DAY ${index + 1}`, {
+      // HORIZONTAL CENTRING, from the tab's real shape rather than a flat
+      // nudge. A middle tab is notched on BOTH sides, so it is symmetric and
+      // wants no offset at all; only the two end tabs are lopsided - the
+      // first is flat on its left and notched on its right, so its mass sits
+      // left of the geometric centre, and the last is the mirror of that.
+      // The old `index === 0 ? -2 : 2` pushed all three middle tabs right for
+      // no reason.
+      const nudge = index === 0 ? -NOTCH / 4 : index === 4 ? NOTCH / 4 : 0;
+      tab.add(this.add.text(nudge, -tabH / 2 + 14, index === 4 ? 'DAY 5+' : `DAY ${index + 1}`, {
         resolution: textResolution,
         fontFamily: Theme.fontHeading, fontSize: '11px', fontStyle: 'bold',
         color: hex(isActive ? accent : Theme.textOnDarkMuted)
@@ -8687,22 +8760,30 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       // `drawCrate`'s `s` is NOT its drawn size - the front face is a
       // fraction of it - so a crate is asked for through CRATE_DRAWN. It
       // centres itself, so there is no offset to apply.
-      const iconX = index === 0 ? -2 : 2;
+      const iconX = nudge;
+      // Vertically centred in the band the label and the value line leave
+      // behind. The label sits at -44 and reaches -37; the value sits at +42
+      // and starts at +33; so the free space runs -37 to +33 and its middle
+      // is -2. The art was pinned at -4 to -12 and rode high in every tab.
+      const iconY = -2;
       if (reward.kind === 'credits') {
         // Day 1 is the single Credit - the family's tier 1, which is the SVG
         // mark rather than a drawn silhouette - and day 2 is the Credit Stack,
         // tier 3. One coin against a stack is the whole statement.
         if (index === 0) {
-          const coin = currencyIcon(this, 'credit', 38).setPosition(iconX, -6);
+          const coin = currencyIcon(this, 'credit', 38).setPosition(iconX, iconY);
           if (isClaimed) coin.setAlpha(0.45);
           tab.add(coin);
         } else {
           // Twin Credits, the family's tier 2 - the same pair the board draws,
           // through the shared cluster so there is one definition of what a
           // pair of coins looks like.
+          // The cluster's marks carry their own downward offsets - +8 and +4
+          // at this box size - so the pair is lifted by their midpoint to put
+          // the PAIR's centre on the line, not the first coin's.
           for (const { art, gloss } of buildCurrencyCluster(this, 'credit', 2, DAILY_ICON * 1.35)) {
             for (const part of [art, gloss]) {
-              part.setPosition(part.x + iconX, part.y - 12);
+              part.setPosition(part.x + iconX, part.y + iconY - 6.2);
               if (isClaimed) part.setAlpha(part.alpha * 0.45);
               tab.add(part);
             }
@@ -8710,7 +8791,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         }
       } else {
         const crate = this.add.graphics()
-          .setPosition(iconX, -4)
+          .setPosition(iconX, iconY)
           .setAlpha(isClaimed ? 0.45 : 1);
         drawCrate(crate, CRATE_ART, reward.tier);
         tab.add(crate);
@@ -8728,7 +8809,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         : reward.kind !== 'credits' ? ''
           : unopened ? '?' : String(reward.credits);
       if (valueLine) {
-        tab.add(this.add.text(index === 0 ? -2 : 2, tabH / 2 - 16, valueLine, {
+        tab.add(this.add.text(nudge, tabH / 2 - 16, valueLine, {
           resolution: textResolution,
           fontFamily: valueLine === '✓' ? Theme.fontHeading : Theme.fontNumeric,
           fontSize: '14px', fontStyle: 'bold',
@@ -9198,7 +9279,12 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       await Promise.all([view.playMergeOutAndDestroy(), targetView.playMergeOutAndDestroy()]);
       this.views.delete(targetKey);
 
-      const color = getTierDef(view.typeId, Math.min(view.tier + 1, 9))?.color ?? Theme.accentAmber;
+      // Tier 1 as the second fallback, before amber: a one-tier family like
+      // the Decagon has no tier+1 to look up, so its merge burst came out in
+      // the generic accent instead of its own colour.
+      const color = getTierDef(view.typeId, Math.min(view.tier + 1, 9))?.color
+        ?? getTierDef(view.typeId, 1)?.color
+        ?? Theme.accentAmber;
       burstParticles(this, worldTarget.x, worldTarget.y, color, Math.min(view.tier + 1, 5));
       // The Decagon takes five piece tiers, not four, so the tier that
       // promotes into a source is a per-family number rather than a constant.

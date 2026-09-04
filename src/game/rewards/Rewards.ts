@@ -535,6 +535,8 @@ function rollNormalChestEntry(
  * week apart. That is the number to move first if it turns out to be too
  * common or too rare in play.
  */
+export const DECAGON_MIN_LEVEL = 10;
+
 const DECAGON_PIECE_CHANCE: Partial<Record<CrateTier, number>> = {
   bronze: 0.05,
   silver: 0.05,
@@ -585,7 +587,11 @@ function rollChestPayload(tier: CrateTier, level: number, rng: () => number, unl
   // player an extra cell instead, which is the currency this whole family is
   // priced in anyway. Rolling last also leaves every existing crate's random
   // sequence untouched, so the approved piece-rate numbers still hold.
-  const decagonChance = DECAGON_PIECE_CHANCE[tier] ?? 0;
+  // Gated to level 10. Before that a player is still learning the three
+  // ordinary families and building their first sources; a machine that eats
+  // ten board cells at once is not a thing to hand someone whose board is
+  // already the constraint.
+  const decagonChance = level >= DECAGON_MIN_LEVEL ? (DECAGON_PIECE_CHANCE[tier] ?? 0) : 0;
   for (let i = 0; i < count; i++) {
     if (rng() < decagonChance) {
       out.push({ kind: 'spawner-piece', typeId: 'decagon', tier: rollDecagonPieceTier(rng) });
