@@ -373,14 +373,18 @@ describe('order queue', () => {
   });
 
   it('reports player XP progress within the current level', () => {
+    // Derived from the curve rather than hardcoded: the totals doubled once
+    // already, and a literal here just breaks the next time they move.
     const state = createDefaultOrderState();
-    state.totalXp = 150;
+    const into = 50;
+    state.totalXp = xpForLevel(2) + into;
+    const required = xpForLevel(3) - xpForLevel(2);
     expect(playerXpProgress(state)).toEqual({
       level: 2,
-      current: 50,
-      required: 200,
-      remaining: 150,
-      total: 150
+      current: into,
+      required,
+      remaining: required - into,
+      total: state.totalXp
     });
   });
 

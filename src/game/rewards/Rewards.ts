@@ -591,7 +591,7 @@ function rollNormalChestEntry(
  * week apart. That is the number to move first if it turns out to be too
  * common or too rare in play.
  */
-export const DECAGON_MIN_LEVEL = 5;
+export const DECAGON_MIN_LEVEL = 10;
 
 /**
  * Chance per slot of a DECAGON piece, worked backwards from one anchor: a

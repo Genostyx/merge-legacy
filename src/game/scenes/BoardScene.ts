@@ -50,7 +50,6 @@ import {
   advanceOrder,
   playerLevel,
   playerXpProgress,
-  xpForMergeTier
 } from '../levels/Orders';
 import type { OrderState, OrderDef, OrderProgressSource } from '../levels/Orders';
 import {
@@ -1373,6 +1372,14 @@ export class BoardScene extends Phaser.Scene {
           [fromKey, targetKey] = [targetKey, fromKey];
           [fromView, targetView] = [targetView, fromView];
         }
+        // STALE VIEWS ARE SKIPPED. `entries` is a snapshot, and a lot can
+        // destroy a view between taking it and using it - a crate flight
+        // landing, a payout consuming cells, a source being emptied. Merging
+        // a destroyed view means tweening an object whose scene is gone,
+        // which throws from inside this async step.
+        if (!fromView.active || !targetView.active) continue;
+        if (this.views.get(fromKey) !== fromView || this.views.get(targetKey) !== targetView) continue;
+
         const [fromCol, fromRow] = fromKey.split(',').map(Number);
         const [targetCol, targetRow] = targetKey.split(',').map(Number);
         const fromCell = { col: fromCol, row: fromRow };
@@ -1384,7 +1391,23 @@ export class BoardScene extends Phaser.Scene {
         this.dragActive = true;
         this.dragFromCell = fromCell;
         this.dragStartPointer = this.cellToWorld(fromCell);
-        await this.onPointerUp({ x: target.x, y: target.y } as Phaser.Input.Pointer);
+        // AND IF IT THROWS ANYWAY, THE GAME MUST NOT LOCK.
+        //
+        // `onPointerUp` sets `inputLocked` while a merge animates and clears
+        // it at the end. An exception in between skipped that clear, and
+        // because nothing else ever resets the flag the board kept rendering
+        // while ignoring every tap - the whole screen frozen, permanently,
+        // with no error visible to the player. The drag flags stranded the
+        // same way, which also stopped the auto merge dead.
+        try {
+          await this.onPointerUp({ x: target.x, y: target.y } as Phaser.Input.Pointer);
+        } catch (error) {
+          console.error('[auto-merge] step failed; releasing input', error);
+          this.inputLocked = false;
+        } finally {
+          this.draggingView = null;
+          this.dragActive = false;
+        }
         return;
       }
     }

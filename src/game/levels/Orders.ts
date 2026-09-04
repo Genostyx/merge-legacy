@@ -499,8 +499,47 @@ export function xpForMergeTier(resultTier: number): number {
   return MERGE_XP_BY_RESULT_TIER[Math.max(1, Math.min(MERGE_XP_BY_RESULT_TIER.length, resultTier)) - 1];
 }
 
+/**
+ * WATER PAYS ALMOST NOTHING, and only from tier 6 up.
+ *
+ * Water was the fastest progression in the game. It ran the same merge-XP
+ * table as everything else on a HALF divisor, which came to 1.88 XP per
+ * tier-1 item against wood's 2.25 - near parity, for a source that costs no
+ * Energy and refills once a second. A tier-5 water source produces 3,600
+ * items an hour, so a player tapping nothing else earned ~6,750 XP an hour
+ * and reached level 30 in about six hours of it.
+ *
+ * Halving could never fix that, because the low tiers are the flood: one
+ * tier-12 takes 1,024 tier-2 merges, and a divisor still leaves each of them
+ * paying the 1 XP floor. So the low tiers pay ZERO instead, and the rest pay
+ * a flat rate that does not climb with tier - 0.25 XP per item, an 87% cut.
+ * Water is a production utility; the progression should come from what you
+ * do with it.
+ */
+export const WATER_XP_MIN_TIER = 6;
+export const WATER_MERGE_XP = 4;
+
+/** Merge XP for a completed merge, by family and the tier it produced. */
+export function xpForMerge(typeId: string, resultTier: number): number {
+  if (typeId === 'water') return resultTier >= WATER_XP_MIN_TIER ? WATER_MERGE_XP : 0;
+  return xpForMergeTier(resultTier);
+}
+
+/**
+ * DOUBLED from `50 * level * (level - 1)`.
+ *
+ * Levels arrived too quickly for the content behind them, and the water cut
+ * above slows the fastest earner without changing how far apart the rungs
+ * are. This does that: the same quadratic shape, twice the cost, so the
+ * pacing changes at every level rather than only late.
+ *
+ * Existing saves do NOT lose a level to it. `totalXp` is remapped once on
+ * load (see saveGame's XP curve migration) to the point on the new curve
+ * that holds the same level and the same progress into it - the player keeps
+ * where they are, and only what comes next costs more.
+ */
 export function xpForLevel(level: number): number {
-  return 50 * level * (level - 1);
+  return 100 * level * (level - 1);
 }
 
 /** Level for a raw XP total, without needing an OrderState. */

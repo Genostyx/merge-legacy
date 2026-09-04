@@ -20,7 +20,7 @@ import { CrateView } from '../../objects/CrateView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
 import { getTierDef, isCurrencyChain, spawnerPieceTiers } from '../../data/chains';
 import { burstParticles, shakeForTier } from '../../fx/MergeFx';
-import { playerLevel, syncOrderSlots, xpForMergeTier } from '../../levels/Orders';
+import { playerLevel, syncOrderSlots, xpForMerge } from '../../levels/Orders';
 import { MAX_DISPENSER_TIER, mergeDispenserPair } from '../../dispensers/Dispensers';
 
 /**
@@ -256,8 +256,9 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
 
     burstParticles(scene, worldTarget.x, worldTarget.y, nextDef.color, nextDef.tier);
     shakeForTier(scene, nextDef.tier);
-    const normalMergeXp = xpForMergeTier(nextDef.tier);
-    const mergeXp = view.typeId === 'water' ? Math.max(1, Math.floor(normalMergeXp / 2)) : normalMergeXp;
+    // The water rule lives in Orders.ts with the table it overrides, not as a
+    // divisor at the call site - see xpForMerge.
+    const mergeXp = xpForMerge(view.typeId, nextDef.tier);
     const levelBefore = playerLevel(scene.orderState);
 
     scene.placeTile(targetCell, view.typeId, nextDef.tier, true);

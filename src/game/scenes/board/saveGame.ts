@@ -20,7 +20,7 @@ import { createDefaultEconomy } from '../../economy/Economy';
 import type { EconomyState } from '../../economy/Economy';
 import { normalizeEnergy } from '../../economy/Energy';
 import type { EnergyState } from '../../economy/Energy';
-import { normalizeOrderState } from '../../levels/Orders';
+import { normalizeOrderState, levelForXp, xpForLevel } from '../../levels/Orders';
 import type { OrderState } from '../../levels/Orders';
 import { normalizeShopState, refreshIfDue } from '../../shop/Shop';
 import type { ShopState } from '../../shop/Shop';
@@ -67,6 +67,40 @@ export function migrateLockedItemsToWiderBoard(scene: BoardScene, savedCells: (G
     const [target] = targets.splice(index, 1);
     scene.placeLockedTile(target.pos, lock.typeId, lock.tier);
   }
+}
+
+/**
+ * Carries a save across the doubling of `xpForLevel`.
+ *
+ * The curve went from `50 * L * (L - 1)` to `100 * L * (L - 1)`, and level is
+ * DERIVED from `totalXp` rather than stored - so without this a returning
+ * player would simply find themselves several levels lower, having lost
+ * nothing but seeing the badge fall. The owner's rule is that pacing is what
+ * changes, not where anyone already is: they got there, so it is theirs.
+ *
+ * So the XP is moved rather than the level: the player's level and their
+ * exact progress through it are measured on the OLD curve, then rewritten as
+ * the point on the new one that reads identically. The bar does not move.
+ * Only the next level costs more.
+ *
+ * A new save is untouched - 0 XP is level 1 with 0 progress on either curve.
+ */
+function remapXpToDoubledCurve(scene: BoardScene): void {
+  const OLD_XP_FOR_LEVEL = (level: number): number => 50 * level * (level - 1);
+  const total = scene.orderState.totalXp;
+  if (!Number.isFinite(total) || total <= 0) return;
+
+  let level = 1;
+  while (OLD_XP_FOR_LEVEL(level + 1) <= total) level++;
+  const oldStart = OLD_XP_FOR_LEVEL(level);
+  const oldSpan = OLD_XP_FOR_LEVEL(level + 1) - oldStart;
+  const progress = oldSpan > 0 ? (total - oldStart) / oldSpan : 0;
+
+  const newStart = xpForLevel(level);
+  const newSpan = xpForLevel(level + 1) - newStart;
+  scene.orderState.totalXp = Math.round(newStart + progress * newSpan);
+  // Belt and braces: the remap must never cost a level, whatever rounding does.
+  if (levelForXp(scene.orderState.totalXp) < level) scene.orderState.totalXp = xpForLevel(level);
 }
 
 export function loadOrSeed(scene: BoardScene): void {
@@ -177,6 +211,10 @@ export function loadOrSeed(scene: BoardScene): void {
       let saveMigration = false;
       const needsLockedBoardMigration = (parsed.boardVersion ?? 0) < 8;
       const needsBoardWidthMigration = (parsed.boardVersion ?? 0) < 9;
+      if ((parsed.boardVersion ?? 0) < 10) {
+        remapXpToDoubledCurve(scene);
+        saveMigration = true;
+      }
       let spawnerCount = 0;
       for (let row = 0; row < ROWS; row++) {
         for (let col = 0; col < COLS; col++) {
@@ -311,7 +349,7 @@ export function loadOrSeed(scene: BoardScene): void {
 
 export function saveState(scene: BoardScene): void {
   const payload = {
-    boardVersion: 9,
+    boardVersion: 10,
     grid: scene.grid.serialize(),
     economy: scene.economy,
     energy: scene.energy,

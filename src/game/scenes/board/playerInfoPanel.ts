@@ -141,7 +141,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   // The XP bar lives on the LEVEL row, not on a row of its own.
   //
   // No numbers on it, and no `TOTAL XP` or `N XP TO LEVEL` lines either.
-  // `xpForLevel` is `50 * level * (level - 1)`, so a player reading those
+  // `xpForLevel` is `100 * level * (level - 1)`, so a player reading those
   // figures watches the cost of a level climb from 200 to 4,400 - the bar
   // shows the same progress without spelling out a curve that only reads as
   // discouraging. Inlining it also frees the whole middle of the panel.

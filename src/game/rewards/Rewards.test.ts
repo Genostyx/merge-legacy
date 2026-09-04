@@ -18,6 +18,7 @@ import {
   dailyOfferLevel,
   feedDecagonMeter,
   decagonMeterReady,
+  DECAGON_MIN_LEVEL,
   rollDecagonPayout,
   DECAGON_PAYOUT_ITEMS,
   DECAGON_CRATE_QUOTA,
@@ -431,12 +432,14 @@ describe('decagon piece drops', () => {
     cratePayload(rollCrate('gold', level, seq([0.0])))
       .filter((entry) => entry.kind === 'spawner-piece' && entry.typeId === 'decagon');
 
-  it('drops nothing before level 5', () => {
-    expect(pieces(4)).toHaveLength(0);
+  // Pinned to the constant rather than to a literal, so moving the gate is
+  // one edit instead of two - it has already moved twice.
+  it('drops nothing below the gate', () => {
+    expect(pieces(DECAGON_MIN_LEVEL - 1)).toHaveLength(0);
   });
 
-  it('drops from level 5 on', () => {
-    expect(pieces(5).length).toBeGreaterThan(0);
+  it('drops from the gate on', () => {
+    expect(pieces(DECAGON_MIN_LEVEL).length).toBeGreaterThan(0);
   });
 });
 
