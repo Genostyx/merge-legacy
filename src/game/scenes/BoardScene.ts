@@ -222,6 +222,46 @@ import {
   toggleFullscreen,
 } from './board/config';
 import {
+  buildCurrencyChip as buildCurrencyChipExt
+} from './board/hudChrome';
+
+import {
+  buildEnergyChip as buildEnergyChipExt,
+  layoutHudChips as layoutHudChipsExt,
+  buildLevelBadge as buildLevelBadgeExt,
+  playLevelUpFlourish as playLevelUpFlourishExt,
+  updateLevelBadge as updateLevelBadgeExt,
+  buildShopIconButton as buildShopIconButtonExt,
+  buildProjectButton as buildProjectButtonExt,
+  refreshProjectButton as refreshProjectButtonExt,
+  buildInventoryButton as buildInventoryButtonExt,
+  buildAutoMergeButton as buildAutoMergeButtonExt,
+  updateCurrencyText as updateCurrencyTextExt,
+  updateEnergyText as updateEnergyTextExt
+} from './board/hudChrome';
+
+import {
+  applyBoardExpansionLocks as applyBoardExpansionLocksExt,
+  buildBoardExpansionLocks as buildBoardExpansionLocksExt,
+  refreshBoardExpansionLocks as refreshBoardExpansionLocksExt,
+  buyExpansionCell as buyExpansionCellExt,
+  expansionPrice as expansionPriceExt,
+  expansionRowEligible as expansionRowEligibleExt,
+  firstExpansionRowComplete as firstExpansionRowCompleteExt
+} from './board/boardExpansion';
+
+import {
+  buildForcedSpawnVault as buildForcedSpawnVaultExt,
+  refreshForcedSpawnVault as refreshForcedSpawnVaultExt,
+  drawForcedSpawnIcon as drawForcedSpawnIconExt,
+  hideBehindRoomPanel as hideBehindRoomPanelExt,
+  enqueueForcedSpawn as enqueueForcedSpawnExt,
+  tryReleaseVaultItem as tryReleaseVaultItemExt,
+  placeForcedSpawn as placeForcedSpawnExt,
+  vaultPosition as vaultPositionExt
+} from './board/boardVault';
+
+import {
   buildCrateMeter as buildCrateMeterExt,
   refreshCrateMeter as refreshCrateMeterExt,
   drawCrateMeterProgress as drawCrateMeterProgressExt,
@@ -329,10 +369,10 @@ export class BoardScene extends Phaser.Scene {
   boardOriginY = 0;
   contentTop = 0;
   boardExpansionUnlocked = new Set<string>();
-  private expansionLockViews = new Map<string, ExpansionLockView>();
-  private expansionRowLabels: Phaser.GameObjects.Text[] = [];
+  expansionLockViews = new Map<string, ExpansionLockView>();
+  expansionRowLabels: Phaser.GameObjects.Text[] = [];
 
-  private levelBadgeText!: Phaser.GameObjects.Text;
+  levelBadgeText!: Phaser.GameObjects.Text;
   /**
    * Level the badge is currently showing, so a rise can be spotted wherever
    * it comes from. 0 means "not drawn yet": the first paint after a load must
@@ -344,24 +384,24 @@ export class BoardScene extends Phaser.Scene {
    * the panel reopening every time the viewport changes.
    */
   private dailyMenuShown = false;
-  private levelBadgeShownLevel = 0;
+  levelBadgeShownLevel = 0;
   /**
    * The fraction the XP ring is currently DRAWN at, which trails the real
    * value while the fill animates. -1 means nothing has been drawn yet, so
    * the first paint after a scene build snaps rather than sweeping up from
    * zero.
    */
-  private levelXpRingDrawn = -1;
-  private levelXpRingTween: Phaser.Tweens.Tween | null = null;
-  private levelXpRing!: Phaser.GameObjects.Graphics;
-  private levelKeystone!: Phaser.GameObjects.Graphics;
-  private levelMilestoneDot!: Phaser.GameObjects.Graphics;
-  private levelMilestoneCount!: Phaser.GameObjects.Text;
+  levelXpRingDrawn = -1;
+  levelXpRingTween: Phaser.Tweens.Tween | null = null;
+  levelXpRing!: Phaser.GameObjects.Graphics;
+  levelKeystone!: Phaser.GameObjects.Graphics;
+  levelMilestoneDot!: Phaser.GameObjects.Graphics;
+  levelMilestoneCount!: Phaser.GameObjects.Text;
 
   economy: EconomyState = createDefaultEconomy();
-  private coinText!: Phaser.GameObjects.Text;
+  coinText!: Phaser.GameObjects.Text;
   gemText!: Phaser.GameObjects.Text;
-  private energyText!: Phaser.GameObjects.Text;
+  energyText!: Phaser.GameObjects.Text;
   energy: EnergyState = createDefaultEnergy();
 
   orderState: OrderState = createDefaultOrderState();
@@ -398,7 +438,7 @@ export class BoardScene extends Phaser.Scene {
   /** Where a board drag began, to tell a tap from a move that returned home. */
   private dragStartPointer = { x: 0, y: 0 };
   overInventory = false;
-  private hudChips: HudChip[] = [];
+  hudChips: HudChip[] = [];
   rewards: RewardsState = createDefaultRewardsState();
   crateMeterBar!: Phaser.GameObjects.Graphics;
   crateMeterProgress!: Phaser.GameObjects.Graphics;
@@ -470,10 +510,10 @@ export class BoardScene extends Phaser.Scene {
     return Math.max(this.supplyCooldownByTier[tier] ?? 0, 0);
   }
   projectOverlay: Phaser.GameObjects.Container | null = null;
-  private projectButtonBg!: Phaser.GameObjects.Graphics;
-  private projectButtonIcon!: Phaser.GameObjects.Graphics;
-  private projectButtonZone!: Phaser.GameObjects.Zone;
-  private projectBadge!: Phaser.GameObjects.Graphics;
+  projectButtonBg!: Phaser.GameObjects.Graphics;
+  projectButtonIcon!: Phaser.GameObjects.Graphics;
+  projectButtonZone!: Phaser.GameObjects.Zone;
+  projectBadge!: Phaser.GameObjects.Graphics;
   /** Per-colour segments of the meter label, rebuilt on every refresh. */
   inventory: InventoryState = createDefaultInventory();
   collection: CollectionState = createDefaultCollectionState();
@@ -481,17 +521,17 @@ export class BoardScene extends Phaser.Scene {
   mainCollectionBadge!: Phaser.GameObjects.Text;
   mainCollectionPanel!: Phaser.GameObjects.Graphics;
   invBg!: Phaser.GameObjects.Graphics;
-  private invLabel!: Phaser.GameObjects.Text;
+  invLabel!: Phaser.GameObjects.Text;
   invIcon!: Phaser.GameObjects.Graphics;
   invZone!: Phaser.GameObjects.Zone;
   /** Infinite, automatic LIFO holding area for rewards that require a board cell. */
   forcedSpawnVault: ForcedSpawn[] = [];
-  private vaultBg!: Phaser.GameObjects.Graphics;
-  private vaultIcon!: Phaser.GameObjects.Graphics;
-  private vaultCountDot!: Phaser.GameObjects.Graphics;
-  private vaultCount!: Phaser.GameObjects.Text;
-  private vaultDeliveryPending = false;
-  private vaultInboundPending = 0;
+  vaultBg!: Phaser.GameObjects.Graphics;
+  vaultIcon!: Phaser.GameObjects.Graphics;
+  vaultCountDot!: Phaser.GameObjects.Graphics;
+  vaultCount!: Phaser.GameObjects.Text;
+  vaultDeliveryPending = false;
+  vaultInboundPending = 0;
 
   shopState: ShopState = createDefaultShopState();
   shopOverlay: Phaser.GameObjects.Container | null = null;
@@ -547,8 +587,8 @@ export class BoardScene extends Phaser.Scene {
   private sellButtonCenterY = 0;
   inputLocked = false;
   modalOpen = false;
-  private autoMergeEnabled = localStorage.getItem(AUTO_MERGE_KEY) === 'true';
-  private autoMergeText!: Phaser.GameObjects.Text;
+  autoMergeEnabled = localStorage.getItem(AUTO_MERGE_KEY) === 'true';
+  autoMergeText!: Phaser.GameObjects.Text;
   private autoDispenserCursor = 0;
   private nextAutoDispenserAt = 0;
   private deadlockOverlay: Phaser.GameObjects.Container | null = null;
@@ -1123,7 +1163,7 @@ export class BoardScene extends Phaser.Scene {
     }
   }
 
-  private cellToWorld(pos: GridPosition): { x: number; y: number } {
+  cellToWorld(pos: GridPosition): { x: number; y: number } {
     return {
       x: this.boardOriginX + pos.col * this.cellSize + this.cellSize / 2,
       y: this.boardOriginY + pos.row * this.cellSize + this.cellSize / 2
@@ -1141,224 +1181,13 @@ export class BoardScene extends Phaser.Scene {
     return `${pos.col},${pos.row}`;
   }
 
-  private expansionPrice(pos: GridPosition): number {
-    return pos.row === EXPANSION_ROW_ONE
-      ? EXPANSION_ROW_ONE_PRICES[pos.col]
-      : EXPANSION_ROW_TWO_PRICES[pos.col];
-  }
 
-  private expansionRowEligible(row: number): boolean {
-    if (row === EXPANSION_ROW_ONE) {
-      return !this.grid.serialize().some((cells) => cells.some((cell) => cell?.kind === 'locked-item'));
-    }
-    return row === EXPANSION_ROW_TWO
-      && this.firstExpansionRowComplete()
-      && playerLevel(this.orderState) >= EXPANSION_ROW_TWO_LEVEL;
-  }
 
-  private firstExpansionRowComplete(): boolean {
-    return EXPANSION_ROW_ONE_PRICES.every((_, col) => !this.grid.isBlocked({ col, row: EXPANSION_ROW_ONE }));
-  }
 
-  /** Applies saved expansion purchases as real unavailable grid cells. */
-  applyBoardExpansionLocks(savedCells?: (GridCellData | null)[][]): void {
-    for (const row of [EXPANSION_ROW_ONE, EXPANSION_ROW_TWO]) {
-      for (let col = 0; col < COLS; col++) {
-        const pos = { col, row };
-        const key = this.keyOf(pos);
-        // A short-lived nine-row development save may already contain an
-        // owned object here from before row locking existed. Preserve it and
-        // treat that particular cell as purchased rather than deleting it.
-        if (savedCells?.[row]?.[col]) this.boardExpansionUnlocked.add(key);
-        if (!this.boardExpansionUnlocked.has(key)) this.grid.block(pos);
-      }
-    }
-  }
 
-  private buildBoardExpansionLocks(): void {
-    for (const row of [EXPANSION_ROW_ONE, EXPANSION_ROW_TWO]) {
-      const worldY = this.cellToWorld({ col: 0, row }).y;
-      const label = this.add.text(
-        this.boardOriginX + COLS * this.cellSize / 2,
-        worldY,
-        row === EXPANSION_ROW_ONE
-          ? 'CLEAR ALL LOCKED ITEMS TO UNLOCK ROW'
-          : `UNLOCKS AT LEVEL ${EXPANSION_ROW_TWO_LEVEL}`,
-        {
-          resolution: textResolution,
-          fontFamily: Theme.fontMono,
-          fontSize: '10px',
-          fontStyle: 'bold',
-          color: hex(Theme.textOnDark),
-          backgroundColor: 'rgba(0,0,0,0.58)',
-          padding: { x: 3, y: 1 },
-          align: 'center'
-        }
-      ).setOrigin(0.5).setDepth(6)
-        .setStroke(hex(Theme.textOnDark), 1)
-        .setShadow(0, 0, '#000000', 3, true, true);
-      this.expansionRowLabels.push(label);
 
-      for (let col = 0; col < COLS; col++) {
-        const pos = { col, row };
-        if (!this.grid.isBlocked(pos)) continue;
-        const world = this.cellToWorld(pos);
-        const bg = this.add.graphics().setDepth(4);
-        const price = this.add.text(world.x, world.y, '', {
-          resolution: textResolution,
-          fontFamily: Theme.fontNumeric,
-          fontSize: '11px',
-          fontStyle: 'bold',
-          color: hex(Theme.currencyCredit),
-          align: 'center'
-        }).setOrigin(0, 0.5).setDepth(6);
-        const mark = this.add.image(0, 0, 'currency-coin').setDepth(6);
-        const zone = this.add.zone(world.x, world.y, this.cellSize, this.cellSize)
-          .setDepth(7)
-          .setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', () => this.buyExpansionCell(pos));
-        this.expansionLockViews.set(this.keyOf(pos), { bg, price, mark, zone });
-      }
-    }
-    this.refreshBoardExpansionLocks();
-  }
 
-  private refreshBoardExpansionLocks(): void {
-    for (const [key, view] of this.expansionLockViews) {
-      const [col, row] = key.split(',').map(Number);
-      const eligible = this.expansionRowEligible(row);
-      const concealed = row === EXPANSION_ROW_TWO && !this.firstExpansionRowComplete();
-      const world = this.cellToWorld({ col, row });
-      const left = world.x - this.cellSize / 2;
-      const top = world.y - this.cellSize / 2;
-      view.bg.clear();
-      this.drawExpansionMetalTile(view.bg, left - 0.5, top - 0.5, this.cellSize + 1, eligible, concealed);
-      const showPrice = eligible && !concealed && !this.roomPanelOpen;
-      const rawPrice = this.expansionPrice({ col, row });
-      const priceLabel = rawPrice >= 1_000 ? `${rawPrice / 1_000}k` : String(rawPrice);
-      view.price.setVisible(showPrice).setText(priceLabel);
-      view.mark.setVisible(showPrice);
-      if (showPrice) {
-        const glyphSize = 15;
-        const gap = 3;
-        const groupW = view.price.width + gap + glyphSize;
-        const startX = world.x - groupW / 2;
-        view.price.setPosition(startX, world.y);
-        applyCurrencyIcon(view.mark, 'credit', glyphSize);
-        view.mark.setPosition(startX + view.price.width + gap + glyphSize / 2, world.y);
-      }
-    }
-    this.expansionRowLabels.forEach((label, index) => {
-      const row = index === 0 ? EXPANSION_ROW_ONE : EXPANSION_ROW_TWO;
-      const visible = (
-        !this.expansionRowEligible(row)
-        && !(row === EXPANSION_ROW_TWO && !this.firstExpansionRowComplete())
-      );
-      // Hiding the board for the room panel sets visible=false on everything
-      // below depth 3000, but this refresher runs afterwards and would set it
-      // straight back - which is how the locked-row caption reappeared over
-      // the 3D room.
-      label.setVisible(visible && !this.roomPanelOpen);
-    });
-  }
 
-  /** Front-facing square steel access plate used by every locked board cell. */
-  private drawExpansionMetalTile(
-    g: Phaser.GameObjects.Graphics, left: number, top: number, size: number, eligible: boolean, concealed: boolean
-  ): void {
-    const edge = concealed ? 0x4b5053 : eligible ? 0x858f95 : 0x737c81;
-    const face = concealed ? 0x5a6063 : eligible ? 0xaeb7bb : 0x969fa3;
-    const faceDark = concealed ? 0x393e41 : eligible ? 0x717b81 : 0x626b70;
-    const recess = concealed ? 0x414649 : eligible ? 0x808a90 : 0x70797e;
-    const outline = 0x20252a;
-    const inset = Math.max(5, size * 0.105);
-    const boltInset = Math.max(5, size * 0.115);
-    const boltR = Math.max(1.8, size * 0.043);
-
-    // Full square footprint makes neighboring plates meet with no exposed
-    // board between them. The dark bottom band suggests thickness without
-    // rotating the tile into an isometric diamond.
-    g.fillStyle(outline, 1);
-    g.fillRect(left, top, size, size);
-    g.fillStyle(faceDark, 1);
-    g.fillRect(left + 1, top + 3, size - 2, size - 4);
-    g.fillStyle(face, 1);
-    g.fillRect(left + 2, top + 2, size - 4, size - 7);
-    // Broad top-light-to-shadow treatment shared by both locked rows. The
-    // first row keeps its brighter palette; only the lighting progression
-    // matches the concealed row beneath it.
-    g.fillStyle(0xffffff, concealed ? 0.07 : 0.12);
-    g.fillRect(left + 2, top + 2, size - 4, size * 0.28);
-    g.fillStyle(0x000000, concealed ? 0.13 : 0.09);
-    g.fillRect(left + 2, top + size * 0.62, size - 4, size * 0.28);
-
-    // Square recessed center with a restrained curved highlight across its
-    // upper half, echoing the reference's polished inset at board scale.
-    g.fillStyle(outline, 0.95);
-    g.fillRoundedRect(left + inset - 1, top + inset - 1, size - inset * 2 + 2, size - inset * 2 + 2, 3);
-    g.fillStyle(recess, 1);
-    g.fillRoundedRect(left + inset, top + inset, size - inset * 2, size - inset * 2, 2);
-    g.fillStyle(0xd7dde0, eligible ? 0.24 : 0.17);
-    g.fillRoundedRect(left + inset + 2, top + inset + 2, size - inset * 2 - 4, Math.max(3, size * 0.12), 2);
-
-    // Crisp top/left light and bottom/right shadow form the outer bevel.
-    g.lineStyle(1, 0xe7ecee, eligible ? 0.78 : 0.58);
-    g.lineBetween(left + 2, top + 2, left + size - 2, top + 2);
-    g.lineBetween(left + 2, top + 2, left + 2, top + size - 5);
-    g.lineStyle(1, outline, 0.95);
-    g.lineBetween(left + size - 2, top + 2, left + size - 2, top + size - 2);
-    g.lineBetween(left + 1, top + size - 2, left + size - 1, top + size - 2);
-
-    // Four small fasteners remain readable even at the 52px phone size.
-    for (const [x, y] of [
-      [left + boltInset, top + boltInset],
-      [left + size - boltInset, top + boltInset],
-      [left + boltInset, top + size - boltInset],
-      [left + size - boltInset, top + size - boltInset]
-    ]) {
-      g.fillStyle(outline, 1);
-      g.fillCircle(x, y, boltR + 1);
-      g.fillStyle(edge, 1);
-      g.fillCircle(x, y, boltR);
-      g.fillStyle(0xf0f3f4, 0.72);
-      g.fillCircle(x - boltR * 0.25, y - boltR * 0.3, Math.max(0.8, boltR * 0.42));
-    }
-  }
-
-  private buyExpansionCell(pos: GridPosition): void {
-    if (!this.grid.isBlocked(pos)) return;
-    if (!this.expansionRowEligible(pos.row)) {
-      this.refreshActionTray(
-        pos.row === EXPANSION_ROW_ONE
-          ? 'ROW LOCKED\nCLEAR ALL LOCKED BOARD ITEMS FIRST'
-          : !this.firstExpansionRowComplete()
-            ? 'ROW LOCKED\nUNLOCK THE ROW ABOVE FIRST'
-          : 'ROW LOCKED\nREACH PLAYER LEVEL 50 FIRST'
-      );
-      return;
-    }
-    const cost = this.expansionPrice(pos);
-    if (!spendCoinsGeneric(this.economy, cost)) {
-      this.refreshActionTray(`NOT ENOUGH CREDITS\nTHIS BOARD TILE COSTS ${cost.toLocaleString()}`);
-      return;
-    }
-
-    this.grid.unblock(pos);
-    this.boardExpansionUnlocked.add(this.keyOf(pos));
-    const view = this.expansionLockViews.get(this.keyOf(pos));
-    view?.bg.destroy();
-    view?.price.destroy();
-    view?.mark.destroy();
-    view?.zone.destroy();
-    this.expansionLockViews.delete(this.keyOf(pos));
-    this.updateCurrencyText();
-    this.refreshProjectButton();
-    this.saveState();
-    this.tryReleaseVaultItem();
-    this.tryDeliverMeterGold();
-    this.checkDeadlock();
-    this.refreshActionTray(`BOARD TILE UNLOCKED\n${cost.toLocaleString()} CREDITS SPENT`);
-  }
 
   /**
    * The empty cell(s) closest to `from` (Chebyshev distance - a ring
@@ -1378,493 +1207,19 @@ export class BoardScene extends Phaser.Scene {
 
   // ---- Header chrome ----
 
-  /** Energy chip: value only; tapping opens the live countdown and refill details. */
-  private buildEnergyChip(y: number): HudChip {
-    const s = this.hudScale;
-    const accent = Theme.currencyEnergy;
-    const numberColor = materialLighting(accent, 4).light;
-    const bg = this.add.graphics().setDepth(20);
-    const iconSize = currencyBoxFor('energy', 17 * s);
-    const iconShadow = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
-    const icon = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setDepth(22);
-    const iconGloss = this.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
-    iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
-    const text = this.add.text(0, 0, '', {
-      fontFamily: Theme.fontNumeric,
-      fontSize: `${10.5 * s}px`,
-      fontStyle: 'bold',
-      color: hex(numberColor),
-      resolution: textResolution
-    }).setOrigin(1, 0.5).setDepth(24);
-    const hit = this.add.rectangle(0, 0, 10, 20, 0x000000, 0).setDepth(25).setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => this.time.delayedCall(0, () => this.offerEnergyRefill()));
-
-    const naturalWidth = (): number => Math.max(38 * s, Math.ceil(text.width) + 24 * s);
-    const draw = (rightX: number, w: number): void => {
-      const h = 16 * s;
-      const x = rightX - w;
-
-      bg.clear();
-      // Darker than the surfaces around it, so the bar reads as a recess the
-      // number sits in rather than as another raised panel.
-      const chipLighting = materialLighting(Theme.bgElevated, 2);
-      bg.fillGradientStyle(chipLighting.light, chipLighting.base, chipLighting.dark, chipLighting.shadow, 1);
-      bg.fillRoundedRect(x, y, w, h, Theme.radiusChip);
-      const edgeLighting = materialLighting(accent, 6);
-      bg.lineGradientStyle(
-        Theme.borderWidth + 0.5,
-        edgeLighting.highlight, edgeLighting.light,
-        edgeLighting.dark, edgeLighting.shadow, 0.95
-      );
-      bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
-
-      iconShadow.setPosition(x + 8 * s, y + h / 2 + 1.25 * s);
-      icon.setPosition(x + 8 * s, y + h / 2);
-      iconGloss.setPosition(x + 8 * s, y + h / 2);
-
-      text.setScale(Math.min(1, Math.max(0.72, (w - 22 * s) / Math.max(1, text.width))), 1);
-      text.setPosition(x + w - 6 * s, y + h / 2);
-      hit.setPosition(x + w / 2, y + h / 2).setSize(w, h);
-      hit.input!.hitArea.setTo(0, 0, w, h);
-    };
-
-    return { text, naturalWidth, draw };
-  }
-
-  /**
-   * Packs the currency chips right-to-left from the shop button.
-   *
-   * Re-run whenever a value changes, because each chip is now sized to its
-   * own number - so gaining a digit has to push its neighbours along rather
-   * than overlap them.
-   */
-  private layoutHudChips(): void {
-    if (!this.hudChips.length) return;
-    // Equal insets keep the three slot centres symmetrical across the board.
-    // 70, not 44: the settings gear occupies the 26px immediately left of the
-    // shop button now, and chips pack right-to-left from this inset - without
-    // widening it a long credit balance would run underneath the gear.
-    const right = this.headerRight - 70 * this.hudScale;
-    // The level badge ends at roughly boardOriginX + 37. Seven more pixels
-    // form a protected gap that resource balances may never enter.
-    const left = this.boardOriginX + 44 * this.hudScale;
-    const available = Math.max(1, right - left);
-    const gap = (available >= 180 * this.hudScale ? 8 : 3) * this.hudScale;
-    const widths = this.hudChips.map((chip) => chip.naturalWidth());
-    const gapTotal = gap * (widths.length - 1);
-    const naturalTotal = widths.reduce((sum, width) => sum + width, 0);
-    if (naturalTotal + gapTotal > available) {
-      const scale = Math.max(0, (available - gapTotal) / naturalTotal);
-      for (let i = 0; i < widths.length; i++) widths[i] *= scale;
-    }
-    const total = widths.reduce((sum, width) => sum + width, 0) + gapTotal;
-    let cursor = (left + right + total) / 2;
-    for (let i = 0; i < this.hudChips.length; i++) {
-      this.hudChips[i].draw(cursor, widths[i]);
-      cursor -= widths[i] + gap;
-    }
-  }
-
-  /** A bordered icon+number badge for a currency, right-aligned at `rightX`. */
-  private buildCurrencyChip(
-    y: number,
-    accent: number,
-    glyph: 'coin' | 'gem',
-    onTap: () => void
-  ): HudChip {
-    const s = this.hudScale;
-    const numberColor = materialLighting(accent, 4).light;
-    const bg = this.add.graphics().setDepth(20);
-    const iconKey = glyph === 'coin' ? 'currency-coin' : 'currency-gem';
-    // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
-    // why that is not the same as a 24px display size.
-    const iconSize = currencyBoxFor(glyph === 'coin' ? 'credit' : 'gem', 15 * s);
-    const iconShadow = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
-    const icon = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
-    const iconGloss = this.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
-    iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
-    const text = this.add.text(0, 0, '', {
-      fontFamily: Theme.fontNumeric,
-      fontSize: `${11 * s}px`,
-      fontStyle: 'bold',
-      color: hex(numberColor),
-      resolution: textResolution
-    }).setOrigin(1, 0.5).setDepth(24);
-    const hit = this.add.rectangle(0, 0, 10, 28, 0x000000, 0).setDepth(25).setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => this.time.delayedCall(0, onTap));
-
-    const naturalWidth = (): number => Math.max(38 * s, Math.ceil(text.width) + 24 * s);
-    const draw = (rightX: number, w: number): void => {
-      const h = 16 * s;
-      const x = rightX - w;
-
-      bg.clear();
-      // Darker than the surfaces around it, so the bar reads as a recess the
-      // number sits in rather than as another raised panel.
-      const chipLighting = materialLighting(Theme.bgElevated, 2);
-      bg.fillGradientStyle(chipLighting.light, chipLighting.base, chipLighting.dark, chipLighting.shadow, 1);
-      bg.fillRoundedRect(x, y, w, h, Theme.radiusChip);
-      const edgeLighting = materialLighting(accent, 6);
-      bg.lineGradientStyle(
-        Theme.borderWidth + 0.5,
-        edgeLighting.highlight, edgeLighting.light,
-        edgeLighting.dark, edgeLighting.shadow, 0.95
-      );
-      bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
-
-      iconShadow.setPosition(x + 9 * s, y + h / 2 + 1.25 * s);
-      icon.setPosition(x + 9 * s, y + h / 2);
-      iconGloss.setPosition(x + 9 * s, y + h / 2);
-
-      text.setScale(Math.min(1, Math.max(0.72, (w - 22 * s) / Math.max(1, text.width))), 1);
-      text.setPosition(x + w - 6 * s, y + h / 2);
-      hit.setPosition(x + w / 2, y + h / 2).setSize(w, 28);
-      hit.input!.hitArea.setTo(0, 0, w, 28);
-    };
-
-    return { text, naturalWidth, draw };
-  }
-
-  /**
-   * Fills a rect with the Blender-rendered button texture, scaled uniformly
-   * (cover-fit, same technique as the scene background photo) and clipped
-   * to a rounded-rect mask - NOT 9-sliced. The source has a continuous
-   * diagonal reflection streak across its whole surface, so stretching a
-   * sliced middle region to fill different button widths warps that streak;
-   * uniform scaling avoids any axis-independent distortion.
-   */
-  private buildTexturedButtonFill(x: number, y: number, w: number, h: number, container?: Phaser.GameObjects.Container, radius: number = Theme.radiusChip): Phaser.GameObjects.Image {
-    const img = this.add.image(x + w / 2, y + h / 2, 'uiButtonTest');
-    const scale = Math.max(w / img.width, h / img.height);
-    img.setScale(scale);
-
-    const maskShape = this.add.graphics().setVisible(false);
-    maskShape.fillStyle(0xffffff, 1);
-    maskShape.fillRoundedRect(x, y, w, h, radius);
-    img.setMask(maskShape.createGeometryMask());
-
-    if (container) {
-      container.add(img);
-      container.add(maskShape);
-    }
-    return img;
-  }
-
-  /** Layered vector badge showing the player's current level number. */
-  private buildLevelBadge(cx: number, cy: number): Phaser.GameObjects.Text {
-    const s = this.hudScale;
-    const radius = 15 * s;
-    const lighting = materialLighting(Theme.playerLevel, 5);
-    // A rebuild (resize, fullscreen) makes a fresh Graphics, so the trailing
-    // value is dropped and any tween still writing to the OLD object is
-    // killed - that write would land on a destroyed display object.
-    this.levelXpRingTween?.remove();
-    this.levelXpRingTween = null;
-    this.levelXpRingDrawn = -1;
-    this.levelXpRing = this.add.graphics();
-    const badgePoints = (centerY: number, outer: number, inner: number): Phaser.Geom.Point[] => {
-      const points: Phaser.Geom.Point[] = [];
-      for (let i = 0; i < 16; i++) {
-        const angle = -Math.PI / 2 + i * Math.PI / 8;
-        const r = i % 2 === 0 ? outer : inner;
-        points.push(new Phaser.Geom.Point(cx + Math.cos(angle) * r, centerY + Math.sin(angle) * r));
-      }
-      return points;
-    };
-    const bg = this.add.graphics();
-    bg.fillStyle(lighting.shadow, 0.9);
-    bg.fillPoints(badgePoints(cy + 2 * s, radius + s, radius - 3 * s), true);
-    bg.fillStyle(lighting.light, 1);
-    bg.fillPoints(badgePoints(cy, radius, radius - 4 * s), true);
-    bg.fillGradientStyle(lighting.light, lighting.highlight, Theme.playerLevel, lighting.dark, 1);
-    bg.fillCircle(cx, cy, radius - 4 * s);
-    bg.lineStyle(1.5 * s, lighting.highlight, 0.75);
-    bg.strokeCircle(cx, cy, radius - 5 * s);
-    bg.fillStyle(lighting.highlight, 0.3);
-    bg.fillEllipse(cx - 3 * s, cy - 5 * s, 8 * s, 4 * s);
-    this.levelKeystone = this.add.graphics();
-
-    const text = this.add.text(cx, cy, '1', {
-      fontFamily: Theme.fontNumeric,
-      fontSize: `${13 * s}px`,
-      fontStyle: 'bold',
-      color: hex(Theme.textOnDark),
-      resolution: textResolution
-    }).setOrigin(0.5).setShadow(0, 1, '#000000', 1, true, false);
-    const hit = this.add.circle(cx, cy, radius, 0x000000, 0)
-      .setInteractive({ useHandCursor: true });
-    hit.on('pointerdown', () => this.time.delayedCall(0, () => this.openPlayerInfo()));
-
-    // Persistent but quiet ready marker. It belongs to the level badge
-    // because milestone crates are earned by levelling and claimed from the
-    // profile; no second header currency or detached inbox is introduced.
-    this.levelMilestoneDot = this.add.graphics();
-    this.levelMilestoneCount = this.add.text(cx + 11 * s, cy - 11 * s, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontNumeric,
-      fontSize: `${8 * s}px`,
-      fontStyle: 'bold',
-      color: hex(Theme.bg)
-    }).setOrigin(0.5).setDepth(3);
-    return text;
-  }
-
-  /**
-   * Level-up flourish on the profile badge.
-   *
-   * Two rings leaving the badge and a punch on the number. The rings are the
-   * XP ring's own radius and colour, so the effect reads as the ring the
-   * player just filled letting go, rather than as a sparkle arriving from
-   * nowhere - and the second, thinner one trails the first so it lands as a
-   * pulse rather than as one hard flash.
-   *
-   * Drawn as throwaway Graphics rather than by animating the badge itself:
-   * the badge's dome, rim, ring and keystone are separate objects at absolute
-   * coordinates, so there is nothing to scale as a unit without rebuilding it
-   * into a container.
-   */
-  private playLevelUpFlourish(): void {
-    const s = this.hudScale;
-    const x = this.levelBadgeText.x;
-    const y = this.levelBadgeText.y + 1.5;
-    const lighting = materialLighting(Theme.playerLevel, 5);
-
-    for (const wave of [
-      { delay: 0, width: 3, tone: lighting.highlight, scale: 2.05, duration: 520 },
-      { delay: 110, width: 1.5, tone: lighting.light, scale: 2.5, duration: 620 }
-    ]) {
-      const ring = this.add.graphics().setPosition(x, y).setDepth(3).setAlpha(0);
-      ring.lineStyle(wave.width, wave.tone, 1);
-      // Centred on the graphics' own origin so `scale` grows it from the
-      // badge rather than sliding it across the header.
-      ring.strokeCircle(0, 0, 16.5 * s);
-      this.tweens.add({
-        targets: ring,
-        alpha: { from: 0.9, to: 0 },
-        scale: { from: 1, to: wave.scale },
-        delay: wave.delay,
-        duration: wave.duration,
-        ease: 'Cubic.easeOut',
-        onComplete: () => ring.destroy()
-      });
-    }
-
-    // Killed first: levelling twice in quick succession - which a milestone
-    // crate's own XP can cause - would otherwise leave the number stranded
-    // mid-punch at whatever scale the interrupted tween had reached.
-    this.tweens.killTweensOf(this.levelBadgeText);
-    this.levelBadgeText.setScale(1);
-    this.tweens.add({
-      targets: this.levelBadgeText,
-      scale: 1.4,
-      duration: 150,
-      hold: 70,
-      yoyo: true,
-      ease: 'Back.easeOut',
-      onComplete: () => this.levelBadgeText.setScale(1)
-    });
-  }
-
-  /** One paint of the ring at a given fill fraction. */
-  private drawLevelXpRing(progress: number, ringX: number, ringY: number, s: number): void {
-    const gap = Phaser.Math.DegToRad(38);
-    const start = -Math.PI / 2 + gap / 2;
-    const span = Math.PI * 2 - gap;
-    this.levelXpRingDrawn = progress;
-    this.levelXpRing.clear();
-    this.levelXpRing.lineStyle(5 * s, Theme.borderOnDark, 0.8);
-    this.levelXpRing.beginPath();
-    this.levelXpRing.arc(ringX, ringY, 16.5 * s, start, start + span);
-    this.levelXpRing.strokePath();
-    if (progress > 0) {
-      const xpLighting = materialLighting(Theme.currencyXp, 5);
-      const segments = Math.max(2, Math.ceil(36 * progress));
-      for (let i = 0; i < segments; i++) {
-        const from = start + span * progress * (i / segments);
-        const to = start + span * progress * ((i + 1) / segments);
-        this.levelXpRing.lineStyle(5 * s, toneAt(xpLighting, 0.25 + 0.75 * (i / Math.max(1, segments - 1))), 1);
-        this.levelXpRing.beginPath();
-        this.levelXpRing.arc(ringX, ringY, 16.5 * s, from, to + 0.002);
-        this.levelXpRing.strokePath();
-      }
-    }
-  }
-
-  /**
-   * Sweeps the ring to its new fill instead of snapping. XP arrives in one
-   * lump when an order is delivered, and the ring jumping a quarter turn
-   * between frames read as a number changing rather than progress being
-   * made - the one place in the HUD where the player is meant to SEE the
-   * gain.
-   *
-   * A level-up runs as two legs: up to full, then round from empty to the
-   * remainder. Tweening straight to the smaller number would run the ring
-   * BACKWARDS through the level it just earned.
-   */
-  private animateLevelXpRing(target: number, ringX: number, ringY: number, s: number): void {
-    this.levelXpRingTween?.remove();
-    this.levelXpRingTween = null;
-    const from = this.levelXpRingDrawn;
-    if (from === target) return;
-
-    const sweep = (a: number, b: number, onDone?: () => void) => {
-      // Paced by DISTANCE, so a sliver of XP is a flick and a big delivery is
-      // a visible sweep, both at the same angular speed.
-      const duration = Phaser.Math.Clamp(Math.abs(b - a) * 900, 120, 700);
-      this.levelXpRingTween = this.tweens.addCounter({
-        from: a,
-        to: b,
-        duration,
-        ease: 'Sine.easeOut',
-        onUpdate: (tween) => this.drawLevelXpRing(tween.getValue() ?? b, ringX, ringY, s),
-        onComplete: () => {
-          this.drawLevelXpRing(b, ringX, ringY, s);
-          this.levelXpRingTween = null;
-          onDone?.();
-        }
-      });
-    };
-
-    if (target < from) sweep(from, 1, () => sweep(0, target));
-    else sweep(from, target);
-  }
-
-  updateLevelBadge(): void {
-    const s = this.hudScale;
-    const level = playerLevel(this.orderState);
-    this.levelBadgeText.setText(String(level));
-    // Detected here rather than at the order-completion call site, because
-    // XP also arrives from milestones, daily claims and discoveries - every
-    // one of which already routes through this method.
-    if (this.levelBadgeShownLevel !== 0 && level > this.levelBadgeShownLevel) {
-      this.playLevelUpFlourish();
-    }
-    this.levelBadgeShownLevel = level;
-    const xp = playerXpProgress(this.orderState);
-    const progress = Phaser.Math.Clamp(xp.current / xp.required, 0, 1);
-    const ringX = this.levelBadgeText.x;
-    const ringY = this.levelBadgeText.y + 1.5 * s;
-    this.drawLevelXpRing(this.levelXpRingDrawn < 0 ? progress : this.levelXpRingDrawn, ringX, ringY, s);
-    this.animateLevelXpRing(progress, ringX, ringY, s);
-    const capLighting = materialLighting(Theme.playerLevel, 5);
-    const keystone = [
-      new Phaser.Geom.Point(ringX - 7 * s, ringY - 20 * s),
-      new Phaser.Geom.Point(ringX + 7 * s, ringY - 20 * s),
-      new Phaser.Geom.Point(ringX + 5 * s, ringY - 13 * s),
-      new Phaser.Geom.Point(ringX - 5 * s, ringY - 13 * s)
-    ];
-    this.levelKeystone.clear();
-    // Shaded as horizontal slices rather than one flat fill. Graphics has no
-    // gradient fill for an arbitrary polygon - fillGradientStyle only reaches
-    // rects and triangles, and on a triangulated path it keys off vertex
-    // order, which for this trapezoid lands wherever the tessellator happens
-    // to cut it. Slicing the shape puts the ramp under our control.
-    //
-    // Lit at the top face, falling to a shadowed underside where the cap
-    // meets the ring: the same upper-left key light the dome, rim and XP
-    // ring below it are all shaded by. A flat cap was the one surface on
-    // this badge that read as a sticker sitting on the art.
-    const capTop = ringY - 20 * s;
-    const capBottom = ringY - 13 * s;
-    const capSlices = 9;
-    for (let i = 0; i < capSlices; i++) {
-      const t0 = i / capSlices;
-      const t1 = (i + 1) / capSlices;
-      const halfAt = (t: number) => (7 - 2 * t) * s;
-      const yAt = (t: number) => capTop + (capBottom - capTop) * t;
-      this.levelKeystone.fillStyle(toneAt(capLighting, 0.88 - 0.55 * ((t0 + t1) / 2)), 1);
-      this.levelKeystone.fillPoints([
-        new Phaser.Geom.Point(ringX - halfAt(t0), yAt(t0)),
-        new Phaser.Geom.Point(ringX + halfAt(t0), yAt(t0)),
-        // Half a pixel of overlap onto the next slice; butted edges leave
-        // hairline seams once the canvas is scaled by devicePixelRatio.
-        new Phaser.Geom.Point(ringX + halfAt(t1), yAt(t1) + 0.5),
-        new Phaser.Geom.Point(ringX - halfAt(t1), yAt(t1) + 0.5)
-      ], true);
-    }
-    this.levelKeystone.lineStyle(1, capLighting.highlight, 0.8);
-    this.levelKeystone.strokePoints(keystone, true);
-    const projectReady = this.projectStageReady();
-    const readyCount = (dailyAvailable(this.rewards, Date.now()) ? 1 : 0)
-      + unclaimedDiscoveryCount(this.collection)
-      + (projectReady ? 1 : 0);
-    this.refreshMainCollectionButton();
-    if (!this.levelMilestoneDot || !this.levelMilestoneCount) return;
-    this.levelMilestoneDot.clear();
-    this.levelMilestoneCount.setText('');
-    if (readyCount > 0) {
-      const x = this.levelBadgeText.x + 11 * s;
-      const y = this.levelBadgeText.y - 11 * s;
-      this.levelMilestoneDot.fillStyle(Theme.accentAmber, 1);
-      this.levelMilestoneDot.fillCircle(x, y, 6 * s);
-      this.levelMilestoneDot.lineStyle(1, Theme.textOnDark, 0.75);
-      this.levelMilestoneDot.strokeCircle(x, y, 6 * s);
-      this.levelMilestoneDot.setDepth(2);
-      this.levelMilestoneCount
-        .setPosition(x, y - 0.75)
-        .setText(readyCount > 9 ? '9+' : String(readyCount));
-    }
-  }
-
-  /** Layered vector storefront button, matching the board item's drawn-material treatment. */
-  private buildShopIconButton(cx: number, cy: number, onTap: () => void): void {
-    const s = this.hudScale;
-    const radius = 18;
-    const diameter = radius * 2;
-    const lighting = materialLighting(Theme.panelAlt, 4);
-    const icon = this.add.graphics();
-    icon.fillStyle(0x000000, 0.3);
-    icon.fillCircle(1, 2, radius);
-    icon.fillStyle(lighting.dark, 1);
-    icon.fillCircle(0, 0, radius);
-    icon.lineStyle(1.5, lighting.light, 0.9);
-    icon.strokeCircle(0, 0, radius - 1);
-    icon.fillStyle(lighting.highlight, 0.16);
-    icon.fillEllipse(-5, -8, 18, 8);
-
-    // Store body and window.
-    icon.fillStyle(Theme.textOnDarkMuted, 1);
-    icon.fillRoundedRect(-9, -3, 18, 13, 2);
-    icon.fillStyle(Theme.bgElevated, 1);
-    icon.fillRect(-6, 2, 5, 8);
-    icon.fillRect(2, 2, 5, 5);
-
-    // Striped awning gives the silhouette a clear "shop" read at icon size.
-    icon.fillStyle(Theme.textOnDark, 1);
-    icon.fillRoundedRect(-11, -9, 22, 7, 2);
-    icon.fillStyle(Theme.currencyCredit, 1);
-    icon.fillRect(-6, -9, 5, 7);
-    icon.fillRect(4, -9, 5, 7);
-    icon.lineStyle(1, lighting.shadow, 0.75);
-    icon.lineBetween(-11, -2, 11, -2);
-
-    this.add.container(cx, cy, [icon]).setScale(s);
-
-    const zone = this.add.zone(cx, cy, diameter * s, diameter * s).setInteractive({ useHandCursor: true });
-    zone.on('pointerdown', onTap);
-  }
 
 
 
 
-  private buildAutoMergeButton(): void {
-    this.autoMergeText = this.add.text(this.scale.width - 48, this.scale.height - 8, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontMono,
-      fontSize: '10px',
-      color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(1, 1).setAlpha(0.65).setDepth(10).setInteractive({ useHandCursor: true });
-    const refresh = (): void => {
-      this.autoMergeText.setText(`auto: ${this.autoMergeEnabled ? 'on' : 'off'}`)
-        .setColor(hex(this.autoMergeEnabled ? Theme.accentGreen : Theme.textOnDarkMuted));
-    };
-    refresh();
-    this.autoMergeText.on('pointerdown', () => {
-      this.autoMergeEnabled = !this.autoMergeEnabled;
-      localStorage.setItem(AUTO_MERGE_KEY, String(this.autoMergeEnabled));
-      refresh();
-    });
-  }
+
+
+
+
+
+
+
+
+
 
   /** Performs one legal merge through the same drop path used by the player. */
   private async runAutoMergeStep(): Promise<void> {
@@ -2075,46 +1430,6 @@ export class BoardScene extends Phaser.Scene {
 
 
 
-  private buildProjectButton(): void {
-    const { cy } = this.crateRingCentre();
-    const x = Math.max(22, this.boardOriginX - 24);
-    const s = 38;
-    this.projectButtonBg = this.add.graphics().setDepth(4);
-    this.projectButtonIcon = this.add.graphics().setPosition(x, cy).setDepth(5);
-    this.projectBadge = this.add.graphics().setDepth(6);
-    this.projectButtonZone = this.add.zone(x, cy, s, s).setDepth(7).setInteractive({ useHandCursor: true });
-    this.projectButtonZone.on('pointerdown', () => this.openProject());
-
-    this.projectButtonBg.fillStyle(Theme.bg, 0.94);
-    this.projectButtonBg.fillRoundedRect(x - s / 2, cy - s / 2, s, s, Theme.radiusChip);
-    this.projectButtonBg.lineStyle(1, Theme.borderOnDark, 1);
-    this.projectButtonBg.strokeRoundedRect(x - s / 2, cy - s / 2, s, s, Theme.radiusChip);
-
-    // Compact modern-house silhouette: concrete shell, glass opening, flat roof.
-    this.projectButtonIcon.fillStyle(0xb9c2c7, 1);
-    this.projectButtonIcon.fillRect(-12, -8, 24, 17);
-    this.projectButtonIcon.fillStyle(0x74858d, 1);
-    this.projectButtonIcon.fillRect(-14, -11, 28, 4);
-    this.projectButtonIcon.fillStyle(0x31454f, 1);
-    this.projectButtonIcon.fillRect(-7, -2, 7, 11);
-    this.projectButtonIcon.fillStyle(0x91a9b4, 0.85);
-    this.projectButtonIcon.fillRect(3, -3, 6, 6);
-    this.refreshProjectButton();
-  }
-
-  refreshProjectButton(): void {
-    if (!this.projectBadge || !this.projectButtonIcon) return;
-    const unlocked = playerLevel(this.orderState) >= 3;
-    this.projectButtonIcon.setAlpha(unlocked ? 1 : 0.38);
-    this.projectBadge.clear();
-    if (!this.projectStageReady()) return;
-    const { cy } = this.crateRingCentre();
-    const x = Math.max(22, this.boardOriginX - 24);
-    this.projectBadge.fillStyle(Theme.accentAmber, 1);
-    this.projectBadge.fillCircle(x + 15, cy - 15, 6);
-    this.projectBadge.lineStyle(1, Theme.bg, 1);
-    this.projectBadge.strokeCircle(x + 15, cy - 15, 6);
-  }
 
 
 
@@ -2130,209 +1445,15 @@ export class BoardScene extends Phaser.Scene {
 
 
 
-  /**
-   * INVENTORY button, bottom-left under the action tray. Always visible,
-   * unlike CRATES, because its slot count is information the player needs
-   * even when it is empty.
-   */
-  private buildInventoryButton(): void {
-    const x = this.boardOriginX;
-    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
-    this.invBg = this.add.graphics();
-    // Icon-only, like the SHOP button: the word was the least interesting
-    // thing on the screen and the case says it faster.
-    this.invLabel = this.add.text(0, 0, '', { fontSize: '1px' }).setVisible(false);
-    this.invIcon = this.add.graphics().setPosition(x + 21, y + 15.5);
-    this.invZone = this.add.zone(x + 21, y + 15.5, 42, 31).setInteractive({ useHandCursor: true });
-    this.invZone.on('pointerdown', () => this.showInventory());
-    this.refreshInventoryButton();
-  }
 
-  private vaultPosition(): { x: number; y: number } {
-    return {
-      x: this.boardOriginX + 21,
-      y: this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap + 50.5
-    };
-  }
 
-  /**
-   * A passive reward queue, not player storage. It appears only while a
-   * forced spawn is waiting, previews the next LIFO item, and never accepts
-   * taps or dragged board pieces.
-   */
-  private buildForcedSpawnVault(): void {
-    const { x, y } = this.vaultPosition();
-    this.vaultBg = this.add.graphics();
-    this.vaultIcon = this.add.graphics().setPosition(x, y);
-    this.vaultCountDot = this.add.graphics();
-    this.vaultCount = this.add.text(x + 17, y - 12, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontNumeric,
-      fontSize: '9px',
-      fontStyle: 'bold',
-      color: hex(Theme.bg)
-    }).setOrigin(0.5);
-    this.refreshForcedSpawnVault();
-  }
 
-  private refreshForcedSpawnVault(): void {
-    if (!this.vaultBg || !this.vaultIcon || !this.vaultCountDot || !this.vaultCount) return;
-    const next = this.forcedSpawnVault[this.forcedSpawnVault.length - 1];
-    const visible = Boolean(next);
-    this.vaultBg.setVisible(visible);
-    this.vaultIcon.setVisible(visible);
-    this.vaultCountDot.setVisible(visible);
-    this.vaultCount.setVisible(visible);
-    if (!next) return;
 
-    const { x, y } = this.vaultPosition();
-    this.vaultBg.clear();
-    this.vaultBg.fillStyle(Theme.bgElevated, 1);
-    this.vaultBg.fillRoundedRect(x - 21, y - 15.5, 42, 31, Theme.radiusChip);
-    this.vaultBg.lineStyle(Theme.borderWidth, Theme.accentAmber, 0.9);
-    this.vaultBg.strokeRoundedRect(x - 21, y - 15.5, 42, 31, Theme.radiusChip);
 
-    this.vaultIcon.clear().setPosition(x, y);
-    this.drawForcedSpawnIcon(this.vaultIcon, next, 28);
-    const countX = x + 17;
-    const countY = y - 12;
-    this.vaultCountDot.clear();
-    this.vaultCountDot.fillStyle(Theme.accentAmber, 1);
-    this.vaultCountDot.fillCircle(countX, countY, 7);
-    this.vaultCountDot.lineStyle(1, Theme.textOnDark, 0.75);
-    this.vaultCountDot.strokeCircle(countX, countY, 7);
-    this.vaultCount.setPosition(countX, countY - 0.75)
-      .setText(this.forcedSpawnVault.length > 9 ? '9+' : String(this.forcedSpawnVault.length));
-  }
 
-  private drawForcedSpawnIcon(g: Phaser.GameObjects.Graphics, spawn: ForcedSpawn, size: number): void {
-    if (spawn.kind === 'crate') drawCrate(g, size, spawn.tier);
-    else if (spawn.kind === 'splitter') drawSplitterIcon(g, size);
-    else if (spawn.kind === 'resource-producer') {
-      const typeId = RESOURCE_PRODUCERS[spawn.producerId].typeId;
-      const kind: CurrencyKind = typeId === 'currency-credit' ? 'credit' : typeId === 'currency-gem' ? 'gem' : 'energy';
-      drawCurrencyGlyph(g, kind, size, kind === 'credit' ? Theme.currencyCredit : kind === 'gem' ? Theme.currencyGem : Theme.currencyEnergy);
-    }
-    else if (spawn.kind === 'spawner') {
-      drawSourceBuilding(g, spawn.typeId, spawn.tier, size * 0.4, sourcePalette(spawn.typeId), true);
-    } else if (spawn.kind === 'spawner-piece') drawSpawnerPieceIcon(g, spawn.typeId, spawn.tier, size);
-    else {
-      const def = getTierDef(spawn.typeId, spawn.tier);
-      if (def) drawTierIcon(g, spawn.typeId, spawn.tier, size, materialLighting(def.color, def.tier));
-    }
-  }
 
-  /**
-   * Keeps a board object out of sight while the room panel is open.
-   *
-   * The panel hides the board by sweeping the display list ONCE, when it
-   * opens. Anything created afterwards - a crate delivered by a stage reward,
-   * for instance - was never swept, so it landed on top of the room and stayed
-   * there. Registering it with the same list hides it now and reveals it with
-   * everything else when the panel closes.
-   */
-  private hideBehindRoomPanel(view: Phaser.GameObjects.GameObject & { visible: boolean }): void {
-    if (!this.roomPanelOpen) return;
-    view.visible = false;
-    this.roomHiddenForPanel.push(view);
-  }
 
-  enqueueForcedSpawn(spawn: ForcedSpawn, from?: { x: number; y: number }): void {
-    const openCell = this.firstFreeCellInReadingOrder();
-    if (openCell) {
-      const view = this.placeForcedSpawn(openCell, spawn);
-      this.hideBehindRoomPanel(view);
-      const target = this.cellToWorld(openCell);
-      const origin = from ?? this.vaultPosition();
-      view.setPosition(origin.x, origin.y).setScale(0.72).setAlpha(0.35);
-      this.saveState();
-      this.tweens.add({
-        targets: view,
-        x: target.x,
-        y: target.y,
-        scale: 1,
-        alpha: 1,
-        duration: 430,
-        ease: 'Cubic.Out',
-        onComplete: () => {
-          this.refreshOrderBar();
-          this.checkDeadlock();
-        }
-      });
-      return;
-    }
 
-    this.forcedSpawnVault.push(spawn);
-    this.refreshForcedSpawnVault();
-    this.saveState();
-    if (!from) {
-      this.tryReleaseVaultItem();
-      return;
-    }
-
-    const destination = this.vaultPosition();
-    const flying = this.add.graphics().setDepth(3105).setPosition(from.x, from.y);
-    this.drawForcedSpawnIcon(flying, spawn, 42);
-    this.vaultInboundPending++;
-    this.tweens.add({
-      targets: flying,
-      x: destination.x,
-      y: destination.y,
-      scale: 0.62,
-      alpha: { from: 1, to: 0.75 },
-      duration: 430,
-      ease: 'Cubic.InOut',
-      onComplete: () => {
-        flying.destroy();
-        this.vaultInboundPending = Math.max(0, this.vaultInboundPending - 1);
-        this.refreshForcedSpawnVault();
-        this.tryReleaseVaultItem();
-      }
-    });
-  }
-
-  tryReleaseVaultItem(): boolean {
-    if (this.vaultDeliveryPending || this.vaultInboundPending > 0) return false;
-    const next = this.forcedSpawnVault[this.forcedSpawnVault.length - 1];
-    const spot = this.firstFreeCellInReadingOrder();
-    if (!next || !spot) return false;
-    if (next.kind === 'spawner' && !this.canSafelyDeliverSpawnerReward(next.typeId, next.tier)) return false;
-
-    this.forcedSpawnVault.pop();
-    const view = this.placeForcedSpawn(spot, next);
-
-    const target = this.cellToWorld(spot);
-    const from = this.vaultPosition();
-    view.setPosition(from.x, from.y).setScale(0.72).setAlpha(0.35);
-    this.vaultDeliveryPending = true;
-    this.refreshForcedSpawnVault();
-    this.saveState();
-    this.tweens.add({
-      targets: view,
-      x: target.x,
-      y: target.y,
-      scale: 1,
-      alpha: 1,
-      duration: 360,
-      ease: 'Cubic.Out',
-      onComplete: () => {
-        this.vaultDeliveryPending = false;
-        this.refreshOrderBar();
-        this.checkDeadlock();
-        this.tryReleaseVaultItem();
-      }
-    });
-    return true;
-  }
-
-  private placeForcedSpawn(spot: GridPosition, spawn: ForcedSpawn): BoardView {
-    if (spawn.kind === 'crate') return this.placeCrate(spot, spawn.tier, spawn.remaining, spawn.readyAt);
-    if (spawn.kind === 'splitter') return this.placeSplitter(spot, false);
-    if (spawn.kind === 'resource-producer') return this.placeResourceProducer(spot, spawn.producerId, spawn.remaining, false);
-    if (spawn.kind === 'spawner') return this.placeSpawner(spot, spawn.typeId, spawn.tier, false);
-    if (spawn.kind === 'spawner-piece') return this.placeSpawnerPiece(spot, spawn.typeId, spawn.tier, false);
-    return this.placeTile(spot, spawn.typeId, spawn.tier, false);
-  }
 
 
 
@@ -3088,33 +2209,14 @@ export class BoardScene extends Phaser.Scene {
    * The first-ever spawner of a family is always safe (nothing to merge it
    * with yet).
    */
-  private canSafelyDeliverSpawnerReward(typeId: string, tier: number): boolean {
+  canSafelyDeliverSpawnerReward(typeId: string, tier: number): boolean {
     if (tier !== 1) return true;
     const hasExistingSpawner = [...this.views.values()].some((v) => v instanceof SpawnerView && v.spawner.typeId === typeId);
     if (!hasExistingSpawner) return true;
     return !this.grid.hasLockedItem(typeId, 1);
   }
 
-  updateCurrencyText(): void {
-    // The chip's own icon glyph now carries the coin/gem meaning, so the
-    // number doesn't need a CR/GM prefix repeating it.
-    this.coinText.setText(formatHudValue(this.economy.coins));
-    this.gemText.setText(formatHudValue(this.economy.gems));
-    this.updateEnergyText();
-    if (this.levelBadgeText) this.updateLevelBadge();
-  }
 
-  private updateEnergyText(): void {
-    if (!this.energyText) return;
-    syncEnergy(this.energy);
-    this.energyText.setText(formatHudValue(this.energy.current));
-    this.energyText.setColor(hex(
-      this.energy.current > 0 ? materialLighting(Theme.currencyEnergy, 4).light : Theme.danger
-    ));
-    // Every value change can change a chip's width, which moves its
-    // neighbours - so the row re-packs rather than overlapping.
-    this.layoutHudChips();
-  }
 
   availableShopTypeIds(): string[] {
     const unlocked = new Set<string>([TYPE_ID]);
@@ -4116,4 +3218,44 @@ export class BoardScene extends Phaser.Scene {
   crateRingR(): number { return crateRingRExt(this); }
   crateRingCentre(): { cx: number; cy: number } { return crateRingCentreExt(this); }
   crateAccent(tier: CrateTier): number { return crateAccentExt(this, tier); }
+
+  // Forwards to board/boardVault.ts, so the scene's own call sites
+  // still read as methods.
+  buildForcedSpawnVault(): void { buildForcedSpawnVaultExt(this); }
+  refreshForcedSpawnVault(): void { refreshForcedSpawnVaultExt(this); }
+  drawForcedSpawnIcon(g: Phaser.GameObjects.Graphics, spawn: ForcedSpawn, size: number): void { drawForcedSpawnIconExt(this, g, spawn, size); }
+  hideBehindRoomPanel(view: Phaser.GameObjects.GameObject & { visible: boolean }): void { hideBehindRoomPanelExt(this, view); }
+  enqueueForcedSpawn(spawn: ForcedSpawn, from?: { x: number; y: number }): void { enqueueForcedSpawnExt(this, spawn, from); }
+  tryReleaseVaultItem(): boolean { return tryReleaseVaultItemExt(this); }
+  placeForcedSpawn(spot: GridPosition, spawn: ForcedSpawn): BoardView { return placeForcedSpawnExt(this, spot, spawn); }
+  vaultPosition(): { x: number; y: number } { return vaultPositionExt(this); }
+
+  // Forwards to board/boardExpansion.ts, so the scene's own call sites
+  // still read as methods.
+  applyBoardExpansionLocks(savedCells?: (GridCellData | null)[][]): void { applyBoardExpansionLocksExt(this, savedCells); }
+  buildBoardExpansionLocks(): void { buildBoardExpansionLocksExt(this); }
+  refreshBoardExpansionLocks(): void { refreshBoardExpansionLocksExt(this); }
+  buyExpansionCell(pos: GridPosition): void { buyExpansionCellExt(this, pos); }
+  expansionPrice(pos: GridPosition): number { return expansionPriceExt(this, pos); }
+  expansionRowEligible(row: number): boolean { return expansionRowEligibleExt(this, row); }
+  firstExpansionRowComplete(): boolean { return firstExpansionRowCompleteExt(this); }
+
+  // Forwards to board/hudChrome.ts, so the scene's own call sites
+  // still read as methods.
+  buildEnergyChip(y: number): HudChip { return buildEnergyChipExt(this, y); }
+  layoutHudChips(): void { layoutHudChipsExt(this); }
+  buildLevelBadge(cx: number, cy: number): Phaser.GameObjects.Text { return buildLevelBadgeExt(this, cx, cy); }
+  playLevelUpFlourish(): void { playLevelUpFlourishExt(this); }
+  updateLevelBadge(): void { updateLevelBadgeExt(this); }
+  buildShopIconButton(cx: number, cy: number, onTap: () => void): void { buildShopIconButtonExt(this, cx, cy, onTap); }
+  buildProjectButton(): void { buildProjectButtonExt(this); }
+  refreshProjectButton(): void { refreshProjectButtonExt(this); }
+  buildInventoryButton(): void { buildInventoryButtonExt(this); }
+  buildAutoMergeButton(): void { buildAutoMergeButtonExt(this); }
+  updateCurrencyText(): void { updateCurrencyTextExt(this); }
+  updateEnergyText(): void { updateEnergyTextExt(this); }
+
+  // Forwards to board/hudChrome.ts, so the scene's own call sites
+  // still read as methods.
+  buildCurrencyChip(y: number, accent: number, glyph: 'coin' | 'gem', onTap: () => void): HudChip { return buildCurrencyChipExt(this, y, accent, glyph, onTap); }
 }
