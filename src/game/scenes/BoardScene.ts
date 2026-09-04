@@ -222,6 +222,24 @@ import {
   toggleFullscreen,
 } from './board/config';
 import {
+  refreshOrderBar as refreshOrderBarExt,
+  buildOrderBar as buildOrderBarExt,
+  destroyOrderBar as destroyOrderBarExt,
+  drawOrderScrollHint as drawOrderScrollHintExt,
+  peekOrderScroll as peekOrderScrollExt,
+  setOrderScroll as setOrderScrollExt,
+  animateOrderScrollTo as animateOrderScrollToExt,
+  orderCardWorldCenter as orderCardWorldCenterExt,
+  orderBarMetrics as orderBarMetricsExt,
+  showOrderDetails as showOrderDetailsExt,
+  describeOrderItem as describeOrderItemExt,
+  clearOrderRewardTexts as clearOrderRewardTextsExt,
+  submitOrderSlot as submitOrderSlotExt,
+  completeOrder as completeOrderExt,
+  orderProgressSource as orderProgressSourceExt
+} from './board/orderBar';
+
+import {
   openSettings as openSettingsExt,
   buildSettingsButton as buildSettingsButtonExt,
   confirmReset as confirmResetExt,
@@ -328,25 +346,25 @@ export class BoardScene extends Phaser.Scene {
   energy: EnergyState = createDefaultEnergy();
 
   orderState: OrderState = createDefaultOrderState();
-  private orderCards: OrderCardView[] = [];
-  private orderBarContainer: Phaser.GameObjects.Container | null = null;
-  private orderBarMaskShape: Phaser.GameObjects.Graphics | null = null;
-  private orderScrollHint: Phaser.GameObjects.Graphics | null = null;
-  private orderScroll = 0;
-  private orderScrollMax = 0;
+  orderCards: OrderCardView[] = [];
+  orderBarContainer: Phaser.GameObjects.Container | null = null;
+  orderBarMaskShape: Phaser.GameObjects.Graphics | null = null;
+  orderScrollHint: Phaser.GameObjects.Graphics | null = null;
+  orderScroll = 0;
+  orderScrollMax = 0;
   /**
    * Card position -> queue slot. Completable orders are shown first, so the
    * card the player taps is NOT necessarily the queue slot of the same
    * number; every tap goes through this map.
    */
-  private orderDisplayOrder: number[] = [];
+  orderDisplayOrder: number[] = [];
   /** Ready orders at the last refresh, to detect one becoming completable. */
-  private orderReadyCount = 0;
-  private orderScrollTween: Phaser.Tweens.Tween | null = null;
+  orderReadyCount = 0;
+  orderScrollTween: Phaser.Tweens.Tween | null = null;
   /** The draggability nudge is shown once per session, on first overflow. */
-  private orderPeekShown = false;
+  orderPeekShown = false;
   /** In-progress horizontal flick of the order bar; `slot` is where it began. */
-  private orderDrag: {
+  orderDrag: {
     active: boolean;
     slot: number;
     startX: number;
@@ -356,7 +374,7 @@ export class BoardScene extends Phaser.Scene {
     describe: { typeId: string; tier: number } | null;
   } =
     { active: false, slot: -1, startX: 0, startScroll: 0, moved: 0, describe: null };
-  private dispenserCollectCount = 0;
+  dispenserCollectCount = 0;
   headerRight = 0;
   /** Where a board drag began, to tell a tap from a move that returned home. */
   private dragStartPointer = { x: 0, y: 0 };
@@ -366,7 +384,7 @@ export class BoardScene extends Phaser.Scene {
   private crateMeterBar!: Phaser.GameObjects.Graphics;
   private crateMeterProgress!: Phaser.GameObjects.Graphics;
   private crateMeterIcon!: Phaser.GameObjects.Graphics;
-  private crateMeterContainer!: Phaser.GameObjects.Container;
+  crateMeterContainer!: Phaser.GameObjects.Container;
   private crateMeterZone!: Phaser.GameObjects.Zone;
   private crateMeterRuns: Phaser.GameObjects.Text[] = [];
   private crateMeterPulse?: Phaser.Tweens.Tween;
@@ -391,7 +409,7 @@ export class BoardScene extends Phaser.Scene {
    * uses. Never below 1: the constants are tuned for a ~54px cell, and a
    * small phone should keep exactly the layout it has today.
    */
-  private chromeScale = 1;
+  chromeScale = 1;
   /** Fullscreen-only HUD scale, derived from the extra vertical room. */
   hudScale = 1;
   /**
@@ -487,16 +505,16 @@ export class BoardScene extends Phaser.Scene {
   // Board cell of the source most recently tapped. Its tray stays consistent
   // across ready/recharging states; when empty, the same panel also offers
   // the gem refill action.
-  private rushTargetKey: string | null = null;
+  rushTargetKey: string | null = null;
   private actionBg!: Phaser.GameObjects.Graphics;
-  private actionText!: Phaser.GameObjects.Text;
-  private orderRewardTexts: Phaser.GameObjects.GameObject[] = [];
-  private sellButtonBg!: Phaser.GameObjects.Graphics;
-  private sellButton!: Phaser.GameObjects.Text;
-  private sellButtonAmount!: Phaser.GameObjects.Text;
-  private sellButtonZone!: Phaser.GameObjects.Zone;
+  actionText!: Phaser.GameObjects.Text;
+  orderRewardTexts: Phaser.GameObjects.GameObject[] = [];
+  sellButtonBg!: Phaser.GameObjects.Graphics;
+  sellButton!: Phaser.GameObjects.Text;
+  sellButtonAmount!: Phaser.GameObjects.Text;
+  sellButtonZone!: Phaser.GameObjects.Zone;
   /** The currency mark on the sell/refill button's second line. */
-  private sellButtonMark!: Phaser.GameObjects.Image;
+  sellButtonMark!: Phaser.GameObjects.Image;
   /** Right edge the sell/refill button and its mark align against. */
   private sellButtonRightX = 0;
   /**
@@ -1993,111 +2011,13 @@ export class BoardScene extends Phaser.Scene {
 
   // ---- Orders ----
 
-  private orderProgressSource(): OrderProgressSource {
-    return {
-      countAtTier: (tier, typeId) => this.grid.countAtTier(tier, typeId),
-      dispenserCollects: this.dispenserCollectCount
-    };
-  }
 
-  /** Geometry shared by the order bar's build and refresh passes. */
-  private orderBarMetrics(): { cardH: number; y: number; viewW: number } {
-    // `viewW` is the CARD lane only - the ring sits outside it at the left.
-    const fullscreenY = this.boardOriginY
-      - ORDER_CARD_H * this.chromeScale
-      - Math.round(10 * this.hudScale);
-    return {
-      // LOCAL height: the cards are drawn at their tuned size and scaled as a
-      // unit, so everything inside them - rows, plates, GO chip, text - grows
-      // together instead of a taller card holding the same small contents.
-      cardH: ORDER_CARD_H,
-      // In fullscreen the board gains vertical breathing room. Keep the
-      // orders attached to the board instead of leaving them behind under
-      // the header, which created the large empty band seen on tall phones.
-      y: fullscreenElement()
-        ? fullscreenY
-        : this.contentTop + Math.round(48 * this.chromeScale),
-      viewW: COLS * this.cellSize - this.crateLaneW()
-    };
-  }
 
-  /**
-   * Builds one card per open order slot inside a horizontally scrolling,
-   * masked container.
-   *
-   * Slot count grows with player level (3 at the start, up to
-   * MAX_ORDER_SLOTS), so this tears down and rebuilds rather than assuming a
-   * fixed count - `refreshOrderBar` calls it whenever the count changes.
-   *
-   * Each card gets its OWN container, with every child at local coordinates.
-   * That is what lets a card be repositioned or animated by moving one
-   * object, which both the content-driven widths and the reorder slide
-   * depend on. Sizes and positions are all set by `refreshOrderBar`, since
-   * they follow from content that is not known yet here.
-   */
-  private buildOrderBar(): void {
-    this.destroyOrderBar();
-
-    const { cardH, y, viewW } = this.orderBarMetrics();
-    const slots = this.orderState.activeOrderIndices.length;
-
-    // Above the board. Tiles, dispensers and the glass pane all draw at the
-    // default depth, so the GO chip - which now hangs below its card, over the
-    // top of the board - was coming out behind a piece or its outline. 8 clears
-    // every board object and the expansion locks (4-7) while staying under the
-    // HUD chips at 20.
-    const container = this.add.container(0, 0).setDepth(8);
-    this.orderBarContainer = container;
-
-    for (let position = 0; position < slots; position++) {
-      const root = this.add.container(this.boardOriginX, y);
-      const bg = this.add.graphics();
-      const progress = this.add.text(ORDER_CARD_PAD, cardH - 8, '', {
-        resolution: textResolution,
-        fontFamily: Theme.fontMono,
-        fontSize: '9px',
-        color: hex(Theme.textOnDarkMuted)
-      }).setOrigin(0, 1);
-      const zone = this.add.zone(0, cardH / 2, ORDER_CARD_MIN_W, cardH)
-        .setInteractive({ useHandCursor: true });
-
-      // Tap vs. drag, same rule the shop uses: a card must not fire when the
-      // player was actually flicking the bar sideways to reach another order.
-      zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        this.orderDrag = { active: true, slot: position, startX: pointer.x, startScroll: this.orderScroll, moved: 0, describe: null };
-      });
-
-      root.add([bg, progress, zone]);
-      container.add(root);
-      this.orderCards.push({ root, bg, progress, rewardTexts: [], zone, width: ORDER_CARD_MIN_W });
-    }
-
-    // The mask is world-space and NOT on the display list, so it stays put
-    // while the container slides under it - hence the explicit destroy in
-    // destroyOrderBar.
-    const maskShape = this.make.graphics({});
-    maskShape.fillStyle(0xffffff);
-    // Tall enough for the overhanging pill above and the GO chip below,
-    // or the scroll mask clips exactly the parts that moved outside.
-    maskShape.fillRect(
-      this.boardOriginX + this.crateLaneW(),
-      y - 4 * this.chromeScale,
-      viewW,
-      (cardH + ORDER_GO_H + 8) * this.chromeScale
-    );
-    this.orderBarMaskShape = maskShape;
-    container.setMask(maskShape.createGeometryMask());
-    container.x = -this.orderScroll;
-
-    // Edge fades: the only cue that more orders exist off-screen, since the
-    // bar has no room for a scrollbar without stealing a card's height.
-    this.orderScrollHint = this.add.graphics().setDepth(8);
-  }
 
 
 
   /** Level milestone crates are automatic physical rewards, never profile claims. */
-  private autoDeliverLevelRewards(): { level: number; tier: CrateTier }[] {
+  autoDeliverLevelRewards(): { level: number; tier: CrateTier }[] {
     const earned = pendingMilestones(this.rewards, playerLevel(this.orderState));
     if (earned.length === 0) return earned;
     const from = { x: this.levelBadgeText.x, y: this.levelBadgeText.y };
@@ -2111,766 +2031,15 @@ export class BoardScene extends Phaser.Scene {
   }
 
 
-  /** World-space centre of a card, for the delivery animation to fly toward. */
-  private orderCardWorldCenter(position: number): { x: number; y: number } | null {
-    const view = this.orderCards[position];
-    if (!view || !this.orderBarContainer) return null;
-    return {
-      x: this.orderBarContainer.x + view.root.x + view.width / 2,
-      y: view.root.y + (ORDER_CARD_H / 2) * this.chromeScale
-    };
-  }
 
-  private destroyOrderBar(): void {
-    // The cooldown meter temporarily lives inside the scrolling order
-    // container. Detach it before destroying/rebuilding that container so the
-    // meter itself is not destroyed with the cards.
-    if (this.crateMeterContainer?.parentContainer === this.orderBarContainer) {
-      this.orderBarContainer?.remove(this.crateMeterContainer);
-      this.add.existing(this.crateMeterContainer);
-    }
-    this.orderScrollTween?.stop();
-    this.orderScrollTween = null;
-    for (const view of this.orderCards) for (const text of view.rewardTexts) text.destroy();
-    this.orderCards = [];
-    this.orderDisplayOrder = [];
-    this.orderBarContainer?.destroy(true);
-    this.orderBarContainer = null;
-    this.orderBarMaskShape?.destroy();
-    this.orderBarMaskShape = null;
-    this.orderScrollHint?.destroy();
-    this.orderScrollHint = null;
-  }
 
-  /**
-   * Tells the player the bar moves. Two cues, because the fades alone were
-   * not enough - they read as the board panel overlapping the cards rather
-   * than as content continuing past the edge.
-   *
-   * The track and thumb are the SAME idiom the shop's scrolling list already
-   * uses (4px, `Theme.bg` track, `Theme.borderOnDark` thumb), just turned on
-   * its side, so the game keeps one scroll language instead of growing a
-   * second one. The thumb also answers "how much more is there", which an
-   * arrow or a chevron would not.
-   */
-  private drawOrderScrollHint(): void {
-    const hint = this.orderScrollHint;
-    if (!hint) return;
-    hint.clear();
-    if (this.orderScrollMax <= 0) return;
 
-    const { cardH, y, viewW } = this.orderBarMetrics();
 
-    // Edge fades only. The track-and-thumb slider that used to sit directly
-    // under the cards is gone: it read as chrome, and it occupied exactly the
-    // strip the GO chip now overhangs into. The fades plus the one-time peek
-    // nudge already say the bar continues and can be dragged.
-    //
-    // Fades are lifted above the board glass - the hint is created with the
-    // order bar, before drawBoardBackground runs, so without this it renders
-    // underneath the panel.
-    this.children.bringToTop(hint);
-    const fadeW = 18;
-    const bands = 6;
-    const laneX = this.boardOriginX + (isMeterCooling(this.rewards) ? 0 : this.crateLaneW());
-    const visibleW = isMeterCooling(this.rewards) ? COLS * this.cellSize : viewW;
-    if (this.orderScroll > 1) {
-      for (let i = 0; i < bands; i++) {
-        hint.fillStyle(Theme.bg, 0.55 * (1 - i / bands));
-        // Scaled, like the cards it fades: the raw band sat high and stopped
-        // short of the bottom of a scaled card.
-        hint.fillRect(laneX + (fadeW / bands) * i, y - 2 * this.chromeScale, fadeW / bands + 1, (cardH + 4) * this.chromeScale);
-      }
-    }
-    if (this.orderScroll < this.orderScrollMax - 1) {
-      const right = laneX + visibleW;
-      for (let i = 0; i < bands; i++) {
-        hint.fillStyle(Theme.bg, 0.55 * (1 - i / bands));
-        hint.fillRect(right - (fadeW / bands) * (i + 1), y - 2 * this.chromeScale, fadeW / bands + 1, (cardH + 4) * this.chromeScale);
-      }
-    }
 
-  }
 
-  /**
-   * A single nudge on first sight of an overflowing bar: slides a little way
-   * and settles back, which is the one cue that says the thing is DRAGGABLE
-   * rather than merely wider than the screen. Fires once per session, never
-   * while the player is already touching the bar, and never if they have
-   * already scrolled it themselves.
-   */
-  private peekOrderScroll(): void {
-    if (this.orderDrag.active || this.orderScrollMax <= 0 || this.orderScroll > 1) return;
-    this.orderScrollTween?.stop();
-    this.orderScrollTween = this.tweens.addCounter({
-      from: 0,
-      to: Math.min(22, this.orderScrollMax),
-      duration: 300,
-      ease: 'Quad.Out',
-      yoyo: true,
-      hold: 110,
-      onUpdate: (tween) => {
-        if (this.orderDrag.active) {
-          tween.stop();
-          return;
-        }
-        this.setOrderScroll(tween.getValue() ?? 0);
-      },
-      onComplete: () => {
-        if (!this.orderDrag.active) this.setOrderScroll(0);
-      }
-    });
-  }
 
-  private setOrderScroll(value: number): void {
-    this.orderScroll = Phaser.Math.Clamp(value, 0, this.orderScrollMax);
-    if (this.orderBarContainer) this.orderBarContainer.x = -this.orderScroll;
-    this.drawOrderScrollHint();
-  }
 
-  refreshOrderBar(): void {
-    // The Decagon pips ride along here because this is in practice the
-    // "the board changed" refresh - it already runs after a merge, a sale, a
-    // store, a spawn and a payout, which is exactly the set of things that
-    // can change how many Decagons are standing on the board.
-    this.refreshDecagonMachines();
-    // Level-ups open new slots, so the bar is rebuilt whenever the queue
-    // length moves rather than being assumed fixed.
-    const rebuilt = this.orderCards.length !== this.orderState.activeOrderIndices.length;
-    if (rebuilt) this.buildOrderBar();
 
-    const orders = activeOrders(this.orderState);
-    const source = this.orderProgressSource();
-    const { cardH, y, viewW } = this.orderBarMetrics();
-    const cooling = isMeterCooling(this.rewards);
-    const laneX = this.boardOriginX + (cooling ? 0 : this.crateLaneW());
-    const visibleW = cooling ? COLS * this.cellSize : viewW;
-    if (this.orderBarMaskShape) {
-      this.orderBarMaskShape.clear();
-      this.orderBarMaskShape.fillStyle(0xffffff);
-      // Scaled, exactly like the rect `buildOrderBar` lays down. Redrawing it
-      // with the raw constants quietly undid that on the first refresh, and a
-      // mask shorter than the scaled cards shaves their bottom edge - and
-      // clips the crate meter, which rides inside this same container while
-      // the meter is cooling.
-      this.orderBarMaskShape.fillRect(
-        laneX,
-        y - 4 * this.chromeScale,
-        visibleW,
-        (cardH + ORDER_GO_H + 8) * this.chromeScale
-      );
-    }
-
-    // Completable orders move to the LEFT so the ones you can act on are
-    // always the first cards - visible without scrolling, which is the whole
-    // point of surfacing them. An insertion, not a swap: see
-    // `orderDisplaySequence`, which owns the rule and is unit-tested.
-    const statuses = orders.map(({ order }) => orderProgress(order, this.orderState, source));
-    this.orderDisplayOrder = orderDisplaySequence(statuses.map((s) => s.ready));
-
-    // Newly completable work is worth surfacing: if the bar is scrolled away
-    // from the left when an order becomes ready, it would otherwise slide to
-    // a position the player cannot see. Only fires when the ready COUNT
-    // rises, so idle browsing is never yanked around.
-    const readyCount = statuses.filter((s) => s.ready).length;
-    if (readyCount > this.orderReadyCount && this.orderScroll > 1 && !this.orderDrag.active) {
-      this.animateOrderScrollTo(0);
-    }
-    this.orderReadyCount = readyCount;
-
-    // A reward token on an order card. `kind` swaps the letter code for the
-    // currency's drawn mark; XP and a source reward have no mark and keep
-    // their words.
-    type CompactReward = {
-      label: string;
-      color: number;
-      kind?: CurrencyKind;
-      art?: 'shipping';
-      size?: number;
-      bold?: boolean;
-    };
-    const ROW_GAP = 5;
-    /**
-     * Requirement icon box. The band between the title and the reward rows is
-     * ~35px, and `iconPresentation` scales art to roughly half its box, so a
-     * smaller number here buys nothing but a shape too small to recognise -
-     * which would defeat the whole point of drawing it.
-     */
-    const REQ_ICON = 38;
-    /** Requirement tokens need more air than text tokens - each is a picture. */
-    const REQ_GAP = 4;
-    const REQ_ROW_Y = ORDER_HEADER_H + 5;
-    /** The bevelled square each requirement sits in. */
-    const REQ_PLATE = 38;
-    /**
-     * Art size inside the plate. `iconPresentation` draws at roughly half of
-     * what it is given, so this is deliberately larger than the plate - it
-     * makes the item nearly fill its square, as in the reference.
-     */
-    const REQ_ICON_ART = 52;
-    /**
-     * The sapphire is the one icon the plate cannot hold. `iconPresentation`
-     * sizes on sqrt(w*h), so the marquise's narrow waist buys it height: it
-     * is drawn 1.06 of its box tall where a typical tier sits at 0.80, and it
-     * pins MAX_HEIGHT exactly. On the board that overhang is the point; in a
-     * 38px slot it stands a third taller than everything beside it. Trimmed
-     * to 0.86 - stone tier 7's height - so it is still the tallest thing on
-     * the row without leaving it. The board keeps its own size.
-     */
-    const REQ_ICON_ART_TRIM: Record<string, number> = { 'mineral:8': 0.8 };
-    /** The unlit plate: a recessed slot, still visibly a square. */
-    const REQ_PLATE_DARK = 0x14120f;
-    const innerW = (width: number) => width - ORDER_CARD_PAD * 2;
-
-    /**
-     * One requirement as the ITEM ITSELF plus its count, rather than the
-     * item's name in words. A player matching an order against their board is
-     * comparing shapes, so a card that shows the shape removes the
-     * translation step - the full name still exists in the order info box.
-     */
-    const buildRequirementIcon = (
-      view: OrderCardView,
-      queueSlot: number,
-      cardReady: boolean,
-      line: { typeId: string; tier: number; count: number; ready: boolean },
-      rowY: number
-    ): Phaser.GameObjects.Container => {
-      const def = getTierDef(line.typeId, line.tier);
-      const baseColor = def?.color ?? 0x555555;
-
-      // Each requirement sits in a bevelled square, and it is the SQUARE that
-      // lights up when the board can satisfy it - not the item.
-      //
-      // Recolouring the item itself never worked: an item is already a shaded
-      // object, so pushing it toward white destroyed the shading that makes it
-      // recognisable, and a halo behind it read as decoration. A plate has no
-      // such job - going from recessed to lit is the only thing it does.
-      const plate = this.add.graphics();
-      const half = REQ_PLATE / 2;
-      const px = REQ_ICON / 2;
-      // Same corner radius as the order card the plate sits on, so the two
-      // are cut from the same shape language.
-      const radius = Theme.radiusChip;
-
-      // Same recessed slot in both states - the difference is the GREEN, not
-      // a change of material. The bone-coloured lit plate that used to sit
-      // here read as a hole punched in the card.
-      plate.fillStyle(REQ_PLATE_DARK, 1);
-      plate.fillRoundedRect(px - half, -half, REQ_PLATE, REQ_PLATE, radius);
-      // Inner shadow along the top edge. The board, the card and the slot
-      // were three near-identical values stacked on each other, which is why
-      // the squares never read as INSET - fixed by pushing the slot down the
-      // value range rather than pulling the card up it, so the dark
-      // aesthetic is unchanged.
-      plate.fillStyle(0x000000, 0.35);
-      plate.fillRect(px - half + 1, -half + 1, REQ_PLATE - 2, REQ_PLATE * 0.22);
-      if (line.ready) {
-        // The acid green that used to flood the whole card, spent here
-        // instead: it now marks WHICH requirement the board can satisfy
-        // rather than only that the order as a whole is done.
-        plate.fillStyle(Theme.accentGreen, 0.28);
-        plate.fillRoundedRect(px - half, -half, REQ_PLATE, REQ_PLATE, radius);
-        // Lit along the top edge, from the same fixed upper-left key every
-        // drawn object in the game shares.
-        plate.fillStyle(Theme.accentGreen, 0.16);
-        plate.fillRect(px - half + 1, -half + 1, REQ_PLATE - 2, REQ_PLATE * 0.45);
-      }
-      plate.lineStyle(Theme.borderWidth, line.ready ? Theme.accentGreen : Theme.borderOnDark, line.ready ? 0.85 : 0.5);
-      plate.strokeRoundedRect(px - half, -half, REQ_PLATE, REQ_PLATE, radius);
-
-      // The item keeps its own colour in both states. It is the item.
-      const reqArt = REQ_ICON_ART * (REQ_ICON_ART_TRIM[`${line.typeId}:${line.tier}`] ?? 1);
-      const icon = this.add.graphics();
-      const render = drawTierIcon(
-        icon, line.typeId, line.tier, reqArt, materialLighting(baseColor, line.tier)
-      );
-      icon.setAlpha(render.materialAlpha);
-      const present = iconPresentation(line.typeId, line.tier, reqArt);
-
-      // The board's own contact shadow, so an item sits ON the plate rather
-      // than floating in front of it - the single cue that made board tiles
-      // read as objects. Sized from the measured footprint, exactly as
-      // TileView does it.
-      const shadow = this.add.graphics();
-      const { width: fw, centerX, baselineY } = render.footprint;
-      if (fw > 0) {
-        // Tighter than the board's, and pulled back up under the item: the
-        // board version trails down and to the right into open space, which
-        // here ran straight off the edge of the plate.
-        for (let i = 3; i >= 1; i--) {
-          shadow.fillStyle(0x000000, (line.ready ? 0.09 : 0.07) * i);
-          shadow.fillEllipse(
-            centerX + fw * 0.035 * i,
-            baselineY - fw * 0.09 + fw * 0.022 * i,
-            fw * (0.78 - i * 0.05),
-            fw * 0.17
-          );
-        }
-      }
-      for (const g of [shadow, icon]) {
-        g.setScale(present.scale).setPosition(px + present.offsetX, present.offsetY);
-      }
-
-      const token = this.add.container(0, rowY, [plate, shadow, icon]);
-      // The plate is its own press target, sitting above the card's zone so
-      // `topOnly` routes the press here. It still arms the bar's horizontal
-      // drag, or the bar could not be flicked from an icon - only the TAP
-      // resolves differently.
-      const press = this.add.zone(px, 0, REQ_PLATE, REQ_PLATE).setInteractive();
-      press.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        this.orderDrag = {
-          active: true,
-          slot: queueSlot,
-          startX: pointer.x,
-          startScroll: this.orderScroll,
-          moved: 0,
-          // Only an order that CANNOT be delivered describes its items. Once
-          // it can, the whole card is one button - asking the player to aim
-          // between the icons to complete an order they have already earned
-          // is a trap the card's own readiness invites them into.
-          describe: cardReady ? null : { typeId: line.typeId, tier: line.tier }
-        };
-      });
-      token.add(press);
-      // Only MULTIPLES are worth a number. "x1" on every single-item order is
-      // noise on the one card the player reads at a glance.
-      if (line.count > 1) {
-        const badge = this.add.text(0, 0, `×${line.count}`, {
-          resolution: textResolution,
-          fontFamily: Theme.fontNumeric,
-          fontSize: '9px',
-          fontStyle: 'bold',
-          color: hex(line.ready ? Theme.accentGreen : Theme.textOnDark)
-        }).setOrigin(0.5, 0.5);
-        // Its own chip. Every other label in the game sits on a panel; this
-        // one is drawn over ITEM ART, which is the busiest surface on the
-        // card and the only place a bare number has nothing behind it.
-        const bw = badge.width + 8;
-        const bh = 13;
-        const bx = REQ_ICON - 2 - bw / 2;
-        const by = -REQ_PLATE / 2 + bh / 2 + 2;
-        const chip = this.add.graphics();
-        chip.fillStyle(Theme.bg, 0.92);
-        chip.fillRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, Theme.radiusChip);
-        chip.lineStyle(1, line.ready ? Theme.accentGreen : Theme.borderOnDark, 1);
-        chip.strokeRoundedRect(bx - bw / 2, by - bh / 2, bw, bh, Theme.radiusChip);
-        badge.setPosition(bx, by);
-        token.add([chip, badge]);
-      }
-      token.setSize(REQ_ICON, REQ_ICON);
-      view.root.add(token);
-      view.rewardTexts.push(token);
-      return token;
-    };
-
-    /** Creates a row of tokens at local coords and reports its natural width. */
-    const buildRow = (view: OrderCardView, tokens: CompactReward[], rowY: number) => {
-      const texts = tokens.map((token) => {
-        // Containers centre on their y; a text object's default origin is its
-        // top-left. Both are anchored to the same visual row explicitly.
-        const built = token.art === 'shipping'
-          ? (() => {
-              const icon = this.add.graphics().setX(15);
-              drawCrate(icon, 30, 'shipping');
-              return this.add.container(0, rowY, [icon]).setSize(30, 30);
-            })()
-          : token.kind
-            ? currencyLabel(this, token.label, token.kind, {
-              fontSize: 11,
-              glyphSize: 17,
-              gap: 3,
-              color: token.color
-            }).setPosition(0, rowY)
-            : this.add.text(0, rowY, token.label, {
-                resolution: textResolution,
-                fontFamily: Theme.fontNumeric,
-                fontSize: `${token.size ?? 11}px`,
-                fontStyle: token.bold === false ? 'normal' : 'bold',
-                color: hex(token.color)
-              }).setOrigin(0, 0.5);
-        view.root.add(built);
-        view.rewardTexts.push(built);
-        return built;
-      });
-      const natural = texts.reduce((sum, t) => sum + t.width, 0) + ROW_GAP * Math.max(0, texts.length - 1);
-      return { texts, natural, gap: ROW_GAP, align: 'center' as 'center' | 'left', fluid: false };
-    };
-
-    // PASS 1 - build every card's content and measure it. A width cannot be
-    // chosen until its text exists, and a position cannot be chosen until
-    // every width is known, so layout is deliberately split in two.
-    // Card index IS the queue slot. Each card object owns one order for that
-    // order's whole life; only its POSITION in the row changes.
-    //
-    // This used to be the other way round - cards were bound to screen
-    // positions and had their content rewritten when the display order
-    // changed. Nothing ever moved, so a completable order arriving at the
-    // front was an instant content swap with no motion to follow, which is
-    // exactly what made it read as a pop. The slide below could never fire
-    // either, because a card's target x was always the x it already had.
-    const built = this.orderCards.map((view, queueSlot) => {
-      const active = orders[queueSlot];
-      for (const text of view.rewardTexts) text.destroy();
-      view.rewardTexts = [];
-      if (!active) return null;
-
-      const { order } = active;
-      const status = statuses[queueSlot];
-
-      // The GO chip. Nothing on a ready card actually said "tap me" - the
-      // green plates and the move to the front of the queue both read as
-      // status rather than as an invitation, which is the one thing the
-      // reference cards do that ours did not.
-      view.progress
-        .setText('GO')
-        .setFontSize(11)
-        .setColor(hex(Theme.bg))
-        .setVisible(status.ready);
-
-      // Requirements are DRAWN, side by side on one row: the item's own art
-      // with its count beside it. They used to be one full name per line,
-      // which is what the order info box is for - the card is the thing the
-      // player scans against their board, and a shape matches a shape faster
-      // than a name does.
-      //
-      // A collection order has no item to draw, so it keeps its words.
-      const requirementRows = order.type === 'dispenser-collects'
-        // Two stacked rows: the label, then a LIVE count under it. Collection
-        // orders are the one case where a running total is worth showing -
-        // there is no item on the board to light up, so the number is the
-        // only progress the card can carry.
-        ? [
-            buildRow(view, [{
-              // Sized so a collection card comes out the same width as an
-              // item card. At 11px the text set the width and this card came
-              // out visibly wider than every other one in the row.
-              label: `SPEND ${status.target} ENERGY`,
-              color: status.ready ? Theme.accentGreen : Theme.textOnDark,
-              size: 9
-            }], REQ_ROW_Y + REQ_ICON / 2 - 6),
-            buildRow(view, [{
-              label: `${status.current}/${status.target}`,
-              color: status.ready ? Theme.accentGreen : Theme.textOnDark,
-              size: 11,
-              bold: false
-            }], REQ_ROW_Y + REQ_ICON / 2 + 8)
-          ]
-        : [(() => {
-            const tokens = status.lines.map((line) => buildRequirementIcon(view, queueSlot, status.ready, {
-              typeId: line.requirement.typeId,
-              tier: line.requirement.tier,
-              count: line.requirement.count,
-              ready: line.ready
-            }, REQ_ROW_Y + REQ_ICON / 2));
-            const natural = tokens.reduce((sum, t) => sum + t.width, 0)
-              + REQ_GAP * Math.max(0, tokens.length - 1);
-            return { texts: tokens, natural, gap: REQ_GAP, align: 'center' as 'center' | 'left', fluid: false };
-          })()];
-
-      const primary: CompactReward[] = [
-        { label: `+${order.rewardCoins}`, color: Theme.currencyCredit, kind: 'credit' }
-        // No XP figure anywhere player-facing - see the profile panel for why.
-        // The order's other rewards are what the card is for; XP is carried by
-        // the level bar instead of by a number on every card.
-      ];
-      const secondary: CompactReward[] = [];
-      if (order.rewardEnergy) {
-        secondary.push({ label: `+${order.rewardEnergy}`, color: Theme.currencyEnergy, kind: 'energy' });
-      }
-      if (order.rewardGems) {
-        secondary.push({ label: `+${order.rewardGems}`, color: Theme.currencyGem, kind: 'gem' });
-      }
-      if (order.rewardSpawner) {
-        secondary.push({
-          label: '+SRC',
-          color: getTierDef(order.rewardSpawner.typeId, 1)?.color ?? Theme.accentGreen
-        });
-      }
-      if (order.rewardShippingContainer) {
-        secondary.push({ label: '', color: 0x9fb2bd, art: 'shipping' });
-      }
-
-      // ONE reward line, and it sits ABOVE the card rather than inside it.
-      // Credits and gems/energy are the same kind of information; stacked on
-      // two rows at the card's dimmest edge they competed with each other and
-      // made the card bottom-heavy. Lifting them out - and the GO chip below
-      // - leaves the body as nothing but slots.
-      // Reward on the header's left, GO on its right - see ORDER_HEADER_H.
-      const rewardRow = buildRow(view, [...primary, ...secondary], (ORDER_BAR_TOP + ORDER_HEADER_H) / 2);
-      rewardRow.align = 'left';
-      // The reward bar is its OWN element, sized to what is in it - like the
-      // HUD currency chips. It does not stretch to the card and the card does
-      // not stretch to it; it just extends rightward as its contents grow.
-      rewardRow.fluid = true;
-      const rows = [...requirementRows, rewardRow];
-
-      // No title to size against any more: the card is its contents.
-      // Width comes from the SLOTS, but never less than the reward bar needs.
-      // The bar still sizes itself to its own contents - it just cannot hang
-      // off the end of the tray any more, which a two-reward order did.
-      const widest = Math.max(rewardRow.natural, ...requirementRows.map((row) => row.natural));
-      const width = Phaser.Math.Clamp(
-        Math.ceil(widest) + ORDER_CARD_PAD * 2,
-        ORDER_CARD_MIN_W,
-        ORDER_CARD_MAX_W
-      );
-      return { view, status, rows, width };
-    });
-
-    // PASS 2 - size, paint and place. A running cursor rather than
-    // `position * cardW`, since cards no longer share a width.
-    let cursor = laneX;
-    // Walked in DISPLAY order while the cards themselves stay bound to their
-    // queue slots - which is what turns a reorder into a change of x, and
-    // therefore into something that can be animated.
-    for (const queueSlot of this.orderDisplayOrder) {
-      const entry = built[queueSlot];
-      if (!entry) continue;
-      const { view, status, rows, width } = entry;
-      view.root.setScale(this.chromeScale);
-      // Bookkeeping is WORLD width - callers use it to find a card's centre
-      // on screen - while everything inside the card stays in local units.
-      view.width = width * this.chromeScale;
-
-      view.bg.clear();
-      // NO outer card panel. There were three stacked shapes - an outer card,
-      // a reward bar and a slot tray - and the outer one was doing nothing but
-      // putting a second border around the other two. The card IS the reward
-      // bar plus the slot tray, sitting directly on the board.
-
-      // Only content that hit the MAX width cap still needs squeezing.
-      for (const row of rows) {
-        // A fluid row keeps its size and runs on past the card if it has to.
-        const scale = row.fluid ? 1 : Math.min(1, innerW(width) / Math.max(1, row.natural));
-        // Centred, not left-aligned. Without a title the card is just its
-        // contents, and a lone icon pinned to the left edge left most of the
-        // card empty.
-        let x = row.align === 'left'
-          ? ORDER_CARD_PAD
-          : Math.max(ORDER_CARD_PAD, (width - row.natural * scale) / 2);
-        for (const text of row.texts) {
-          text.setX(x).setScale(scale);
-          // Each row carries its own gap: a row of pictures needs more air
-          // between tokens than a row of text, and measuring with one gap
-          // while packing with another leaves the row misaligned.
-          x += (text.width + row.gap) * scale;
-        }
-      }
-
-      // The reward BAR: its own shape, hugging its own contents. Shorter than
-      // the card is fine and expected; longer is allowed too, and it simply
-      // runs past the edge rather than dragging the card wider with it.
-      const rewardNatural = rows[rows.length - 1]?.natural ?? 0;
-      const barW = rewardNatural + ORDER_CARD_PAD * 2;
-      // Drawn BEFORE the tray and running past its top edge, so the tray
-      // paints over the bar's lower half. Only the top of the bar is ever
-      // seen - its bottom bevels finish behind the card, which is what makes
-      // it read as a tab slotted in behind rather than a chip stuck on front.
-      // Same translucent glass as the board pane: nothing sits behind the bar
-      // any more, so it can let the room show through exactly as the board
-      // does, which ties the two together without a new colour.
-      view.bg.fillStyle(Theme.bgElevated, 0.84);
-      view.bg.fillRoundedRect(0, ORDER_BAR_TOP, barW, ORDER_BAR_H, Theme.radiusChip);
-      view.bg.lineStyle(1, Theme.borderOnDark, 1);
-      view.bg.strokeRoundedRect(0, ORDER_BAR_TOP, barW, ORDER_BAR_H, Theme.radiusChip);
-
-      // The SLOTS get their own inset tray beneath it, and that change of
-      // material is what divides the two.
-      // Full width now that nothing sits behind it, and flush-left with the
-      // reward bar above so the two share an edge.
-      view.bg.fillStyle(Theme.bg, 0.9);
-      view.bg.fillRoundedRect(0, ORDER_HEADER_H, width, cardH - ORDER_HEADER_H, Theme.radiusChip);
-      view.bg.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
-      view.bg.strokeRoundedRect(0, ORDER_HEADER_H, width, cardH - ORDER_HEADER_H, Theme.radiusChip);
-
-      if (status.ready) {
-        // Centred over the REWARD BAR, not over the card: the bar hugs its
-        // own contents and can be much narrower than the card, so aligning to
-        // the card put the chip off to one side of the thing it belongs to.
-        const gx = (barW - ORDER_GO_W) / 2;
-        // Straddling the card's bottom edge - half on the card, half off it.
-        // Below the top edge it reached into the header band, where a ready
-        // order could sit under the currency chips; underneath there is
-        // nothing but the board.
-        const gy = cardH - ORDER_GO_H / 2;
-        const goLighting = materialLighting(Theme.accentGreen, 5);
-        view.bg.fillGradientStyle(goLighting.highlight, goLighting.light, goLighting.base, goLighting.dark, 1);
-        view.bg.fillRoundedRect(gx, gy, ORDER_GO_W, ORDER_GO_H, Theme.radiusChip);
-        view.progress.setPosition(gx + ORDER_GO_W / 2, gy + ORDER_GO_H / 2).setOrigin(0.5, 0.5);
-      }
-
-      // Reaches DOWN over the half of the GO chip that hangs past the card.
-      const below = status.ready ? ORDER_GO_H / 2 + 1 : 0;
-      view.zone.setPosition(width / 2, (cardH + below) / 2).setSize(width, cardH + below);
-      const hit = view.zone.input?.hitArea as Phaser.Geom.Rectangle | undefined;
-      hit?.setTo(0, 0, width, cardH + below);
-
-      // Cards SLIDE to their new position rather than jumping, on the same
-      // 140ms Quad.Out as TileView.snapTo - so an order reordering itself
-      // reads like two board pieces trading places, which is the one
-      // move-animation the player already knows.
-      const targetX = cursor;
-      this.tweens.killTweensOf(view.root);
-      if (rebuilt || view.root.x === targetX) {
-        view.root.setPosition(targetX, y);
-      } else {
-        view.root.y = y;
-        this.tweens.add({ targets: view.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out' });
-      }
-      cursor += width * this.chromeScale + ORDER_CARD_GAP;
-    }
-
-    if (cooling && this.orderBarContainer && this.crateMeterContainer) {
-      const wasInQueue = this.crateMeterContainer.parentContainer === this.orderBarContainer;
-      if (!wasInQueue) this.orderBarContainer.add(this.crateMeterContainer);
-      // Even a short early-game order queue must put the cooling meter beyond
-      // the visible edge. It remains reachable by swiping to the end.
-      const targetLeft = Math.max(cursor, laneX + visibleW + ORDER_CARD_GAP);
-      const targetX = targetLeft - this.boardOriginX;
-      this.tweens.killTweensOf(this.crateMeterContainer);
-      if (wasInQueue && Math.abs(this.crateMeterContainer.x - targetX) < 0.5) {
-        this.crateMeterContainer.x = targetX;
-      } else {
-        this.tweens.add({
-          targets: this.crateMeterContainer,
-          x: targetX,
-          duration: ORDER_REORDER_MS,
-          ease: 'Quad.Out'
-        });
-      }
-      cursor = targetLeft + this.crateLaneW();
-    } else if (!cooling && this.crateMeterContainer?.parentContainer === this.orderBarContainer) {
-      const worldX = this.orderBarContainer.x + this.crateMeterContainer.x;
-      this.orderBarContainer.remove(this.crateMeterContainer);
-      this.add.existing(this.crateMeterContainer);
-      this.crateMeterContainer.x = worldX;
-      this.tweens.killTweensOf(this.crateMeterContainer);
-      this.tweens.add({
-        targets: this.crateMeterContainer,
-        x: 0,
-        duration: ORDER_REORDER_MS,
-        ease: 'Quad.Out'
-      });
-    }
-
-    // Ready cards travel IN FRONT. They are the ones moving left through the
-    // others, so they have to pass over rather than under - a card sliding
-    // behind its neighbours is most of what made the movement hard to follow.
-    if (this.orderBarContainer) {
-      for (const queueSlot of this.orderDisplayOrder) {
-        const entry = built[queueSlot];
-        if (entry?.status.ready) this.orderBarContainer.bringToTop(entry.view.root);
-      }
-    }
-
-    const contentW = Math.max(0, cursor - ORDER_CARD_GAP - laneX);
-    this.orderScrollMax = Math.max(0, contentW - visibleW);
-    this.setOrderScroll(this.orderScroll);
-
-    // Delayed so the nudge lands after the board has finished appearing,
-    // where it reads as a hint rather than as part of the load.
-    if (!this.orderPeekShown && this.orderScrollMax > 0) {
-      this.orderPeekShown = true;
-      this.time.delayedCall(700, () => this.peekOrderScroll());
-    }
-  }
-
-  /**
-   * `queueSlot` is both the card and the order it holds: a card object owns
-   * one queue slot for that order's whole life and merely moves around the
-   * row, so the two can no longer diverge. The indirection through
-   * `orderDisplayOrder` that used to be needed here is gone with it.
-   */
-  /**
-   * Names an item tapped on an order CARD, in the same tray line the board
-   * uses when that item is tapped in its cell. Nothing is selected and
-   * nothing is sold - the card is not the board, so the sell action stays off.
-   */
-  private describeOrderItem(typeId: string, tier: number): void {
-    if (this.modalOpen || this.inputLocked) return;
-    const def = getTierDef(typeId, tier);
-    this.selectedItemKey = null;
-    this.rushTargetKey = null;
-    this.refreshActionTray(
-      `${def?.label?.toUpperCase() ?? 'ITEM'}
-${familyTierLabel(typeId, tier)}`
-    );
-  }
-
-  private submitOrderSlot(queueSlot: number): void {
-    if (this.modalOpen || this.inputLocked) return;
-    const active = activeOrders(this.orderState)[queueSlot];
-    if (!active) return;
-    const status = orderProgress(active.order, this.orderState, this.orderProgressSource());
-    if (!status.ready) {
-      this.showOrderDetails(active.order, status.current, status.target);
-      return;
-    }
-    // The consuming animation flies to the CARD, which is now indexed by the
-    // same number.
-    if (active.order.type === 'deliver-items') this.consumeOrderItems(active.order, queueSlot);
-    this.completeOrder(active.index, active.order, queueSlot);
-  }
-
-  /** Eases the order bar to a scroll offset, used when new work appears off-screen. */
-  private animateOrderScrollTo(target: number): void {
-    this.orderScrollTween?.stop();
-    this.orderScrollTween = this.tweens.addCounter({
-      from: this.orderScroll,
-      to: Phaser.Math.Clamp(target, 0, this.orderScrollMax),
-      duration: 220,
-      ease: 'Quad.Out',
-      // A drag beginning mid-tween must win immediately, or the bar would
-      // fight the player's finger.
-      onUpdate: (tween) => {
-        if (this.orderDrag.active) {
-          tween.stop();
-          return;
-        }
-        this.setOrderScroll(tween.getValue() ?? 0);
-      }
-    });
-  }
-
-  private consumeOrderItems(order: OrderDef, slot: number): void {
-    // Target the card that took them, so the flight visibly connects the
-    // board to the order being filled. Resolved in WORLD space: card parts
-    // now live in a per-card container inside the scrolling bar, so their
-    // own x/y are local and would send items to the wrong place.
-    const card = this.orderCardWorldCenter(slot);
-    // One pass per requirement line. The stagger counter is shared across
-    // lines so a three-line order still reads as a single sequence being
-    // collected, not three simultaneous bursts.
-    let delay = 0;
-    for (const requirement of order.requirements) {
-      let remaining = requirement.count;
-      for (let row = 0; row < ROWS && remaining > 0; row++) {
-        for (let col = 0; col < COLS && remaining > 0; col++) {
-          const pos = { col, row };
-          const cell = this.grid.get(pos);
-          if (cell?.kind !== 'item' || cell.typeId !== requirement.typeId || cell.tier !== requirement.tier) continue;
-          const key = this.keyOf(pos);
-          const view = this.views.get(key);
-          // The cell is freed and the view detached IMMEDIATELY, so the board
-          // is playable the instant the order submits - the flight is purely
-          // decorative and owns nothing the game state depends on.
-          this.views.delete(key);
-          this.grid.set(pos, null);
-          if (this.selectedItemKey === key) this.selectedItemKey = null;
-          if (view instanceof TileView && card) {
-            this.children.bringToTop(view);
-            // Staggered so two or three items read as a sequence being
-            // collected rather than one blur leaving at once.
-            void view.playDeliverTo(card.x, card.y, delay);
-            delay += 90;
-          } else {
-            view?.destroy();
-          }
-          remaining--;
-        }
-      }
-    }
-  }
 
 
   // ---- Selection / sell tray ----
@@ -2979,7 +2148,7 @@ ${familyTierLabel(typeId, tier)}`
    * fixed, the lane stayed 56px while the cards grew, and the meter ended up
    * overlapping the first card with its own ring clipped.
    */
-  private crateLaneW(): number {
+  crateLaneW(): number {
     return Math.round(CRATE_RING_LANE * this.chromeScale);
   }
 
@@ -3926,103 +3095,7 @@ ${familyTierLabel(typeId, tier)}`
     }
   }
 
-  private clearOrderRewardTexts(): void {
-    for (const text of this.orderRewardTexts) text.destroy();
-    this.orderRewardTexts = [];
-  }
 
-  /** Expanded order receipt with full names and matching resource colors. */
-  private showOrderDetails(order: OrderDef, current: number, target: number): void {
-    this.clearOrderRewardTexts();
-    if (this.selectedItemKey) {
-      const selected = this.views.get(this.selectedItemKey);
-      if (selected instanceof TileView || selected instanceof SpawnerPieceView) selected.setSelected(false);
-    }
-    this.selectedItemKey = null;
-    this.rushTargetKey = null;
-    this.sellButton.setVisible(false);
-    this.sellButtonMark.setVisible(false);
-    this.sellButtonBg.setVisible(false);
-    this.sellButtonAmount.setVisible(false);
-    this.sellButtonZone.setVisible(false);
-
-    const trayX = this.boardOriginX + 48;
-    const trayY = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
-    const left = trayX + 14;
-    const right = trayX + COLS * this.cellSize - 14;
-    this.actionText
-      .setPosition(left, trayY + 8)
-      .setOrigin(0, 0)
-      .setFontSize(10)
-      .setLineSpacing(1)
-      .setColor(hex(Theme.textOnDark))
-      .setText(`${order.title.toUpperCase()}\nPROGRESS  ${current}/${target}`);
-
-    // Spendable currencies show their MARK; XP and a source reward stay in
-    // words, because neither has one. The tray's title and progress line
-    // above is a DESCRIPTION and keeps words throughout - it is only these
-    // value chips that change, and they change because the receipt that
-    // floats off this very card when the order is delivered already uses the
-    // mark.
-    type Reward = { label: string; color: number } | { amount: number; kind: CurrencyKind } | { art: 'shipping' };
-    const rewards: Reward[] = [
-      { amount: order.rewardCoins, kind: 'credit' }
-    ];
-    if (order.rewardEnergy) rewards.push({ amount: order.rewardEnergy, kind: 'energy' });
-    if (order.rewardGems) rewards.push({ amount: order.rewardGems, kind: 'gem' });
-    if (order.rewardSpawner) {
-      rewards.push({
-        label: `+${order.rewardSpawner.typeId.toUpperCase()} SOURCE`,
-        color: getTierDef(order.rewardSpawner.typeId, 1)?.color ?? Theme.accentGreen
-      });
-    }
-    if (order.rewardShippingContainer) {
-      rewards.push({ art: 'shipping' });
-    }
-
-    let cursorX = left;
-    let lineY = trayY + 43;
-    for (const reward of rewards) {
-      if (cursorX !== left) {
-        // The separator is its own object now: it used to be prepended to
-        // each label's string, which a drawn glyph has no way to carry.
-        const dot = this.add.text(cursorX, lineY, '  ·  ', {
-          resolution: textResolution,
-          fontFamily: Theme.fontNumeric,
-          fontSize: '9px',
-          color: hex(Theme.textOnDarkMuted)
-        });
-        cursorX += dot.width;
-        this.orderRewardTexts.push(dot);
-      }
-
-      const chip = 'art' in reward
-        ? (() => {
-            const icon = this.add.graphics().setX(15);
-            drawCrate(icon, 30, 'shipping');
-            return this.add.container(0, 0, [icon]).setSize(30, 30);
-          })()
-        : 'kind' in reward
-          ? currencyLabel(this, `+${reward.amount}`, reward.kind, { fontSize: 9, glyphSize: 10, gap: 3 })
-          : this.add.text(0, 0, reward.label, {
-            resolution: textResolution,
-            fontFamily: Theme.fontNumeric,
-            fontSize: '9px',
-            fontStyle: 'bold',
-            color: hex(reward.color)
-          }).setOrigin(0, 0.5);
-
-      if (cursorX !== left && cursorX + chip.width > right) {
-        lineY += 12;
-        cursorX = left;
-      }
-      // Containers position from their centre line, text from its own origin,
-      // so both are anchored on the same baseline explicitly.
-      chip.setPosition(cursorX, lineY + 5);
-      cursorX += chip.width;
-      this.orderRewardTexts.push(chip);
-    }
-  }
 
   /**
    * Sets the shared tray action button to a verb over an amount, with the
@@ -4206,7 +3279,7 @@ ${familyTierLabel(typeId, tier)}`
     this.refreshActionTray(`SOLD  +${value} CR\nSPACE RECOVERED`);
   }
 
-  private queueSpawnerReward(typeId: string, tier: number, from?: { x: number; y: number }): void {
+  queueSpawnerReward(typeId: string, tier: number, from?: { x: number; y: number }): void {
     this.enqueueForcedSpawn({ kind: 'spawner', typeId, tier }, from);
   }
 
@@ -4322,7 +3395,7 @@ ${familyTierLabel(typeId, tier)}`
    * payout - because the pips read the board and the board changes underneath
    * them constantly.
    */
-  private refreshDecagonMachines(): void {
+  refreshDecagonMachines(): void {
     const held = Math.min(DECAGON_METER_MAX, this.decagonOnBoard());
     this.rewards.decagonMeter = held;
     for (const view of this.views.values()) {
@@ -4791,77 +3864,6 @@ ${familyTierLabel(typeId, tier)}`
 
 
 
-  private completeOrder(index: number, order: OrderDef, position: number): void {
-    // Captured BEFORE anything advances: `refreshOrderBar` below re-sorts and
-    // re-lays out the bar, so afterwards this position holds a different
-    // order at a different x. Previously this was derived from the QUEUE slot
-    // using a fixed `(boardWidth - gaps) / 3` card width - both wrong now
-    // that ready orders sort to the front and cards size to their content,
-    // which put the reward popup over an unrelated card.
-    const rewardAt = this.orderCardWorldCenter(position);
-    const levelBefore = playerLevel(this.orderState);
-    advanceOrder(this.orderState, index, this.dispenserCollectCount, this.ownedDispenserTypeIds());
-    const levelAfter = playerLevel(this.orderState);
-    addCoins(this.economy, order.rewardCoins);
-    if (order.rewardEnergy) addEnergy(this.energy, order.rewardEnergy);
-    if (order.rewardGems) addGems(this.economy, order.rewardGems);
-    if (order.rewardSpawner) {
-      // Unlocking a family should surface it in the shop immediately, so
-      // both rows re-roll here rather than just one.
-      this.queueSpawnerReward(
-        order.rewardSpawner.typeId,
-        order.rewardSpawner.tier,
-        rewardAt ?? undefined
-      );
-      const typeIds = this.availableShopTypeIds();
-      for (const key of SHOP_ROW_KEYS) {
-        rerollShopRow(
-          this.shopState, key, key === 'special' ? this.specialShopTypeIds() : typeIds,
-          Date.now(), this.collection.discovered
-        );
-      }
-    }
-    if (order.rewardShippingContainer) {
-      this.enqueueForcedSpawn({
-        kind: 'crate', tier: 'shipping',
-        remaining: shippingContainerPayload(this.ownedDispenserTypeIds(), playerLevel(this.orderState)),
-        source: 'ORDER REWARD'
-      }, rewardAt ?? undefined);
-    }
-    const automaticLevelRewards = levelAfter > levelBefore ? this.autoDeliverLevelRewards() : [];
-    this.updateCurrencyText();
-    this.refreshOrderBar();
-    this.updateLevelBadge();
-    this.saveState();
-
-    // Reward feedback is deliberately non-modal: the player can keep
-    // tapping, dragging, or submitting another order immediately.
-    const rewardX = rewardAt?.x ?? this.boardOriginX + (COLS * this.cellSize) / 2;
-    const rewardY = rewardAt?.y ?? this.contentTop + 78;
-    // +/-34 rather than +/-22: rewards now scale with the tier delivered, so
-    // a four-digit credit figure and a three-digit XP figure collided at the
-    // spacing that suited the old flat two-digit rewards.
-    floatingScore(this, rewardX - 34, rewardY, order.rewardCoins, 'CR');
-    if (order.rewardEnergy) floatingScore(this, rewardX, rewardY + 18, order.rewardEnergy, 'E');
-    if (order.rewardGems) floatingScore(this, rewardX, rewardY + (order.rewardEnergy ? 36 : 18), order.rewardGems, 'GM');
-
-    let trayMessage = `ORDER SENT  ·  ${order.title.toUpperCase()}
-+${order.rewardCoins} CREDITS`;
-    if (order.rewardEnergy) trayMessage += `  ·  +${order.rewardEnergy} E`;
-    if (order.rewardGems) trayMessage += `  ·  +${order.rewardGems} GM`;
-    if (order.rewardSpawner) trayMessage += `  ·  ${order.rewardSpawner.typeId.toUpperCase()} SOURCE`;
-    if (order.rewardShippingContainer) trayMessage += '  ·  SHIPPING CONTAINER';
-    if (levelAfter > levelBefore) {
-      const newest = automaticLevelRewards[automaticLevelRewards.length - 1];
-      trayMessage = newest
-        ? `LEVEL ${levelAfter} REACHED  ·  ${CRATE_LABELS[newest.tier]} DELIVERED`
-        : `LEVEL ${levelAfter} REACHED\nTAP THE LEVEL BADGE TO VIEW PROGRESS`;
-    }
-    this.checkDeadlock();
-    this.tryReleaseVaultItem();
-    this.tryDeliverMeterGold();
-    this.refreshActionTray(trayMessage);
-  }
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.inputLocked || this.modalOpen) return;
@@ -5570,4 +4572,22 @@ ${familyTierLabel(typeId, tier)}`
   confirmReset(): void { confirmResetExt(this); }
   resetGame(): void { resetGameExt(this); }
   buildDevResetButton(): void { buildDevResetButtonExt(this); }
+
+  // Forwards to board/orderBar.ts, so the scene's own call sites
+  // still read as methods.
+  refreshOrderBar(): void { refreshOrderBarExt(this); }
+  buildOrderBar(): void { buildOrderBarExt(this); }
+  destroyOrderBar(): void { destroyOrderBarExt(this); }
+  drawOrderScrollHint(): void { drawOrderScrollHintExt(this); }
+  peekOrderScroll(): void { peekOrderScrollExt(this); }
+  setOrderScroll(value: number): void { setOrderScrollExt(this, value); }
+  animateOrderScrollTo(target: number): void { animateOrderScrollToExt(this, target); }
+  orderCardWorldCenter(position: number): { x: number; y: number } | null { return orderCardWorldCenterExt(this, position); }
+  orderBarMetrics(): { cardH: number; y: number; viewW: number } { return orderBarMetricsExt(this); }
+  showOrderDetails(order: OrderDef, current: number, target: number): void { showOrderDetailsExt(this, order, current, target); }
+  describeOrderItem(typeId: string, tier: number): void { describeOrderItemExt(this, typeId, tier); }
+  clearOrderRewardTexts(): void { clearOrderRewardTextsExt(this); }
+  submitOrderSlot(queueSlot: number): void { submitOrderSlotExt(this, queueSlot); }
+  completeOrder(index: number, order: OrderDef, position: number): void { completeOrderExt(this, index, order, position); }
+  orderProgressSource(): OrderProgressSource { return orderProgressSourceExt(this); }
 }
