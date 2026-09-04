@@ -222,6 +222,25 @@ import {
   toggleFullscreen,
 } from './board/config';
 import {
+  buildCrateMeter as buildCrateMeterExt,
+  refreshCrateMeter as refreshCrateMeterExt,
+  drawCrateMeterProgress as drawCrateMeterProgressExt,
+  claimMeterCrateReward as claimMeterCrateExt,
+  tryDeliverMeterGold as tryDeliverMeterGoldExt,
+  crateLaneW as crateLaneWExt,
+  crateRingR as crateRingRExt,
+  crateRingCentre as crateRingCentreExt,
+  crateAccent as crateAccentExt
+} from './board/crateMeter';
+
+import {
+  loadOrSeed as loadOrSeedExt,
+  saveState as saveStateExt,
+  seedLockedBoard as seedLockedBoardExt,
+  migrateLockedItemsToWiderBoard as migrateLockedItemsToWiderBoardExt
+} from './board/saveGame';
+
+import {
   refreshOrderBar as refreshOrderBarExt,
   buildOrderBar as buildOrderBarExt,
   destroyOrderBar as destroyOrderBarExt,
@@ -309,7 +328,7 @@ export class BoardScene extends Phaser.Scene {
   boardOriginX = 0;
   boardOriginY = 0;
   contentTop = 0;
-  private boardExpansionUnlocked = new Set<string>();
+  boardExpansionUnlocked = new Set<string>();
   private expansionLockViews = new Map<string, ExpansionLockView>();
   private expansionRowLabels: Phaser.GameObjects.Text[] = [];
 
@@ -381,15 +400,15 @@ export class BoardScene extends Phaser.Scene {
   overInventory = false;
   private hudChips: HudChip[] = [];
   rewards: RewardsState = createDefaultRewardsState();
-  private crateMeterBar!: Phaser.GameObjects.Graphics;
-  private crateMeterProgress!: Phaser.GameObjects.Graphics;
-  private crateMeterIcon!: Phaser.GameObjects.Graphics;
+  crateMeterBar!: Phaser.GameObjects.Graphics;
+  crateMeterProgress!: Phaser.GameObjects.Graphics;
+  crateMeterIcon!: Phaser.GameObjects.Graphics;
   crateMeterContainer!: Phaser.GameObjects.Container;
-  private crateMeterZone!: Phaser.GameObjects.Zone;
-  private crateMeterRuns: Phaser.GameObjects.Text[] = [];
-  private crateMeterPulse?: Phaser.Tweens.Tween;
-  private crateMeterWasCooling = false;
-  private crateMeterSecond = -1;
+  crateMeterZone!: Phaser.GameObjects.Zone;
+  crateMeterRuns: Phaser.GameObjects.Text[] = [];
+  crateMeterPulse?: Phaser.Tweens.Tween;
+  crateMeterWasCooling = false;
+  crateMeterSecond = -1;
   /** Highest stage the player has unlocked; its pieces are the buyable ones. */
   /**
    * Space between the board's bottom edge and the tray rail.
@@ -443,8 +462,8 @@ export class BoardScene extends Phaser.Scene {
    * `supplyCooldownUntil` is kept as the legacy field so an existing save's
    * running cooldown is not silently cleared on load.
    */
-  private supplyCooldownUntil = 0;
-  private supplyCooldownByTier: Record<string, number> = {};
+  supplyCooldownUntil = 0;
+  supplyCooldownByTier: Record<string, number> = {};
 
   /** When this tier may next be bought. */
   supplyTierCooldown(tier: string): number {
@@ -466,7 +485,7 @@ export class BoardScene extends Phaser.Scene {
   invIcon!: Phaser.GameObjects.Graphics;
   invZone!: Phaser.GameObjects.Zone;
   /** Infinite, automatic LIFO holding area for rewards that require a board cell. */
-  private forcedSpawnVault: ForcedSpawn[] = [];
+  forcedSpawnVault: ForcedSpawn[] = [];
   private vaultBg!: Phaser.GameObjects.Graphics;
   private vaultIcon!: Phaser.GameObjects.Graphics;
   private vaultCountDot!: Phaser.GameObjects.Graphics;
@@ -1142,7 +1161,7 @@ export class BoardScene extends Phaser.Scene {
   }
 
   /** Applies saved expansion purchases as real unavailable grid cells. */
-  private applyBoardExpansionLocks(savedCells?: (GridCellData | null)[][]): void {
+  applyBoardExpansionLocks(savedCells?: (GridCellData | null)[][]): void {
     for (const row of [EXPANSION_ROW_ONE, EXPANSION_ROW_TWO]) {
       for (let col = 0; col < COLS; col++) {
         const pos = { col, row };
@@ -2103,230 +2122,13 @@ export class BoardScene extends Phaser.Scene {
 
 
 
-  /**
-   * The output meter: a thin full-width rule that fills as sources are run,
-   * with a notch at each crate threshold.
-   *
-   * Drawn as a machined hairline rather than a chunky progress bar because
-   * that is what the art brief's "industrial techno" tenth actually is - a
-   * precise indicator, never the subject. It also costs almost no vertical
-   * space, which the header did not have to spare.
-   *
-   * Every number it shows is real: the fill is exactly `collects / 100` and
-   * the notches sit exactly at the thresholds that grant each crate. See
-   * Rewards.ts for why that matters.
-   */
-  private buildCrateMeter(): void {
-    this.crateMeterContainer = this.add.container(0, 0).setDepth(2);
-    this.crateMeterBar = this.add.graphics();
-    this.crateMeterProgress = this.add.graphics();
-    this.crateMeterIcon = this.add.graphics();
-    const { cx, cy } = this.crateRingCentre();
-    this.crateMeterZone = this.add.zone(cx, cy, this.crateRingR() * 2 + 8, this.crateRingR() * 2 + 8)
-      .setInteractive({ useHandCursor: true });
-    this.crateMeterZone.on('pointerdown', () => this.claimMeterCrate());
-    this.crateMeterContainer.add([
-      this.crateMeterBar,
-      this.crateMeterProgress,
-      this.crateMeterIcon,
-      this.crateMeterZone
-    ]);
-    this.refreshCrateMeter();
-  }
 
-  /**
-   * Ring centre: the left end of the ORDER ROW, in line with the cards rather
-   * than in a strip of its own. The cards scroll past it; the ring does not
-   * move, because it is not one of them.
-   */
-  /**
-   * Width of the crate meter's lane at the current chrome scale.
-   *
-   * The order cards are drawn at their tuned size and scaled as a unit, so
-   * anything that has to line up beside them - this lane, the bar's mask, the
-   * cursor the cards are packed from - has to grow by the same factor. Left
-   * fixed, the lane stayed 56px while the cards grew, and the meter ended up
-   * overlapping the first card with its own ring clipped.
-   */
-  crateLaneW(): number {
-    return Math.round(CRATE_RING_LANE * this.chromeScale);
-  }
 
-  /** Ring radius at the current chrome scale. */
-  private crateRingR(): number {
-    return CRATE_RING_R * this.chromeScale;
-  }
 
-  private crateRingCentre(): { cx: number; cy: number } {
-    const { cardH, y } = this.orderBarMetrics();
-    return {
-      cx: this.boardOriginX + (this.crateLaneW() - Math.round(8 * this.chromeScale)) / 2,
-      cy: y + (ORDER_HEADER_H + (cardH - ORDER_HEADER_H) / 2) * this.chromeScale
-    };
-  }
 
-  private refreshCrateMeter(now = Date.now()): void {
-    if (!this.crateMeterBar) return;
-    const cooling = isMeterCooling(this.rewards, now);
-    const { cx, cy } = this.crateRingCentre();
-    const earned = availableCrate(this.rewards);
-    const next = nextCrateStep(this.rewards);
-    const cooldownRemaining = meterCooldownRemaining(this.rewards, now);
-    const fill = cooling
-      ? cooldownRemaining / Math.max(1, this.rewards.meterCooldownDurationMs || METER_COOLDOWN_MS)
-      : Math.min(1, this.rewards.meterCollects / METER_MAX);
 
-    const g = this.crateMeterBar;
-    g.clear();
 
-    {
-    // Compact icon-only meter. Progress and claimability are communicated by
-    // the ring and crate itself; persistent explanatory copy was unnecessary.
-    for (const text of this.crateMeterRuns) text.destroy();
-    this.crateMeterRuns = [];
-    const { cardH: laneH, y: laneY } = this.orderBarMetrics();
-    // Same scale the cards are drawn at, so the meter's box lines up with the
-    // card band beside it instead of sitting short and high.
-    const boxY = laneY + ORDER_HEADER_H * this.chromeScale;
-    const boxH = (laneH - ORDER_HEADER_H) * this.chromeScale;
-    const boxW = this.crateLaneW() - Math.round(8 * this.chromeScale);
-    g.fillStyle(Theme.bg, 0.9);
-    g.fillRoundedRect(this.boardOriginX, boxY, boxW, boxH, Theme.radiusChip);
-    g.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
-    g.strokeRoundedRect(this.boardOriginX, boxY, boxW, boxH, Theme.radiusChip);
-    this.drawCrateMeterProgress(now);
-    const showTier = earned ?? next?.tier ?? 'bronze';
-    // Dead centre on the ring. The -3/+1 nudge dated from when `drawCrate`
-    // built its art off to one side of the origin and every caller corrected
-    // for it by hand; the art centres itself now, so the correction was the
-    // only thing left pushing it off.
-    this.crateMeterIcon.clear().setPosition(cx, cy).setAlpha(cooling ? 0.3 : earned ? 1 : 0.55);
-    drawCrate(this.crateMeterIcon, (CRATE_RING_R * 1.25 + 14) * this.chromeScale, showTier);
-    if (cooling) {
-      const timer = this.add.text(cx, boxY + boxH - 6, formatCountdown(cooldownRemaining), {
-        resolution: textResolution,
-        fontFamily: Theme.fontNumeric,
-        fontSize: '8px',
-        fontStyle: 'bold',
-        color: hex(Theme.textOnDark),
-        backgroundColor: 'rgba(0,0,0,0.72)',
-        padding: { x: 3, y: 1 }
-      }).setOrigin(0.5).setDepth(3);
-      this.crateMeterContainer.add(timer);
-      this.crateMeterRuns.push(timer);
-    }
-    this.crateMeterPulse?.stop();
-    this.crateMeterIcon.setScale(1);
-    if (earned && !cooling) {
-      this.crateMeterPulse = this.tweens.add({
-        targets: this.crateMeterIcon,
-        scale: { from: 1, to: 1.12 },
-        duration: 700,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.InOut'
-      });
-    }
-    this.crateMeterWasCooling = cooling;
-    this.crateMeterSecond = cooling ? Math.ceil(cooldownRemaining / 1000) : -1;
-    return;
-    }
 
-  }
-
-  /** Draws only the circular indicator, allowing cooldown motion every frame without rebuilding text. */
-  private drawCrateMeterProgress(now = Date.now()): void {
-    if (!this.crateMeterProgress) return;
-    const { cx, cy } = this.crateRingCentre();
-    const cooling = isMeterCooling(this.rewards, now);
-    const earned = availableCrate(this.rewards);
-    const fill = cooling
-      ? meterCooldownRemaining(this.rewards, now) / METER_COOLDOWN_MS
-      : Math.min(1, this.rewards.meterCollects / METER_MAX);
-    const g = this.crateMeterProgress;
-    const tau = Math.PI * 2;
-    const start = -Math.PI / 2;
-
-    g.clear();
-    const ringR = this.crateRingR();
-    g.lineStyle(CRATE_RING_W * this.chromeScale, Theme.bgElevated, 1);
-    g.beginPath();
-    g.arc(cx, cy, ringR, 0, tau);
-    g.strokePath();
-
-    if (fill > 0) {
-      g.lineStyle(
-        CRATE_RING_W,
-        cooling ? Theme.textOnDarkMuted : earned ? this.crateAccent(earned) : Theme.currencyEnergy,
-        cooling ? 0.65 : earned ? 1 : 0.8
-      );
-      g.beginPath();
-      g.arc(cx, cy, ringR, start, start + tau * fill);
-      g.strokePath();
-    }
-
-    for (const step of CRATE_THRESHOLDS) {
-      const angle = start + tau * (step.collects / METER_MAX);
-      const reached = !cooling && this.rewards.meterCollects >= step.collects;
-      const inner = ringR - (CRATE_RING_W * this.chromeScale) / 2 - 1;
-      const outer = ringR + (CRATE_RING_W * this.chromeScale) / 2 + 1;
-      g.lineStyle(2, reached ? Theme.textOnDark : Theme.borderOnDark, 1);
-      g.lineBetween(
-        cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner,
-        cx + Math.cos(angle) * outer, cy + Math.sin(angle) * outer
-      );
-    }
-  }
-
-  /**
-   * Cashes the meter in. Refuses when the board cannot hold the crate's
-   * items rather than dropping them, matching what buying from the shop
-   * already does on a full board - and crucially WITHOUT consuming the
-   * meter, so nothing is lost.
-   */
-  private claimMeterCrate(): void {
-    if (this.modalOpen || this.inputLocked) return;
-    if (isMeterCooling(this.rewards)) {
-      const seconds = Math.ceil(meterCooldownRemaining(this.rewards) / 1000);
-      this.refreshActionTray(`CRATE METER RECHARGING  ·  ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
-      return;
-    }
-    const tier = availableCrate(this.rewards);
-    if (!tier) return;
-
-    // Gold closes the cycle and becomes a physical board object; if the board
-    // is full, the automatic vault owns the wait rather than blocking meter
-    // progress behind an invisible reward.
-    if (tier === 'gold') {
-      this.tryDeliverMeterGold();
-      return;
-    }
-
-    const { cx, cy } = this.crateRingCentre();
-    if (!this.awardCrate(tier, 'METER REWARD', { x: cx, y: cy })) return;
-    claimMeterCrate(this.rewards);
-    this.refreshCrateMeter();
-    this.refreshOrderBar();
-    this.saveState();
-  }
-
-  /** Converts a completed Gold meter into a forced spawn exactly once. */
-  tryDeliverMeterGold(): boolean {
-    if (this.rewards.meterCollects < METER_MAX || availableCrate(this.rewards) !== 'gold') return false;
-    const payload = cratePayload(rollCrate(
-      'gold', playerLevel(this.orderState), Math.random, this.ownedDispenserTypeIds()
-    ));
-    claimMeterCrate(this.rewards);
-    const { cx, cy } = this.crateRingCentre();
-    this.enqueueForcedSpawn(
-      { kind: 'crate', tier: 'gold', remaining: payload, source: 'METER REWARD' },
-      { x: cx, y: cy }
-    );
-    this.refreshCrateMeter();
-    this.refreshOrderBar();
-    this.saveState();
-    return true;
-  }
 
   /**
    * INVENTORY button, bottom-left under the action tray. Always visible,
@@ -2537,13 +2339,6 @@ export class BoardScene extends Phaser.Scene {
 
 
 
-  /** Tier colour for a crate. Metallic, deliberately outside every family ramp. */
-  crateAccent(tier: CrateTier): number {
-    if (tier === 'vault') return Theme.currencyGem;
-    if (tier === 'gold') return Theme.currencyCredit;
-    if (tier === 'silver') return 0xc9d2d8;
-    return 0xc08a52;
-  }
 
 
 
@@ -3514,7 +3309,7 @@ export class BoardScene extends Phaser.Scene {
     for (const match of matches) match.playUnlockHint();
   }
 
-  private placeLockedTile(pos: GridPosition, typeId: string, tier: number): TileView {
+  placeLockedTile(pos: GridPosition, typeId: string, tier: number): TileView {
     const world = this.cellToWorld(pos);
     const view = new TileView(this, world.x, world.y, this.cellSize, typeId, tier, pos, true);
     this.grid.set(pos, { kind: 'locked-item', typeId, tier });
@@ -3522,36 +3317,9 @@ export class BoardScene extends Phaser.Scene {
     return view;
   }
 
-  private seedLockedBoard(preserveEmpty: number): void {
-    let remainingSlots = Math.max(0, this.grid.emptyCells().length - preserveEmpty);
-    // Locked merge items retain the original 6x7 board layout. The final two
-    // rows are expansion tiles and must never receive ordinary locked items.
-    for (const seed of createLockedBoardSeed(COLS, EXPANSION_ROW_ONE)) {
-      if (remainingSlots <= 0) break;
-      if (!this.grid.isEmpty(seed.pos)) continue;
-      this.placeLockedTile(seed.pos, seed.typeId, seed.tier);
-      remainingSlots--;
-    }
-  }
 
-  private migrateLockedItemsToWiderBoard(savedCells: (GridCellData | null)[][]): void {
-    const remainingLocks = savedCells.flat().filter(
-      (cell): cell is Extract<GridCellData, { kind: 'locked-item' }> => cell?.kind === 'locked-item'
-    );
-    const targets = createLockedBoardSeed(COLS, EXPANSION_ROW_ONE);
-    for (const lock of remainingLocks) {
-      const exactIndex = targets.findIndex((target) =>
-        target.typeId === lock.typeId && target.tier === lock.tier && this.grid.isEmpty(target.pos)
-      );
-      const fallbackIndex = targets.findIndex((target) => this.grid.isEmpty(target.pos));
-      const index = exactIndex >= 0 ? exactIndex : fallbackIndex;
-      if (index < 0) break;
-      const [target] = targets.splice(index, 1);
-      this.placeLockedTile(target.pos, lock.typeId, lock.tier);
-    }
-  }
 
-  private placeSpawner(
+  placeSpawner(
     pos: GridPosition,
     typeId: string,
     tier: number,
@@ -3595,268 +3363,7 @@ export class BoardScene extends Phaser.Scene {
     return view;
   }
 
-  private loadOrSeed(): void {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as {
-          boardVersion?: number;
-          grid: (GridCellData | null)[][];
-          economy?: EconomyState;
-          energy?: EnergyState;
-          orderState?: OrderState;
-          levelState?: { currentLevelIndex?: number; totalXp?: number };
-          shopState?: ShopState;
-          dispenserState?: DispenserState;
-          dispenserCollectCount?: number;
-          rewards?: Partial<RewardsState>;
-          collection?: Partial<CollectionState>;
-          inventory?: Partial<InventoryState>;
-          pendingSpawners?: { typeId: string; tier: number }[];
-          forcedSpawnVault?: ForcedSpawn[];
-          boardExpansion?: { unlockedCells?: string[] };
-          projectStage?: number;
-          builtPieces?: string[];
-          supplyCooldownUntil?: number;
-          supplyCooldownByTier?: Record<string, number>;
-        };
-        this.grid.loadFrom(parsed.grid);
-        const savedCells = this.grid.serialize();
-        this.grid.clear();
-        this.boardExpansionUnlocked = new Set(
-          Array.isArray(parsed.boardExpansion?.unlockedCells)
-            ? parsed.boardExpansion.unlockedCells.filter((key): key is string => typeof key === 'string')
-            : []
-        );
-        this.applyBoardExpansionLocks(savedCells);
-        this.dispenserCollectCount = parsed.dispenserCollectCount ?? 0;
-        this.projectStage = Phaser.Math.Clamp(Math.floor(parsed.projectStage ?? 0), 0, PROJECT_STAGES.length);
-        // Saves written before the room was itemized have no piece list: back
-        // then reaching stage N meant owning everything up to N, so that is
-        // what they migrate to. Without this a returning player's furnished
-        // room would empty itself out and ask to be bought again.
-        const validKeys = new Set(ROOM_PIECES.map((piece) => piece.key));
-        this.builtPieces = Array.isArray(parsed.builtPieces)
-          ? new Set(parsed.builtPieces.filter((key): key is string => validKeys.has(key)))
-          : new Set(
-              ROOM_PIECES
-                .filter((piece) => piece.stage <= this.projectStage)
-                .map((piece) => piece.key)
-            );
-        this.supplyCooldownUntil = typeof parsed.supplyCooldownUntil === 'number'
-          ? parsed.supplyCooldownUntil : 0;
-        // A save from before per-tier timers carries one shared deadline.
-        // Rather than drop it - which would hand back every crate at once -
-        // or apply it to all three, it is honoured on the tier it most likely
-        // came from: the shortest one it could still be running for.
-        this.supplyCooldownByTier = {};
-        if (parsed.supplyCooldownByTier && typeof parsed.supplyCooldownByTier === 'object') {
-          for (const [tier, until] of Object.entries(parsed.supplyCooldownByTier)) {
-            if (typeof until === 'number' && Number.isFinite(until)) this.supplyCooldownByTier[tier] = until;
-          }
-        } else if (this.supplyCooldownUntil > Date.now()) {
-          const remaining = this.supplyCooldownUntil - Date.now();
-          const from = [...SUPPLY_CRATES].sort((a, b) => a.cooldownMs - b.cooldownMs)
-            .find((offer) => offer.cooldownMs >= remaining) ?? SUPPLY_CRATES[SUPPLY_CRATES.length - 1];
-          this.supplyCooldownByTier[from.tier] = this.supplyCooldownUntil;
-        }
-        this.rewards = normalizeRewardsState(parsed.rewards);
-        const legacyCollection = parsed.collection == null;
-        this.collection = normalizeCollectionState(parsed.collection);
-        this.inventory = normalizeInventory(parsed.inventory);
-        const savedVault = Array.isArray(parsed.forcedSpawnVault)
-          ? parsed.forcedSpawnVault.filter((entry): entry is ForcedSpawn => {
-              if (!entry || typeof entry !== 'object' || typeof entry.kind !== 'string') return false;
-              if (entry.kind === 'crate') return typeof entry.tier === 'string' && Array.isArray(entry.remaining);
-              if (entry.kind === 'splitter') return true;
-              if (entry.kind === 'resource-producer') return typeof entry.producerId === 'string' && Number.isFinite(entry.remaining);
-              return typeof entry.typeId === 'string' && Number.isFinite(entry.tier);
-            })
-          : [];
-        const legacyPending = Array.isArray(parsed.pendingSpawners)
-          ? parsed.pendingSpawners
-              .filter((entry) => entry && typeof entry.typeId === 'string' && Number.isFinite(entry.tier))
-              .map((entry): ForcedSpawn => ({ kind: 'spawner', typeId: entry.typeId, tier: entry.tier }))
-          : [];
-        this.forcedSpawnVault = [...legacyPending, ...savedVault];
-        if (parsed.economy) {
-          this.economy = { ...createDefaultEconomy(), ...parsed.economy };
-        }
-        // Pre-energy saves get a full bar rather than an empty one - the
-        // mechanic arriving must not read as a punishment for existing players.
-        this.energy = normalizeEnergy(parsed.energy);
-        const savedDispenserFamilies = new Set<string>();
-        for (const row of savedCells) {
-          for (const cell of row) {
-            if (cell?.kind === 'spawner') savedDispenserFamilies.add(cell.typeId);
-          }
-        }
-        for (const pending of this.forcedSpawnVault) {
-          if (pending.kind === 'spawner') savedDispenserFamilies.add(pending.typeId);
-        }
-        if (savedDispenserFamilies.size === 0) savedDispenserFamilies.add(TYPE_ID);
-        this.orderState = normalizeOrderState(
-          parsed.orderState ?? parsed.levelState ?? {},
-          this.dispenserCollectCount,
-          [...savedDispenserFamilies]
-        );
-        let saveMigration = false;
-        const needsLockedBoardMigration = (parsed.boardVersion ?? 0) < 8;
-        const needsBoardWidthMigration = (parsed.boardVersion ?? 0) < 9;
-        let spawnerCount = 0;
-        for (let row = 0; row < ROWS; row++) {
-          for (let col = 0; col < COLS; col++) {
-            const cell = savedCells[row]?.[col];
-            if (!cell) continue;
-            const pos = { col, row };
-            if (cell.kind === 'spawner') {
-              this.placeSpawner(pos, cell.typeId, cell.tier, false, cell);
-              spawnerCount++;
-            } else if (cell.kind === 'locked-item') {
-              // Version 8 restores the locked items to the original 6x7
-              // frontier after the two expansion rows were added. Discard
-              // only old locked cells here; player-owned pieces and sources
-              // survive and the locks are reseeded below.
-              if (!needsLockedBoardMigration && !needsBoardWidthMigration) this.placeLockedTile(pos, cell.typeId, cell.tier);
-            } else if (cell.kind === 'crate') {
-              this.placeCrate(pos, cell.tier, cell.remaining, cell.readyAt);
-            } else if (cell.kind === 'spawner-piece') {
-              this.placeSpawnerPiece(pos, cell.typeId, cell.tier, false);
-            } else if (cell.kind === 'splitter') {
-              this.placeSplitter(pos, false);
-            } else if (cell.kind === 'resource-producer') {
-              this.placeResourceProducer(pos, cell.producerId, cell.remaining, false);
-            } else {
-              this.placeTile(pos, cell.typeId, cell.tier, false);
-            }
-          }
-        }
 
-        // One-time migration from the old off-board source dock. Existing
-        // sources become real board pieces instead of disappearing.
-        if (spawnerCount === 0 && parsed.dispenserState) {
-          const legacyState = normalizeDispenserState(parsed.dispenserState);
-          for (const legacy of legacyState.slots) {
-            const empty = this.grid.emptyCells()[0];
-            if (!legacy || !empty) continue;
-            if (!legacy.typeId) legacy.typeId = TYPE_ID;
-            this.placeSpawner(empty, legacy.typeId, legacy.tier, false, { kind: 'spawner', ...legacy });
-            spawnerCount++;
-          }
-        }
-        if (spawnerCount === 0) {
-          const empty = this.grid.emptyCells()[0] ?? { col: 2, row: 5 };
-          const fullStarter = makeDispenser(TYPE_ID, 1, Date.now(), capacityForTier(TYPE_ID, 1));
-          this.placeSpawner(empty, TYPE_ID, 1, false, { kind: 'spawner', ...fullStarter });
-          spawnerCount++;
-        }
-
-        // Saves from before the collection feature have no permanent history.
-        // Reconstruct the lower ladder only from player-owned items that still
-        // exist on the board or in inventory; locked cells never count.
-        if (legacyCollection) {
-          const highest = new Map<string, number>();
-          for (const key of this.collection.discovered) {
-            const [typeId, rawTier] = key.split(':');
-            highest.set(typeId, Math.max(highest.get(typeId) ?? 0, Number(rawTier)));
-          }
-          for (const item of this.inventory.items) {
-            if (item?.kind !== 'item') continue;
-            highest.set(item.typeId, Math.max(highest.get(item.typeId) ?? 0, item.tier));
-          }
-          for (const [typeId, tier] of highest) {
-            if (!isCurrencyChain(typeId)) discoverThrough(this.collection, typeId, tier);
-          }
-          saveMigration = true;
-        }
-
-        if (needsLockedBoardMigration) {
-          this.seedLockedBoard(2);
-          saveMigration = true;
-        } else if (needsBoardWidthMigration) {
-          this.migrateLockedItemsToWiderBoard(savedCells);
-          saveMigration = true;
-        }
-
-        if (parsed.shopState) {
-          const typeIds = this.availableShopTypeIds();
-          // normalizeShopState handles the pre-two-row save shape (a single
-          // mixed `offers` array) by regenerating both rows - offers are
-          // ephemeral, so nothing the player owns is lost in that reset.
-          this.shopState = refreshIfDue(
-            normalizeShopState(parsed.shopState, typeIds, Date.now(), this.collection.discovered, this.specialShopTypeIds()),
-            Date.now(), typeIds, this.collection.discovered, this.specialShopTypeIds()
-          );
-        }
-        // Captured only once the load has fully succeeded, so `.prev` always
-        // holds a save that is known to be readable.
-        stashSave(PREVIOUS_SAVE_KEY, raw);
-        if (saveMigration) this.saveState();
-        this.updateLevelBadge();
-        return;
-      } catch (error) {
-        // The save is KEPT, not discarded. This catch covers the whole load,
-        // not just the JSON.parse: any shape an older build wrote that a newer
-        // one mishandles ends up here, and seeding a fresh board means the
-        // next autosave is seconds away from overwriting real progress. The
-        // copy survives that, so a player who reports "my game reset" can be
-        // put back rather than consoled.
-        stashSave(UNREADABLE_SAVE_KEY, raw);
-        console.error(
-          `[save] could not be loaded and was copied to "${UNREADABLE_SAVE_KEY}"`,
-          error
-        );
-      }
-    }
-    // A fresh game begins with one physical source and a ready-made first
-    // merge. Further sources arrive as goal rewards.
-    //
-    // The grid is CLEARED first because it is a scene field and survives
-    // `scene.restart()`, while the views that draw it do not. Re-seeding onto
-    // a grid that still held the previous run's cells placed nothing -
-    // `seedLockedBoard` skips any cell that is not empty - so the locked items
-    // existed as data with no views: invisible, and un-mergeable. The load
-    // path above already clears for the same reason; only the seed path did
-    // not, which is why one merge (and the save it writes) hid the bug.
-    this.grid.clear();
-    this.boardExpansionUnlocked.clear();
-    this.applyBoardExpansionLocks();
-    const fullStarter = makeDispenser(TYPE_ID, 1, Date.now(), capacityForTier(TYPE_ID, 1));
-    this.placeSpawner({ col: 1, row: 1 }, TYPE_ID, 1, false, { kind: 'spawner', ...fullStarter });
-    this.placeTile({ col: 0, row: 0 }, TYPE_ID, 1, false);
-    this.placeTile({ col: 0, row: 1 }, TYPE_ID, 1, false);
-    this.placeTile({ col: 1, row: 0 }, TYPE_ID, 1, false);
-    this.placeTile({ col: 2, row: 1 }, TYPE_ID, 1, false);
-    this.seedLockedBoard(0);
-    this.updateLevelBadge();
-    // Persist the starting board immediately, so a rebuild - a rotation, a
-    // resize, entering fullscreen - restores it through the load path instead
-    // of seeding a second time.
-    this.saveState();
-  }
-
-  saveState(): void {
-    const payload = {
-      boardVersion: 9,
-      grid: this.grid.serialize(),
-      economy: this.economy,
-      energy: this.energy,
-      orderState: this.orderState,
-      shopState: this.shopState,
-      dispenserCollectCount: this.dispenserCollectCount,
-      rewards: this.rewards,
-      collection: this.collection,
-      inventory: this.inventory,
-      forcedSpawnVault: this.forcedSpawnVault,
-      boardExpansion: { unlockedCells: [...this.boardExpansionUnlocked] }
-      ,projectStage: this.projectStage
-      ,builtPieces: [...this.builtPieces]
-      // Absolute, so the restock keeps running while the game is closed.
-      ,supplyCooldownUntil: this.supplyCooldownUntil
-      ,supplyCooldownByTier: this.supplyCooldownByTier
-    };
-    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
-  }
 
 
 
@@ -4590,4 +4097,23 @@ export class BoardScene extends Phaser.Scene {
   submitOrderSlot(queueSlot: number): void { submitOrderSlotExt(this, queueSlot); }
   completeOrder(index: number, order: OrderDef, position: number): void { completeOrderExt(this, index, order, position); }
   orderProgressSource(): OrderProgressSource { return orderProgressSourceExt(this); }
+
+  // Forwards to board/saveGame.ts, so the scene's own call sites
+  // still read as methods.
+  loadOrSeed(): void { loadOrSeedExt(this); }
+  saveState(): void { saveStateExt(this); }
+  seedLockedBoard(preserveEmpty: number): void { seedLockedBoardExt(this, preserveEmpty); }
+  migrateLockedItemsToWiderBoard(savedCells: (GridCellData | null)[][]): void { migrateLockedItemsToWiderBoardExt(this, savedCells); }
+
+  // Forwards to board/crateMeter.ts, so the scene's own call sites
+  // still read as methods.
+  buildCrateMeter(): void { buildCrateMeterExt(this); }
+  refreshCrateMeter(now = Date.now()): void { refreshCrateMeterExt(this, now); }
+  drawCrateMeterProgress(now = Date.now()): void { drawCrateMeterProgressExt(this, now); }
+  claimMeterCrate(): void { claimMeterCrateExt(this); }
+  tryDeliverMeterGold(): boolean { return tryDeliverMeterGoldExt(this); }
+  crateLaneW(): number { return crateLaneWExt(this); }
+  crateRingR(): number { return crateRingRExt(this); }
+  crateRingCentre(): { cx: number; cy: number } { return crateRingCentreExt(this); }
+  crateAccent(tier: CrateTier): number { return crateAccentExt(this, tier); }
 }
