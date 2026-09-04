@@ -71,11 +71,10 @@ export class CrateView extends Phaser.GameObjects.Container {
         shadowSize * (0.6 - i * 0.03), shadowSize * 0.16
       );
     }
-    // Shifted LEFT by half the isometric depth. `drawCrate` builds its front
-    // face around the origin and then extends the top and side faces to the
-    // upper right, so the finished block's visual centre sits right of where
-    // it was drawn from; without this the crate rides off-centre in its cell.
-    this.art.clear().setPosition(-size * 0.085, 0);
+    // No correction needed any more: `drawCrate` centres its own drawn box
+    // on the origin, projection included. This used to shift left by half the
+    // isometric depth, and every other caller had to remember to do the same.
+    this.art.clear().setPosition(0, 0);
     drawCrate(this.art, size, this.crateTier);
   }
 

@@ -15,6 +15,7 @@ import {
   crateForStreak,
   createDefaultRewardsState,
   dailyRewardFor,
+  dailyOfferLevel,
   dailyAvailable,
   dayIndexFor,
   milestoneCrateFor,
@@ -183,6 +184,24 @@ describe('daily claim', () => {
     expect(dailyAvailable(state, noon(1))).toBe(true);
   });
 
+  it('pins an unclaimed daily to the level the day opened at', () => {
+    const state = createDefaultRewardsState();
+    // Looked at on login at level 2, claimed later the same day at level 20.
+    const pinned = dailyOfferLevel(state, noon(0), 2);
+    expect(pinned).toBe(2);
+    const claimed = claimDaily(state, noon(0), 20) as { credits: number };
+    expect(claimed.credits).toBe((dailyRewardFor(1, 2) as { credits: number }).credits);
+  });
+
+  it('re-pins the level when the day rolls over', () => {
+    const state = createDefaultRewardsState();
+    dailyOfferLevel(state, noon(0), 2);
+    claimDaily(state, noon(0), 2);
+    expect(dailyOfferLevel(state, noon(1), 20)).toBe(20);
+    const day2 = claimDaily(state, noon(1), 20) as { credits: number };
+    expect(day2.credits).toBe((dailyRewardFor(2, 20) as { credits: number }).credits);
+  });
+
   it('builds a streak across consecutive days', () => {
     const state = createDefaultRewardsState();
     for (let day = 0; day < 3; day++) claimDaily(state, noon(day));
@@ -200,7 +219,9 @@ describe('daily claim', () => {
 
   it('uses the five-day ladder and holds at gold on day 5+', () => {
     expect(crateForStreak(1)).toBe('bronze');
-    expect(dailyRewardFor(1, 1)).toEqual({ kind: 'credits', credits: 10, streak: 1, dayLabel: '1' });
+    // Day 1 carries a floor, so a level-1 player's first daily is worth
+    // opening the game for rather than the ten Credits the curve gives.
+    expect(dailyRewardFor(1, 1)).toEqual({ kind: 'credits', credits: 300, streak: 1, dayLabel: '1' });
     expect(dailyRewardFor(2, 1)).toEqual({ kind: 'credits', credits: 20, streak: 2, dayLabel: '2' });
     expect(dailyRewardFor(3, 1)).toMatchObject({ kind: 'crate', tier: 'bronze', dayLabel: '3' });
     expect(dailyRewardFor(4, 1)).toMatchObject({ kind: 'crate', tier: 'silver', dayLabel: '4' });

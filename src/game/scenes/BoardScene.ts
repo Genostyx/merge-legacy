@@ -69,11 +69,28 @@ import {
 import type { ShopState, ShopRowKey } from '../shop/Shop';
 
 /** Height of one shop offer card. Shared by the layout cursor and the card itself. */
-const SHOP_SLOT_HEIGHT = 104;
+/**
+ * 122, up from 104. The name band now has to hold TWO lines at a readable
+ * size - "JOINED STONE BEAMS" is three words in a ~115px card - and the price
+ * sits in its own recessed footer rather than floating over the card. At 104
+ * the name was 11px, wrapped to three cramped lines, and collided with the
+ * item art.
+ */
+const SHOP_SLOT_HEIGHT = 122;
+/** The recessed band at the bottom of every shop card, holding the price. */
+const SHOP_CARD_FOOTER = 30;
+/**
+ * The matching band at the TOP, holding the name. Flat and full-width rather
+ * than a pill: the price chip is the thing being decided on and should be the
+ * only pill on the card, but a name still needs a defined area or a two-line
+ * one reads as ragged text floating over the art. 38 holds two lines at 12px.
+ */
+const SHOP_CARD_HEADER = 38;
 const FINAL_WATER_PAYOUT = 40_000;
 import {
   drawBriefcase,
   drawCrate,
+  CRATE_DRAWN,
   drawSourceBuilding,
   drawTierIcon,
   iconPresentation,
@@ -106,6 +123,7 @@ import {
   claimDaily,
   claimMilestone,
   dailyRewardFor,
+  dailyOfferLevel,
   milestoneCrateFor,
   claimMeterCrate,
   finishMeterCooldown,
@@ -144,6 +162,7 @@ import {
   crateReady, crateRemainingMs, formatCrateWait, supplyCrateFor
 } from '../shop/SupplyCrates';
 import { CURRENCY_COLOR, type CurrencyKind, applyCurrencyIcon, currencyBoxFor, currencyChipOptions, currencyIcon, currencyLabel, currencyPill, drawCurrencyGlyph } from '../ui/CurrencyGlyph';
+import { buildCurrencyCluster } from '../ui/CurrencyCluster';
 import { createLockedBoardSeed } from '../LockedBoard';
 import {
   claimDiscovery,
@@ -508,6 +527,12 @@ export class BoardScene extends Phaser.Scene {
    * it comes from. 0 means "not drawn yet": the first paint after a load must
    * not celebrate the level the player already had.
    */
+  /**
+   * Whether the daily menu has already come up in this SESSION. The scene
+   * instance survives a restart (resize, fullscreen), so this is what stops
+   * the panel reopening every time the viewport changes.
+   */
+  private dailyMenuShown = false;
   private levelBadgeShownLevel = 0;
   /**
    * The fraction the XP ring is currently DRAWN at, which trails the real
@@ -1072,6 +1097,16 @@ export class BoardScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, onFullscreenChange);
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+    // The daily menu is the first thing a session says, so it comes up on
+    // its own once the board has settled - and ONLY when today's reward is
+    // unclaimed. `dailyMenuShown` is a field on the scene, which survives the
+    // restart a resize or a fullscreen toggle causes, or the panel would come
+    // back every time the viewport changed.
+    if (!this.dailyMenuShown && dailyAvailable(this.rewards, Date.now())) {
+      this.dailyMenuShown = true;
+      this.time.delayedCall(700, () => this.openDailyMenu());
+    }
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, onViewportResize);
@@ -3338,7 +3373,7 @@ ${familyTierLabel(typeId, tier)}`
     this.roomView?.setBuilt(this.builtPieces);
     if (this.projectStageFurnished(piece.stage)) {
       this.time.delayedCall(0, () => {
-        this.grantStageReward(piece.stage, from);
+        this.grantFurnishReward(piece.stage, from);
         this.updateCurrencyText();
         this.saveState();
       });
@@ -3350,21 +3385,70 @@ ${familyTierLabel(typeId, tier)}`
     return true;
   }
 
-  /** The one-off payout for finishing a stage's furniture. */
-  private grantStageReward(stage: number, from: { x: number; y: number }): void {
+  /**
+   * A STAGE PAYS TWICE, because a stage is two different pieces of work.
+   *
+   * Handing over the merge items is the accomplishment - it is what the board
+   * was played for - and it used to pay nothing at all: the stage silently
+   * unlocked and the payout turned up later, attached to buying a 150-coin
+   * cushion. Furnishing the room is the other half, a coin sink you work
+   * through piece by piece, and finishing it deserves marking too.
+   *
+   * So: the hand-in carries the main reward, and the last piece of furniture
+   * carries a smaller one. Neither moment is silent, and each pays for what
+   * it actually was.
+   */
+  private grantUnlockReward(stage: number, from: { x: number; y: number }): void {
+    // FOUR DIFFERENT KINDS OF THING, not one payout at four sizes.
+    //
+    // A ladder of crates pays out in the same currency the board already
+    // rains on you, so each stage read as "more of what I have". The room is
+    // the facility - the thing that is meant to be worth building - so what it
+    // hands back should CHANGE something: a tool, a permanent capacity, and
+    // the one crate the shop will never sell.
+    if (stage === 1) {
+      // Still a crate: it is the first hand-in, and a crate is the reward the
+      // player already understands at that point.
+      this.awardCrate('bronze', 'STAGE COMPLETE', from);
+    } else if (stage === 2) {
+      // A Splitter. A board TOOL rather than a payout - it changes how the
+      // board is played, and it is otherwise a rare special-shop offer.
+      this.enqueueForcedSpawn({ kind: 'splitter' });
+      this.refreshActionTray('STAGE COMPLETE  ·  SPLITTER DELIVERED');
+    } else if (stage === 3) {
+      // A permanent inventory slot. Not spent, not consumed - felt in every
+      // session after it, which is what a facility should be paying in.
+      if (this.inventory.slots < INVENTORY_MAX_SLOTS) {
+        this.inventory.slots += 1;
+        this.refreshActionTray(`STAGE COMPLETE  ·  INVENTORY SLOT  ${this.inventory.slots}`);
+      } else {
+        // Nothing left to unlock, so it pays in the currency that buys slots.
+        addGems(this.economy, 25);
+        this.playProjectCurrencyReward('gem', 25, from);
+      }
+    } else if (stage >= 4) {
+      // The vault. It is never sold and never rolled - the room is the only
+      // place it comes from, which is what makes finishing the room mean
+      // something beyond the room itself.
+      this.awardCrate('vault', 'ROOM COMPLETE', from);
+    }
+    this.projectFooterRefresh?.();
+  }
+
+  /** The smaller payout for standing the last piece of furniture in the room. */
+  private grantFurnishReward(stage: number, from: { x: number; y: number }): void {
     // The panel is usually still open behind the reward flying out of it, and
     // it was left showing the reward as pending until it was closed and
     // reopened. Redrawn at the end of this method.
-    if (stage === 1) {
+    if (stage === 2) {
       addEnergy(this.energy, 25);
       this.playProjectCurrencyReward('energy', 25, from);
-    } else if (stage === 2) {
-      this.awardCrate('bronze', 'PROJECT REWARD', from);
     } else if (stage === 3) {
+      addEnergy(this.energy, 40);
+      this.playProjectCurrencyReward('energy', 40, from);
+    } else if (stage >= 4) {
       addGems(this.economy, 10);
       this.playProjectCurrencyReward('gem', 10, from);
-    } else if (stage === 4) {
-      this.awardCrate('gold', 'PROJECT REWARD', from);
     }
     this.projectFooterRefresh?.();
   }
@@ -3824,19 +3908,16 @@ ${familyTierLabel(typeId, tier)}`
       }).setOrigin(1, 0.5).setPosition(w / 2 - 6, lineY);
       footer.add(prompt);
 
-      // Mirrors `grantStageReward`: stage 2 pays a bronze crate, 3 pays gems,
-      // 4 pays the gold crate.
-      if (this.projectStage === 3) {
+      // Mirrors `grantFurnishReward` - this list is the FURNITURE, so it
+      // shows what finishing the furniture pays, not what the hand-in pays.
+      if (this.projectStage >= 4) {
         footer.add(currencyPill(this, '10', 'gem', {
           ...currencyChipOptions('gem'), fontSize: 11, iconSize: 16, height: 22
         }).setPosition(w / 2 + 26, lineY));
       } else {
-        // The crate art carries its own tier, so it is shown WITHOUT a label.
-        // Text belongs here only where a number is the reward, as with gems.
-        const tier: CrateTier = this.projectStage === 4 ? 'gold' : 'bronze';
-        const icon = this.add.graphics().setPosition(w / 2 + 14, lineY);
-        drawCrate(icon, 26, tier);
-        footer.add(icon);
+        footer.add(currencyPill(this, this.projectStage === 3 ? '40' : '25', 'energy', {
+          ...currencyChipOptions('energy'), fontSize: 11, iconSize: 16, height: 22
+        }).setPosition(w / 2 + 26, lineY));
       }
     };
 
@@ -3934,18 +4015,20 @@ ${familyTierLabel(typeId, tier)}`
           fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
         }).setOrigin(1, 0.5));
 
-        if (this.projectStage === 0 || this.projectStage === 2) {
-          const kind = this.projectStage === 0 ? 'energy' : 'gem';
-          const amount = this.projectStage === 0 ? 25 : 10;
-          footer.add(currencyPill(this, String(amount), kind, {
-            ...currencyChipOptions(kind), fontSize: 11, iconSize: 16, height: 22
-          }).setPosition(w / 2 + 26, rewardY));
+        // Mirrors `grantUnlockReward`, keyed to the stage this hand-in OPENS
+        // (projectStage + 1): bronze, then gems, then silver, then gold.
+        // Mirrors `grantUnlockReward`, keyed to the stage this hand-in OPENS:
+        // a crate, a splitter, an inventory slot, then the vault.
+        const opening = this.projectStage + 1;
+        const rewardIcon = this.add.graphics().setPosition(w / 2 + 16, rewardY);
+        if (opening === 2) {
+          drawSplitterIcon(rewardIcon, 26);
+        } else if (opening === 3) {
+          drawBriefcase(rewardIcon, 30, Theme.currencyGem);
         } else {
-          const tier: CrateTier = this.projectStage === 1 ? 'bronze' : 'gold';
-          const rewardIcon = this.add.graphics().setPosition(w / 2 + 14, rewardY);
-          drawCrate(rewardIcon, 26, tier);
-          footer.add(rewardIcon);
+          drawCrate(rewardIcon, 26 / CRATE_DRAWN.width, opening === 1 ? 'bronze' : 'vault');
         }
+        footer.add(rewardIcon);
       }
 
       const buttonBg = this.add.graphics();
@@ -4079,16 +4162,14 @@ ${rewardLine}`,
     this.refreshOrderBar();
     this.checkDeadlock();
     const unlockedStage = ++this.projectStage;
-    // The surfaces stage sells no furniture, so unlocking it is the whole of
-    // it - there is no later purchase for its reward to wait on. Every other
-    // stage pays out when its last piece is bought.
-    if (roomPiecesForStage(unlockedStage).length === 0) {
-      this.time.delayedCall(0, () => {
-        this.grantStageReward(unlockedStage, from);
-        this.updateCurrencyText();
-        this.saveState();
-      });
-    }
+    // Every hand-in pays, including the one that opens the furniture-less
+    // surfaces stage. This used to be the ONLY case that paid on unlock,
+    // which is why handing over the items felt like nothing had happened.
+    this.time.delayedCall(0, () => {
+      this.grantUnlockReward(unlockedStage, from);
+      this.updateCurrencyText();
+      this.saveState();
+    });
     if (reopenProject) {
       this.time.delayedCall(900, () => {
         if (!this.modalOpen) this.openProject();
@@ -6257,7 +6338,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     if (this.shopNotice) {
       const notice = this.add.text(panelX, panelY - panelH / 2 + 36, this.shopNotice.text, {
         resolution: textResolution,
-        fontFamily: Theme.fontMono, fontSize: '10px', fontStyle: 'bold',
+        fontFamily: Theme.fontMono, fontSize: '12px', fontStyle: 'bold',
         color: hex(this.shopNotice.error ? Theme.danger : Theme.accentAmber)
       }).setOrigin(0.5);
       overlay.add(notice);
@@ -6293,44 +6374,39 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     let cursor = cursorStart;
     const left = panelX - panelW / 2 + 20;
     const innerW = panelW - 40;
-    // The reroll price carries a currency MARK, which a text object cannot
-    // hold mid-string - so each row is a text plus a glyph whose x has to be
-    // recomputed every tick, because the countdown in front of it changes
-    // width as it counts down and the whole row is centred.
-    const shopCountdownRows: Array<{
-      key: ShopRowKey;
-      label: string;
-      text: Phaser.GameObjects.Text;
-      mark: Phaser.GameObjects.Image;
-      kind: CurrencyKind;
-    }> = [];
-    const REROLL_GLYPH = 16;
-    const layoutRerollRow = (row: { text: Phaser.GameObjects.Text; mark: Phaser.GameObjects.Image }): void => {
-      const total = row.text.width + 4 + REROLL_GLYPH;
-      row.text.setX(panelX - total / 2);
-      row.mark.setPosition(panelX + total / 2 - REROLL_GLYPH / 2, row.text.y + 7);
-    };
+    // The countdown is now left-aligned under its own section header, so it
+    // no longer has to be re-centred against a price glyph every tick - it
+    // just re-reads its own text.
+    const shopCountdownRows: Array<{ key: ShopRowKey; text: Phaser.GameObjects.Text }> = [];
+    const REROLL_GLYPH = 17;
 
     /**
-     * Centered banner plaque behind each section title. Chamfered ends and a
-     * 1px accent edge rather than a curved ribbon - the visual direction is
-     * squared/brutalist, so the banner reads as a cut metal plate. The faint
-     * rules running out to the panel edges make every section header the same
-     * width regardless of its label length, which is what makes the four
-     * sections line up as a set.
+     * THE SHOP HAS TWO KINDS OF SHELF, and until now they looked identical.
+     *
+     * Rotating STOCK - the credit, gem and special offers - is three cards
+     * that are gone in a few hours, and the whole reason to look at it is
+     * that it changed. A permanent CATALOGUE - supply crates, credit packs,
+     * gem packs - is the same shelf every day, read by price. Giving both the
+     * same banner and the same card grid meant nothing on the panel said
+     * which was which, or which one was worth scrolling back to.
+     *
+     * So: stock keeps the centred banner plaque and the card grid, and gains
+     * its refresh clock directly under the header, where the rotation is
+     * claimed. Catalogue gets a plain left-aligned label with a rule running
+     * off it, and full-width list rows - the shape of a price list, not of a
+     * shelf that turns over.
      */
     const sectionHeader = (label: string, color: number): void => {
       const text = this.add.text(panelX, cursor, label, {
         resolution: textResolution,
-        fontFamily: Theme.fontHeading, fontSize: '11px', fontStyle: 'bold', color: hex(color)
-      }).setOrigin(0.5);
+        fontFamily: Theme.fontHeading, fontSize: '13px', fontStyle: 'bold', color: hex(color)
+      }).setOrigin(0.5).setLetterSpacing(1.5);
 
       const bw = Math.min(innerW - 44, text.width + 44);
       const banner = this.drawSectionBanner(panelX, cursor, bw, color);
 
-      // Faint rules out to the panel edges. These are what make every
-      // section header occupy the same full width regardless of how long
-      // its label is, which is what makes the set read as aligned.
+      // Faint rules out to the panel edges, so every stock header occupies
+      // the same full width regardless of how long its label is.
       const edge = bw / 2 + 24;
       banner.lineStyle(1, color, 0.22);
       banner.lineBetween(left, cursor, panelX - edge, cursor);
@@ -6341,6 +6417,24 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       cursor += 30;
     };
 
+    /**
+     * The recessed ground each section sits on, drawn AFTER its rows (their
+     * height is only known once laid out) and pushed to the back. Without it
+     * the panel was one continuous dark field with things floating on it, and
+     * nothing said where one shelf ended and the next began.
+     */
+    const sectionGround = (top: number, color: number, solid: boolean): void => {
+      const g = this.add.graphics();
+      g.fillStyle(Theme.bg, solid ? 0.55 : 0.3);
+      g.fillRoundedRect(left - 9, top, innerW + 18, cursor - top, 6);
+      g.lineStyle(1, color, solid ? 0.35 : 0.18);
+      g.strokeRoundedRect(left - 9, top, innerW + 18, cursor - top, 6);
+      // Lit top edge, one light, as everywhere.
+      g.lineStyle(1, 0xffffff, 0.05);
+      g.lineBetween(left - 3, top + 1.5, left + innerW + 3, top + 1.5);
+      content.addAt(g, 0);
+    };
+
     const offerRow = (key: ShopRowKey): void => {
       const slotW = innerW / SHOP_SLOTS;
       for (let i = 0; i < SHOP_SLOTS; i++) {
@@ -6349,27 +6443,54 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       cursor += SHOP_SLOT_HEIGHT + 12;
     };
 
-    const rerollRow = (
+    /**
+     * The line that makes a stock section a stock section: how long this
+     * shelf has left, and a button to pay for the next one now. It sits
+     * ABOVE the cards, under the header, because it describes the whole row
+     * rather than trailing off the end of it - and the reroll is a real
+     * button on the right rather than a run of tappable text, which never
+     * looked pressable.
+     */
+    const stockMeta = (
       key: ShopRowKey,
-      label: string,
+      cost: number,
       kind: CurrencyKind,
       color: number,
       onReroll: () => boolean
     ): void => {
-      const text = this.add.text(
-        panelX, cursor,
-        '',
-        { resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '11px', color: hex(color), align: 'center' }
-      ).setOrigin(0, 0).setInteractive({ useHandCursor: true });
-      text.setText(`REFRESH IN ${formatCountdown(msUntilShopRefresh(this.shopState, key))}  ·  ${label}`);
+      const clock = this.add.text(
+        left, cursor + 11,
+        `REFRESH IN ${formatCountdown(msUntilShopRefresh(this.shopState, key))}`,
+        { resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '12px', color: hex(Theme.textOnDarkMuted) }
+      ).setOrigin(0, 0.5);
+      shopCountdownRows.push({ key, text: clock });
+      content.add(clock);
+
+      const verb = this.add.text(0, cursor + 11, 'REROLL', {
+        resolution: textResolution,
+        fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold', color: hex(color)
+      }).setOrigin(0, 0.5).setLetterSpacing(0.5);
+      const price = this.add.text(0, cursor + 11, String(cost), {
+        resolution: textResolution,
+        fontFamily: Theme.fontNumeric, fontSize: '13px', fontStyle: 'bold', color: hex(color)
+      }).setOrigin(0, 0.5);
       const mark = this.add.image(0, 0, 'currency-coin');
       applyCurrencyIcon(mark, kind, REROLL_GLYPH, color);
-      const row = { key, label, text, mark, kind };
-      layoutRerollRow(row);
-      shopCountdownRows.push(row);
-      content.add(text);
-      content.add(mark);
-      text.on('pointerup', () => {
+
+      const btnW = verb.width + 8 + price.width + 3 + REROLL_GLYPH + 20;
+      const btnX = left + innerW - btnW;
+      const btn = this.add.graphics();
+      btn.fillStyle(Theme.bg, 0.7);
+      btn.fillRoundedRect(btnX, cursor - 1, btnW, 24, Theme.radiusChip);
+      btn.lineStyle(1, color, 0.65);
+      btn.strokeRoundedRect(btnX, cursor - 1, btnW, 24, Theme.radiusChip);
+      verb.setX(btnX + 10);
+      price.setX(btnX + 10 + verb.width + 8);
+      mark.setPosition(price.x + price.width + 3 + REROLL_GLYPH / 2, cursor + 11);
+      const hit = this.add.zone(btnX + btnW / 2, cursor + 11, btnW, 26).setInteractive({ useHandCursor: true });
+      content.add([btn, verb, price, mark, hit]);
+
+      hit.on('pointerup', () => {
         if (!wasTap()) return;
         if (!onReroll()) return;
         rerollShopRow(
@@ -6384,13 +6505,102 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       cursor += 30;
     };
 
+    /**
+     * A shelf card that is not a merge offer: a supply crate or a currency
+     * pack. Same silhouette, same footer, same price chip as the rotating
+     * offers - the store has ONE card, and what changes between shelves is
+     * what is drawn on it, never the shape of it.
+     */
+    const shelfCard = (
+      cx: number,
+      w: number,
+      accent: number,
+      art: (x: number, y: number) => Phaser.GameObjects.GameObject,
+      title: string,
+      sub: string,
+      price: { value: string; kind: CurrencyKind | null; color: number },
+      enabled: boolean,
+      solidHeader: boolean,
+      onBuy: (bx: number, by: number) => void,
+      titleSize = 12
+    ): void => {
+      const h = SHOP_SLOT_HEIGHT;
+      const top = cursor;
+      content.add(this.drawShopCard(
+        cx - w / 2, top, w, h, enabled ? accent : Theme.borderOnDark,
+        { footer: SHOP_CARD_FOOTER, solidHeader, header: solidHeader ? 0 : SHOP_CARD_HEADER }
+      ));
+
+      content.add(this.add.text(cx, top + (solidHeader ? 15 : SHOP_CARD_HEADER / 2 + 1), title, {
+        resolution: textResolution,
+        fontFamily: Theme.fontHeading, fontSize: `${titleSize}px`, fontStyle: 'bold',
+        color: hex(enabled ? Theme.textOnDark : Theme.textOnDarkMuted),
+        align: 'center', wordWrap: { width: w - 10 }, lineSpacing: 1
+      }).setOrigin(0.5).setLetterSpacing(0.5));
+
+      const artObj = art(cx, top + 64) as Phaser.GameObjects.GameObject
+        & Partial<Phaser.GameObjects.Components.Alpha>;
+      if (!enabled) artObj.setAlpha?.(0.45);
+      content.add(artObj);
+
+      if (sub) {
+        content.add(this.add.text(cx, top + h - SHOP_CARD_FOOTER - 12, sub, {
+          resolution: textResolution,
+          fontFamily: Theme.fontMono, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
+        }).setOrigin(0.5));
+      }
+
+      const priceColor = enabled ? price.color : Theme.textOnDarkMuted;
+      const priceY = top + h - SHOP_CARD_FOOTER / 2;
+      if (price.kind) {
+        const pill = currencyPill(this, price.value, price.kind, {
+          fontSize: 15, iconSize: 28, height: 22, padX: 9, ...currencyChipOptions(price.kind)
+        }).setPosition(cx, priceY);
+        if (!enabled) pill.setAlpha(0.5);
+        content.add(pill);
+      } else {
+        // Real money carries no glyph, so it gets a filled button instead -
+        // the one place in the shop where the price IS the product.
+        const label = this.add.text(cx, priceY, price.value, {
+          resolution: textResolution,
+          fontFamily: Theme.fontNumeric, fontSize: '16px', fontStyle: 'bold', color: hex(Theme.textOnDark)
+        }).setOrigin(0.5);
+        const bw = label.width + 26;
+        const btn = this.add.graphics();
+        btn.fillStyle(priceColor, enabled ? 0.9 : 0.3);
+        btn.fillRoundedRect(cx - bw / 2, priceY - 11, bw, 22, Theme.radiusChip);
+        btn.lineStyle(1, 0xffffff, 0.18);
+        btn.lineBetween(cx - bw / 2 + 3, priceY - 10, cx + bw / 2 - 3, priceY - 10);
+        content.add([btn, label]);
+        content.bringToTop(label);
+      }
+
+      if (enabled) {
+        const zone = this.add.zone(cx, top + h / 2, w, h).setInteractive({ useHandCursor: true });
+        zone.on('pointerup', () => this.time.delayedCall(0, () => {
+          if (!wasTap()) return;
+          onBuy(cx, top + h / 2);
+        }));
+        content.add(zone);
+      }
+    };
+
+    /** Lays a set of shelf cards across the panel on the offer row's grid. */
+    const shelfRow = (count: number, build: (cx: number, w: number, i: number) => void): void => {
+      const slotW = innerW / count;
+      for (let i = 0; i < count; i++) build(left + slotW * i + slotW / 2, slotW - 10, i);
+      cursor += SHOP_SLOT_HEIGHT + 12;
+    };
+
     if (mode !== 'gem') {
+      const top = cursor - 16;
       sectionHeader('BUY WITH CREDITS', Theme.currencyCredit);
-      offerRow('coin');
       const coinCost = coinRerollCost(this.shopState);
-      rerollRow('coin', `REROLL · ${coinCost}`, 'credit', Theme.currencyCredit, () =>
+      stockMeta('coin', coinCost, 'credit', Theme.currencyCredit, () =>
         spendCoinsGeneric(this.economy, coinCost)
       );
+      offerRow('coin');
+      sectionGround(top, Theme.currencyCredit, false);
     }
 
     /**
@@ -6401,209 +6611,147 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
      * be one scroll, not two places to look.
      */
     const supplyRow = (): void => {
-      const slotW = (innerW - 16) / SUPPLY_CRATES.length;
-      const slotH = 92;
       const cooling = supplyCooldownRemaining(this.supplyCooldownUntil, Date.now());
       const atLimit = cooling > 0;
 
-      SUPPLY_CRATES.forEach((offer, index) => {
-        const cx = left + slotW / 2 + index * (slotW + 8);
-        const cy = cursor + slotH / 2;
+      // The state of the whole shelf, on the same line the rotating shelves
+      // put their refresh clock - so the two read as the same kind of
+      // statement about the same kind of row.
+      content.add(this.add.text(left, cursor + 11, atLimit
+        ? `RESTOCKING  ·  NEXT IN ${formatCrateWait(cooling)}`
+        : 'OPENS IMMEDIATELY  ·  ONE PER RESTOCK', {
+        resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '12px',
+        color: hex(atLimit ? Theme.accentAmber : Theme.textOnDarkMuted)
+      }).setOrigin(0, 0.5));
+      cursor += 30;
+
+      shelfRow(SUPPLY_CRATES.length, (cx, w, i) => {
+        const offer = SUPPLY_CRATES[i];
         const price = supplyCratePrice(offer, playerLevel(this.orderState));
-        const affordable = this.economy.coins >= price;
-        const buyable = affordable && !atLimit;
-
-        const bg = this.add.graphics();
-        bg.fillStyle(Theme.panelAlt, 1);
-        bg.fillRoundedRect(cx - slotW / 2, cursor, slotW, slotH, Theme.radiusChip);
-        bg.lineStyle(1, buyable ? Theme.currencyCredit : Theme.borderOnDark, buyable ? 0.7 : 1);
-        bg.strokeRoundedRect(cx - slotW / 2, cursor, slotW, slotH, Theme.radiusChip);
-
-        const art = this.add.graphics();
-        // Same 0.67 factor: 34 rendered a ~23px crate in a 112x92 slot with
-        // room to spare, and 62 overfilled it. 50 renders ~34px wide - clearly
-        // the subject of the slot, without pressing on the wait line below.
-        drawCrate(art, 50, offer.tier);
-        art.setPosition(cx, cy - 22);
-        if (!buyable) art.setAlpha(0.45);
-
-        // States what buying costs you in TIME - the restock wait before the
-        // next crate, not a wait on the crate itself, which now opens
-        // immediately.
-        const wait = this.add.text(cx, cy + 4, `RESTOCK ${formatCrateWait(offer.cooldownMs)}`, {
-          resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
-          color: hex(Theme.textOnDarkMuted)
-        }).setOrigin(0.5);
-
-        const priceColor = buyable ? CURRENCY_COLOR.credit : Theme.textOnDarkMuted;
-        const priceChip = currencyPill(this, price.toLocaleString(), 'credit', {
-          ...currencyChipOptions('credit'),
-          fontSize: 12, iconSize: 16, height: 22, textColor: priceColor, stroke: priceColor
-        }).setPosition(cx, cy + 24);
-        const mark = priceChip.list[2] as Partial<Phaser.GameObjects.Components.Alpha> | undefined;
-        if (!buyable) mark?.setAlpha?.(0.45);
-
-        content.add([bg, art, wait, priceChip]);
-
-        if (buyable) {
-          const zone = this.add.zone(cx, cy, slotW, slotH).setInteractive({ useHandCursor: true });
-          zone.on('pointerup', () => this.time.delayedCall(0, () => {
-            if (!wasTap()) return;
-            // Bought from this slot, so the crate flies from here. Close on
+        const buyable = this.economy.coins >= price && !atLimit;
+        shelfCard(
+          cx, w, Theme.currencyCredit,
+          (x, y) => {
+            const art = this.add.graphics();
+            drawCrate(art, 52, offer.tier);
+            return art.setPosition(x, y);
+          },
+          `${offer.tier.toUpperCase()} CRATE`,
+          `RESTOCK ${formatCrateWait(offer.cooldownMs)}`,
+          { value: price.toLocaleString(), kind: 'credit', color: CURRENCY_COLOR.credit },
+          buyable,
+          false,
+          (bx, by) => {
+            // Bought from this card, so the crate flies from here. Close on
             // success so the flight is visible; stay open on failure so the
             // reason stays readable.
-            if (this.buySupplyCrate(offer, { x: cx, y: cy })) this.closeShop();
+            if (this.buySupplyCrate(offer, { x: bx, y: by })) this.closeShop();
             else this.reopenShop(null);
-          }));
-          content.add(zone);
-        }
+          }
+        );
       });
-
-      cursor += slotH + 8;
-
-      // Says WHY the row is dead when it is, rather than leaving three greyed
-      // buttons with no explanation.
-      const note = atLimit
-        ? `RESTOCKING  ·  NEXT CRATE IN ${formatCrateWait(cooling)}`
-        : 'CRATES OPEN IMMEDIATELY  ·  ONE PURCHASE PER RESTOCK';
-      const noteText = this.add.text(panelX, cursor, note, {
-        resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
-        color: hex(atLimit ? Theme.accentAmber : Theme.textOnDarkMuted)
-      }).setOrigin(0.5);
-      content.add(noteText);
-      cursor += 22;
     };
 
     // Hidden below SUPPLY_CRATE_MIN_LEVEL: the store answers "what do I do
     // with surplus Credits", and a player without a surplus is not helped by
     // a shelf they cannot use.
     if (mode !== 'gem' && playerLevel(this.orderState) >= SUPPLY_CRATE_MIN_LEVEL) {
-      cursor += 14;
+      cursor += 22;
+      const top = cursor - 16;
       sectionHeader('SUPPLY CRATES', Theme.currencyCredit);
       supplyRow();
+      sectionGround(top, Theme.currencyCredit, false);
     }
 
-    if (mode === 'full') cursor += 14;
+    if (mode === 'full') cursor += 22;
     if (mode !== 'coin') {
+      const top = cursor - 16;
       sectionHeader('BUY WITH GEMS', Theme.currencyGem);
-      offerRow('gem');
-      rerollRow('gem', `REROLL · ${REROLL_COST_GEMS}`, 'gem', Theme.currencyGem, () =>
+      stockMeta('gem', REROLL_COST_GEMS, 'gem', Theme.currencyGem, () =>
         spendGems(this.economy, REROLL_COST_GEMS)
       );
+      offerRow('gem');
+      sectionGround(top, Theme.currencyGem, false);
     }
 
     if (mode === 'full') {
-      cursor += 14;
+      cursor += 22;
+      const top = cursor - 16;
       sectionHeader('SPECIAL ITEMS', Theme.currencyGem);
-      offerRow('special');
       const specialCost = specialRerollCost(this.shopState);
-      rerollRow('special', `REROLL · ${specialCost}`, 'gem', Theme.currencyGem, () =>
+      stockMeta('special', specialCost, 'gem', Theme.currencyGem, () =>
         spendGems(this.economy, specialCost)
       );
+      offerRow('special');
+      sectionGround(top, Theme.currencyGem, false);
     }
 
-    // Both pack rows share one builder - they differ only in what they
-    // cost and what crediting them calls.
-    // The NUMBER carries the colour and the weight; the resource word stays
-    // neutral. The quantity is what differs between packs, so it's what the
-    // eye should land on - when the word was the coloured/bold half, every
-    // button in a row read as the same shouted "CREDITS" and the amounts
-    // receded.
-    // `prefix` fronts the line with a verb. Only the ACQUIRED line gets one:
-    // a pack button shows what you receive over what it costs, and without a
-    // word in front the two were just numbers stacked on each other.
-    type PackLine = { value: string; valueColor?: number; kind?: CurrencyKind; prefix?: string };
+    /**
+     * The currency packs. Same card, same grid, same footer as every other
+     * shelf - they are allowed ONE deviation, and it is tone: a filled header
+     * strip, a solid price button, and a heavier ground under the section.
+     * These are the rows that take real money, and they should read as a
+     * storefront rather than as today's stock.
+     */
     const packRow = <T extends { id: string }>(
       title: string,
-      titleColor: number,
+      accent: number,
+      kind: CurrencyKind,
       packs: T[],
-      linesFor: (pack: T) => [PackLine, PackLine],
+      amountOf: (pack: T) => string,
+      priceOf: (pack: T) => { value: string; kind: CurrencyKind | null; color: number },
       onBuy: (pack: T) => boolean
     ): void => {
-      cursor += 16;
-      sectionHeader(title, titleColor);
-      cursor += 2;
-      const packW = innerW / packs.length;
-      packs.forEach((pack, i) => {
-        const px = left + packW * i + packW / 2;
-        const btnW = packW - 10;
-        this.buildTexturedButtonFill(px - btnW / 2, cursor, btnW, 40, content);
-        // Dark inset plate over the metallic fill. The resource colours are
-        // tuned for the dark panels they sit on everywhere else in the UI;
-        // these buttons were the one light surface left in a now-dark shop,
-        // so violet and the real-money blue lost their contrast on them.
-        // Giving the label its own dark ground fixes that without altering
-        // a single colour, and keeps the texture visible as a bezel.
-        const plate = this.add.graphics();
-        plate.fillStyle(Theme.bg, 0.72);
-        plate.fillRoundedRect(px - btnW / 2 + 4, cursor + 4, btnW - 8, 32, Theme.radiusChip);
-        plate.lineStyle(1, Theme.borderOnDark, 0.9);
-        plate.strokeRoundedRect(px - btnW / 2 + 4, cursor + 4, btnW - 8, 32, Theme.radiusChip);
-        content.add(plate);
-        const lines = linesFor(pack);
-        lines.forEach((line, lineIndex) => {
-          const lineY = cursor + 12 + lineIndex * 15;
-          const value = this.add.text(0, lineY, line.prefix ? `${line.prefix} ${line.value}` : line.value, {
-            resolution: textResolution,
-            fontFamily: Theme.fontNumeric,
-            fontSize: '10px',
-            fontStyle: 'bold',
-            color: hex(line.valueColor ?? Theme.textOnDark)
-          }).setOrigin(0, 0.5);
-          let totalWidth = value.width;
-          let mark: Phaser.GameObjects.Image | null = null;
-          const GLYPH = 17;
-          const GAP = 4;
-          if (line.kind) {
-            mark = this.add.image(0, 0, 'currency-coin');
-            applyCurrencyIcon(mark, line.kind, GLYPH);
-            totalWidth += GAP + GLYPH;
-          }
-          value.setX(px - totalWidth / 2);
-          content.add(value);
-          if (mark) {
-            mark.setPosition(value.x + value.width + GAP + GLYPH / 2, lineY);
-            content.add(mark);
-          }
-        });
-        const hit = this.add.rectangle(px, cursor + 20, btnW, 40, 0x000000, 0)
-          .setInteractive({ useHandCursor: true });
-        content.add(hit);
-        hit.on('pointerup', () => {
-          if (!wasTap()) return;
-          // A coin pack can fail (not enough gems); a gem pack can't. Say so
-          // either way rather than leaving a dead-looking button.
-          if (!onBuy(pack)) {
-            this.reopenShop({ text: 'NOT ENOUGH GEMS FOR THAT PACK', error: true });
-            return;
-          }
-          this.updateCurrencyText();
-          this.saveState();
-          this.reopenShop(null);
-        });
+      cursor += 22;
+      const top = cursor - 16;
+      sectionHeader(title, accent);
+      shelfRow(packs.length, (cx, w, i) => {
+        const pack = packs[i];
+        shelfCard(
+          cx, w, accent,
+          (x, y) => {
+            const mark = this.add.image(0, 0, 'currency-coin');
+            applyCurrencyIcon(mark, kind, 46);
+            return mark.setPosition(x, y);
+          },
+          amountOf(pack),
+          '',
+          priceOf(pack),
+          true,
+          true,
+          () => {
+            // A credit pack can fail (not enough gems); a gem pack cannot.
+            // Say so either way rather than leaving a dead-looking card.
+            if (!onBuy(pack)) {
+              this.reopenShop({ text: 'NOT ENOUGH GEMS FOR THAT PACK', error: true });
+              return;
+            }
+            this.updateCurrencyText();
+            this.saveState();
+            this.reopenShop(null);
+          },
+          // The amount IS the product on these cards, so it is set at the
+          // shelf-title size rather than the item-name size.
+          15
+        );
       });
-      // 58 for 40px of button plus 18 of trailing space. The buttons need
-      // MORE trailing room than a text row does, not the same: a reroll line
-      // is ~14px of text inside its 30px slot, so it already sits with air
-      // under it, while these buttons fill their slot edge to edge. At 46
-      // the next section's banner crowded them.
-      cursor += 58;
+      sectionGround(top, accent, true);
     };
 
     if (mode !== 'gem') {
-      packRow('GET CREDITS', Theme.currencyCredit, COIN_PACKS, (pack) => [
-        { value: String(pack.coins), valueColor: Theme.currencyCredit, kind: 'credit', prefix: 'GET' },
-        { value: String(pack.gems), valueColor: Theme.currencyGem, kind: 'gem' }
-      ], (pack) =>
-        purchaseCoinPack(this.economy, pack.id)
+      packRow(
+        'GET CREDITS', Theme.currencyCredit, 'credit', COIN_PACKS,
+        (pack) => pack.coins.toLocaleString(),
+        (pack) => ({ value: String(pack.gems), kind: 'gem', color: Theme.currencyGem }),
+        (pack) => purchaseCoinPack(this.economy, pack.id)
       );
     }
     if (mode !== 'coin') {
-      packRow('GET GEMS', Theme.currencyGem, GEM_PACKS, (pack) => [
-        { value: String(pack.gems), valueColor: Theme.currencyGem, kind: 'gem', prefix: 'GET' },
-        { value: pack.priceLabel, valueColor: Theme.realMoney }
-      ], (pack) =>
-        purchaseGemPack(this.economy, pack.id)
+      packRow(
+        'GET GEMS', Theme.currencyGem, 'gem', GEM_PACKS,
+        (pack) => pack.gems.toLocaleString(),
+        (pack) => ({ value: pack.priceLabel, kind: null, color: Theme.realMoney }),
+        (pack) => purchaseGemPack(this.economy, pack.id)
       );
     }
 
@@ -6693,8 +6841,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       let refreshDue = false;
       for (const row of shopCountdownRows) {
         const remaining = msUntilShopRefresh(this.shopState, row.key);
-        row.text.setText(`REFRESH IN ${formatCountdown(remaining)}  ·  ${row.label}`);
-        layoutRerollRow(row);
+        row.text.setText(`REFRESH IN ${formatCountdown(remaining)}`);
         if (remaining <= 0) refreshDue = true;
       }
       if (refreshDue) {
@@ -6710,10 +6857,10 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       const fullStoreLink = this.add.text(panelX, panelY + panelH / 2 - 16, 'VIEW FULL STORE  →', {
         resolution: textResolution,
         fontFamily: Theme.fontHeading,
-        fontSize: '11px',
+        fontSize: '13px',
         fontStyle: 'bold',
         color: hex(Theme.textOnDark)
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      }).setOrigin(0.5).setLetterSpacing(1).setInteractive({ useHandCursor: true });
       fullStoreLink.on('pointerdown', () => this.time.delayedCall(0, () => {
         this.closeShop();
         this.shopNotice = null;
@@ -6724,7 +6871,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       const iapNote = this.add.text(
         panelX, panelY + panelH / 2 - 14,
         'Test build — gem packs credit instantly, no real payment yet',
-        { resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '10px', color: hex(Theme.textOnDarkMuted) }
+        { resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '11px', color: hex(Theme.textOnDarkMuted) }
       ).setOrigin(0.5);
       overlay.add(iapNote);
     }
@@ -6734,27 +6881,33 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const offer = this.shopState[key].offers[index];
     const h = SHOP_SLOT_HEIGHT;
 
-    const slotBg = this.add.graphics();
-    slotBg.fillStyle(Theme.panelAlt, 1);
-    slotBg.fillRoundedRect(x - w / 2, y, w, h, Theme.radiusChip);
-    slotBg.lineStyle(Theme.borderWidth, Theme.borderOnLight, 0.5);
-    slotBg.strokeRoundedRect(x - w / 2, y, w, h, Theme.radiusChip);
-    container.add(slotBg);
+    const def = offer && (offer.kind === 'item' || offer.kind == null)
+      ? getTierDef(offer.typeId, offer.tier)
+      : undefined;
+    const baseColor = def?.color ?? Theme.panelAlt;
+    const accent = offer && !offer.sold
+      ? (offer.priceCoins != null ? Theme.currencyCredit : Theme.currencyGem)
+      : Theme.borderOnDark;
+    container.add(this.drawShopCard(x - w / 2, y, w, h, accent, offer && !offer.sold
+      ? { footer: SHOP_CARD_FOOTER, header: SHOP_CARD_HEADER }
+      : {}));
 
     if (!offer || offer.sold) {
-      const soldText = this.add.text(x, y + h / 2, 'SOLD\n(back soon)', {
+      const soldText = this.add.text(x, y + h / 2, 'SOLD', {
         resolution: textResolution,
-        fontFamily: Theme.fontHeading, fontSize: '12px', color: hex(Theme.textOnDarkMuted), align: 'center'
-      }).setOrigin(0.5);
-      container.add(soldText);
+        fontFamily: Theme.fontHeading, fontSize: '15px', fontStyle: 'bold',
+        color: hex(Theme.textOnDarkMuted), align: 'center'
+      }).setOrigin(0.5).setLetterSpacing(2);
+      const backSoon = this.add.text(x, y + h / 2 + 18, 'BACK SOON', {
+        resolution: textResolution,
+        fontFamily: Theme.fontMono, fontSize: '11px', color: hex(Theme.textOnDarkMuted), align: 'center'
+      }).setOrigin(0.5).setAlpha(0.8);
+      container.add([soldText, backSoon]);
       return;
     }
 
-    const def = offer.kind === 'item' || offer.kind == null ? getTierDef(offer.typeId, offer.tier) : undefined;
-    const baseColor = def?.color ?? Theme.panelAlt;
-
     const icon = this.add.graphics();
-    icon.setPosition(x, y + 34);
+    icon.setPosition(x, y + 40);
     // No contact shadow here, deliberately: this icon sits on a shop card,
     // not on the board, so it has no ground to cast onto. TileView is the
     // only caller that draws one (see drawTierIcon's shadow-ownership note).
@@ -6765,16 +6918,16 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const ICON_SIZE = 48;
     if (offer.kind === 'splitter') {
       drawSplitterIcon(icon, ICON_SIZE * 0.9);
-      icon.setPosition(x, y + 56);
+      icon.setPosition(x, y + 64);
     } else if (offer.kind === 'spawner-piece') {
       drawSpawnerPieceIcon(icon, offer.typeId, offer.tier, ICON_SIZE * 0.92);
-      icon.setPosition(x, y + 56);
+      icon.setPosition(x, y + 64);
     } else {
       const { materialAlpha } = drawTierIcon(icon, offer.typeId, offer.tier, ICON_SIZE, materialLighting(baseColor, offer.tier));
       icon.setAlpha(materialAlpha);
       const present = iconPresentation(offer.typeId, offer.tier, ICON_SIZE);
       icon.setScale(present.scale);
-      icon.setPosition(x + present.offsetX, y + 56 + present.offsetY);
+      icon.setPosition(x + present.offsetX, y + 64 + present.offsetY);
     }
     container.add(icon);
 
@@ -6791,12 +6944,14 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       : offer.kind === 'spawner-piece'
         ? spawnerPieceLabel(offer.typeId, offer.tier)
         : (def?.label ?? '?').toUpperCase();
-    const nameText = this.add.text(x, y + 18, offerName.toUpperCase(), {
+    // 12px in a two-line band, tracked out slightly. At 11px on three lines
+    // this was the smallest type in the game sitting on its most-read screen.
+    const nameText = this.add.text(x, y + SHOP_CARD_HEADER / 2 + 1, offerName.toUpperCase(), {
       resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '11px', fontStyle: 'bold',
+      fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold',
       color: hex(Theme.textOnDark),
-      align: 'center', wordWrap: { width: w - 14 }, lineSpacing: -1
-    }).setOrigin(0.5, 0.5);
+      align: 'center', wordWrap: { width: w - 10 }, lineSpacing: 1
+    }).setOrigin(0.5, 0.5).setLetterSpacing(0.5);
     container.add(nameText);
 
     const priceKind: CurrencyKind = offer.priceCoins != null ? 'credit' : 'gem';
@@ -6810,8 +6965,8 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       // Height 20 matches the HUD currency bars exactly, and the icon is
       // deliberately taller than the bar - overflowing it is the HUD's own
       // look, not an accident.
-      { fontSize: 13, iconSize: 26, height: 20, padX: 8, ...currencyChipOptions(priceKind) }
-    ).setPosition(x, y + h - 16);
+      { fontSize: 15, iconSize: 28, height: 22, padX: 9, ...currencyChipOptions(priceKind) }
+    ).setPosition(x, y + h - SHOP_CARD_FOOTER / 2);
     container.add(priceText);
 
     // The whole card is the purchase target. The tap check still prevents a
@@ -6890,6 +7045,75 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
    * notches - to sit with the project's squared/brutalist direction rather
    * than the curled parchment banner this motif usually implies.
    */
+  /**
+   * The shop's one card surface. EVERY shelf uses it - rotating offers,
+   * supply crates, credit and gem packs - because the store was three
+   * different-looking things stacked in one panel, and matching silhouettes
+   * is what makes it read as a store rather than three screens.
+   *
+   * Built as a machined plate rather than a flat rectangle: a lit upper half,
+   * an accent hairline along the top edge, corner ticks cut into two corners,
+   * and a recessed footer band for the price. That is the 70/20/10 direction -
+   * minimal ground, brutalist cut edges, a little industrial hardware - and
+   * it is what the flat `panelAlt` rectangle was missing.
+   */
+  private drawShopCard(
+    x: number, y: number, w: number, h: number, accent: number,
+    options: { footer?: number; header?: number; solidHeader?: boolean } = {}
+  ): Phaser.GameObjects.Graphics {
+    const g = this.add.graphics();
+    const r = Theme.radiusChip;
+    const footer = options.footer ?? 0;
+    const header = options.header ?? 0;
+
+    g.fillStyle(Theme.bgElevated, 1);
+    g.fillRoundedRect(x, y, w, h, r);
+    // Lit upper half. One light, upper-left, as everywhere else in the game.
+    g.fillStyle(0xffffff, 0.045);
+    g.fillRoundedRect(x + 1, y + 1, w - 2, h * 0.42, r);
+
+    if (options.solidHeader) {
+      // The packs' one deviation: a filled header strip instead of a
+      // hairline. A price list of real money should look like a product,
+      // not like today's shelf.
+      g.fillStyle(accent, 0.16);
+      g.fillRoundedRect(x + 1, y + 1, w - 2, 29, r);
+      g.lineStyle(1, accent, 0.5);
+      g.lineBetween(x + 2, y + 30, x + w - 2, y + 30);
+    }
+
+    if (header > 0) {
+      // Same recess as the footer, so the card reads in three registers:
+      // name plate, item, price. Drawn UNDER the lit half above rather than
+      // over it, which would flatten the light.
+      g.fillStyle(Theme.bg, 0.42);
+      g.fillRoundedRect(x + 1, y + 1, w - 2, header, r);
+      g.lineStyle(1, Theme.borderOnDark, 0.7);
+      g.lineBetween(x + 2, y + header + 1, x + w - 2, y + header + 1);
+      g.lineStyle(1, accent, 0.2);
+      g.lineBetween(x + 2, y + header + 2, x + w - 2, y + header + 2);
+    }
+
+    if (footer > 0) {
+      g.fillStyle(Theme.bg, 0.55);
+      g.fillRoundedRect(x + 1, y + h - footer, w - 2, footer - 1, r);
+      g.lineStyle(1, Theme.borderOnDark, 0.7);
+      g.lineBetween(x + 2, y + h - footer, x + w - 2, y + h - footer);
+    }
+
+    // Accent hairline under the top edge, and cut ticks at two opposite
+    // corners - the hardware detail that stops the card reading as a box.
+    g.lineStyle(1, accent, options.solidHeader ? 0.75 : 0.45);
+    g.lineBetween(x + r + 2, y + 1.5, x + w - r - 2, y + 1.5);
+    g.lineStyle(1, accent, 0.55);
+    g.lineBetween(x + 1, y + 9, x + 1, y + 18);
+    g.lineBetween(x + w - 1, y + h - 18, x + w - 1, y + h - 9);
+
+    g.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
+    g.strokeRoundedRect(x, y, w, h, r);
+    return g;
+  }
+
   private drawSectionBanner(cx: number, cy: number, w: number, color: number): Phaser.GameObjects.Graphics {
     const g = this.add.graphics();
     const half = w / 2;
@@ -6940,10 +7164,20 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       [cx - half, cy - hh + chamfer]
     ], Theme.bgElevated, color, 0.9);
 
+    // Lit upper half of the plaque, so it is a shaped object rather than a
+    // flat fill with a line on it.
+    g.fillStyle(color, 0.1);
+    g.fillRect(cx - half + chamfer, cy - hh + 1, w - chamfer * 2, hh);
+
     // Top inner highlight - one lit edge, matching the fixed upper-left
     // light every other drawn object in the game uses.
-    g.lineStyle(1, color, 0.3);
+    g.lineStyle(1, color, 0.35);
     g.lineBetween(cx - half + chamfer + 2, cy - hh + 3, cx + half - chamfer - 2, cy - hh + 3);
+    // Rivets. The one piece of industrial hardware on the plaque, and what
+    // makes the tails read as a fixed plate rather than cloth.
+    g.fillStyle(color, 0.55);
+    g.fillCircle(cx - half + 7, cy, 1.4);
+    g.fillCircle(cx + half - 7, cy, 1.4);
 
     return g;
   }
@@ -7590,16 +7824,30 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     }
   }
 
+  /**
+   * The level today's daily is priced at, pinned the first time it is looked
+   * at. The panel's previews run on a CLONE of the rewards state, so the pin
+   * has to be taken here against the real one or every redraw would re-pin at
+   * the current level - which is the bug this exists to close.
+   */
+  private dailyLevel(now: number): number {
+    const day = this.rewards.dailyOfferDay;
+    const level = dailyOfferLevel(this.rewards, now, playerLevel(this.orderState));
+    if (this.rewards.dailyOfferDay !== day || this.rewards.dailyOfferLevel !== level) this.saveState();
+    return level;
+  }
+
   private openPlayerInfo(): void {
     if (this.modalOpen || this.inputLocked) return;
     this.modalOpen = true;
     const xp = playerXpProgress(this.orderState);
     const profileNow = Date.now();
     const dailyReady = dailyAvailable(this.rewards, profileNow);
+    const dailyLevel = this.dailyLevel(profileNow);
     const dailyPreviewState = { ...this.rewards };
     const dailyPreview = dailyReady
-      ? claimDaily(dailyPreviewState, profileNow, xp.level)
-      : dailyRewardFor(this.rewards.dailyStreak + 1, xp.level);
+      ? claimDaily(dailyPreviewState, profileNow, dailyLevel)
+      : dailyRewardFor(this.rewards.dailyStreak + 1, dailyLevel);
     const projectUnlocked = xp.level >= 3;
     const profileProjectReady = this.projectStageReady();
     const collectionReady = unclaimedDiscoveryCount(this.collection);
@@ -7627,11 +7875,26 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const panelH = Math.min(316, this.scale.height - 32);
     const left = -panelW / 2;
     const top = -panelH / 2;
+    // Built exactly as the daily menu's panel is - cast shadow, top-lit
+    // gradient ground, accent wash on the upper third, lit and shadowed inner
+    // edges. The two panels are the game's two "here is where you stand"
+    // screens and they were drawn in different languages: one a flat sheet
+    // with a grey outline, the other a seated object.
     const cardBg = this.add.graphics();
-    cardBg.fillStyle(Theme.bgElevated, 1);
+    for (let i = 3; i >= 1; i--) {
+      cardBg.fillStyle(0x000000, 0.13);
+      cardBg.fillRoundedRect(left - i * 2, top - i + 8, panelW + i * 4, panelH + i * 2, Theme.radiusPanel + i);
+    }
+    cardBg.fillGradientStyle(Theme.bg, Theme.bg, 0x14120f, 0x14120f, 1);
     cardBg.fillRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
-    cardBg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
+    cardBg.fillStyle(Theme.playerLevel, 0.06);
+    cardBg.fillRoundedRect(left, top, panelW, panelH * 0.34, Theme.radiusPanel);
+    cardBg.lineStyle(Theme.borderWidthStrong, Theme.playerLevel, 0.85);
     cardBg.strokeRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
+    cardBg.lineStyle(1, 0xffffff, 0.09);
+    cardBg.lineBetween(left + 8, top + 2, left + panelW - 8, top + 2);
+    cardBg.lineStyle(1, 0x000000, 0.3);
+    cardBg.lineBetween(left + 8, top + panelH - 2, left + panelW - 8, top + panelH - 2);
 
     // No "PLAYER PROFILE" heading and no rule under it. A panel opened from
     // the level badge does not need to announce itself, and between them they
@@ -7642,11 +7905,20 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
 
     const levelDisc = this.add.graphics();
     levelDisc.fillStyle(Theme.playerLevel, 1);
+    // The same recessed well the daily menu puts its strip in: dark fill, a
+    // shadowed top edge and a lit bottom one, which is the inverse of the
+    // raised panel around it.
     const profileBand = this.add.graphics();
-    profileBand.fillStyle(Theme.playerLevel, 0.16);
+    profileBand.fillStyle(Theme.bgElevated, 1);
     profileBand.fillRoundedRect(left + 18, top + 20, panelW - 36, 82, Theme.radiusChip);
-    profileBand.lineStyle(1, Theme.playerLevel, 0.7);
+    profileBand.fillStyle(Theme.playerLevel, 0.14);
+    profileBand.fillRoundedRect(left + 18, top + 20, panelW - 36, 41, Theme.radiusChip);
+    profileBand.lineStyle(1, Theme.playerLevel, 0.55);
     profileBand.strokeRoundedRect(left + 18, top + 20, panelW - 36, 82, Theme.radiusChip);
+    profileBand.lineStyle(1, 0x000000, 0.35);
+    profileBand.lineBetween(left + 26, top + 21, left + panelW - 26, top + 21);
+    profileBand.lineStyle(1, 0xffffff, 0.06);
+    profileBand.lineBetween(left + 26, top + 101, left + panelW - 26, top + 101);
 
     levelDisc.fillStyle(Theme.playerLevel, 1);
     levelDisc.fillCircle(left + 57, top + 61, 30);
@@ -7723,6 +7995,18 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const dailyLastW = dailyStripW - dailyTabW * 4;
     const dailyStrip = this.add.graphics();
     const dailyIcons = Array.from({ length: 5 }, () => this.add.graphics());
+    // Coins are the SVG mark now, so they are Images rather than something
+    // the strip draws. One of the two is shown per day.
+    // Day 1 is the single Credit, which is an SVG mark and so an Image; day 2
+    // is the Credit Stack, a drawn silhouette on the same graphics the crate
+    // days use.
+    const dailyCoin = currencyIcon(this, 'credit', 30).setVisible(false);
+    // Day 2's pair, built once and repositioned as the strip redraws. Each
+    // mark keeps its layout offset in data, since reading it back off `x`
+    // after a reposition would compound.
+    const dailyPair = buildCurrencyCluster(this, 'credit', 2, 44)
+      .flatMap(({ art, gloss }) => [art, gloss])
+      .map((part) => part.setData('ox', part.x).setData('oy', part.y).setVisible(false));
     const dailyDayLabels = Array.from({ length: 5 }, (_, index) => this.add.text(0, 0,
       index === 4 ? 'DAY 5+' : `DAY ${index + 1}`, {
         resolution: textResolution,
@@ -7754,7 +8038,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const drawDailyStrip = (): void => {
       const now = Date.now();
       const canDaily = dailyAvailable(this.rewards, now);
-      const currentLevel = playerLevel(this.orderState);
+      // The pinned level, not the live one: an unclaimed daily must not grow
+      // while the panel is open.
+      const currentLevel = this.dailyLevel(now);
       const previewState = { ...this.rewards };
       const preview = canDaily
         ? claimDaily(previewState, now, currentLevel) ?? dailyRewardFor(1, currentLevel)
@@ -7799,29 +8085,96 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         const isActive = index === activeIndex;
         const isClaimed = index < claimedThrough || (!canDaily && index === 4 && claimedThrough >= 5);
         const accent = reward.kind === 'credits' ? Theme.currencyCredit : this.crateAccent(reward.tier);
-        dailyStrip.fillStyle(isActive ? accent : Theme.panelAlt, isActive ? 0.22 : 0.78);
+
+        // The daily menu's tab treatment, applied to the same five days here:
+        // a dropped copy for lift, a specular band clipped to the chevron, and
+        // a bevel that follows the notch instead of running across it.
+        const tabTop = dailyStripY;
+        const tabBot = dailyStripY + dailyStripH;
+        const edgesAt = (yy: number): [number, number] => {
+          const u = Math.min(1, Math.abs(yy - mid) / (dailyStripH / 2));
+          return [x + (index === 0 ? 0 : 7) * u, right - (index === 4 ? 0 : 7) * u];
+        };
+        dailyStrip.fillStyle(0x000000, 0.4);
+        dailyStrip.fillPoints(points.map((q) => new Phaser.Geom.Point(q.x, q.y + 3)), true);
+        dailyStrip.fillStyle(isActive ? accent : Theme.bgElevated, isActive ? 0.26 : 1);
         dailyStrip.fillPoints(points, true);
+        const BANDS = 14;
+        for (let b = 0; b < BANDS; b++) {
+          const y0 = tabTop + (dailyStripH * b) / BANDS;
+          const y1 = tabTop + (dailyStripH * (b + 1)) / BANDS;
+          const f = b / (BANDS - 1);
+          const [l0, r0] = edgesAt(y0);
+          const [l1, r1] = edgesAt(y1);
+          const quad = [
+            new Phaser.Geom.Point(l0, y0), new Phaser.Geom.Point(r0, y0),
+            new Phaser.Geom.Point(r1, y1), new Phaser.Geom.Point(l1, y1)
+          ];
+          if (f < 0.5) dailyStrip.fillStyle(0xffffff, (1 - f * 2) ** 2 * (isActive ? 0.16 : 0.1));
+          else dailyStrip.fillStyle(0x000000, ((f - 0.5) * 2) ** 2 * 0.3);
+          dailyStrip.fillPoints(quad, true);
+        }
+        const [bl, br] = edgesAt(tabTop + 2);
+        dailyStrip.lineStyle(1.5, 0xffffff, isActive ? 0.3 : 0.16);
+        dailyStrip.lineBetween(bl + 2, tabTop + 2, br - 2, tabTop + 2);
+        const [dl, dr] = edgesAt(tabBot - 2);
+        dailyStrip.lineStyle(1.5, 0x000000, 0.35);
+        dailyStrip.lineBetween(dl + 2, tabBot - 2, dr - 2, tabBot - 2);
+        if (isActive) {
+          dailyStrip.lineStyle(4, accent, 0.22);
+          dailyStrip.strokePoints(points, true);
+        }
         dailyStrip.lineStyle(isActive ? 2 : 1, isActive ? accent : Theme.borderOnDark, isActive ? 1 : 0.9);
         dailyStrip.strokePoints(points, true);
 
         const centerX = x + width / 2 + (index > 0 ? 2 : 0);
         dailyDayLabels[index].setPosition(centerX, dailyStripY + 10)
           .setColor(hex(isActive ? accent : Theme.textOnDarkMuted));
-        dailyIcons[index].clear().setPosition(centerX, dailyStripY + 37).setAlpha(isClaimed ? 0.5 : 1);
+        dailyIcons[index].clear().setScale(1).setAlpha(isClaimed ? 0.5 : 1);
         // 26 and 25 looked like matching numbers but were not matching SIZES:
         // `drawCurrencyGlyph` fills its full `size` (a 26px coin), while
         // `drawCrate` draws to about 0.67 of it, so the chests came out at
         // ~17px beside a 26px coin. 40 puts the crate's rendered width on the
         // coin's, which is what "the same size" actually means here.
-        if (reward.kind === 'credits') drawCurrencyGlyph(dailyIcons[index], 'credit', 26, Theme.currencyCredit);
-        else drawCrate(dailyIcons[index], 40, reward.tier);
+        // Sized by drawn width, as everywhere else.
+        const STRIP_CRATE = 36 / CRATE_DRAWN.width;
+        if (index === 0) {
+          dailyCoin.setVisible(reward.kind === 'credits')
+            .setPosition(centerX, dailyStripY + 36)
+            .setAlpha(isClaimed ? 0.5 : 1);
+        } else if (index === 1) {
+          for (const part of dailyPair) {
+            part.setVisible(reward.kind === 'credits')
+              .setPosition(centerX + part.getData('ox'), dailyStripY + 34 + part.getData('oy'))
+              .setAlpha(isClaimed ? 0.5 : part.isTinted ? 0.2 : 1);
+          }
+        }
+        if (reward.kind !== 'credits') {
+          dailyIcons[index].setPosition(centerX, dailyStripY + 37);
+          drawCrate(dailyIcons[index], STRIP_CRATE, reward.tier);
+        }
+        // A day that has not opened yet shows '?' rather than a number. Its
+        // Credit value is only fixed when the day rolls over and is priced at
+        // the level reached by then, so printing today's estimate would be
+        // stating a figure the game has not committed to - and the player
+        // would read a later, larger payout as the game shortchanging them.
+        const unopened = index > activeIndex;
         dailyRewardLabels[index]
           .setPosition(centerX, dailyStripY + 63)
-          .setText(reward.kind === 'credits' ? String(reward.credits) : reward.tier.toUpperCase())
+          // No tier word under a crate. The art says which crate it is, and
+          // the game's rule is that the art speaks for itself - see the
+          // show-don't-tell note in CLAUDE.md.
+          .setText(reward.kind !== 'credits'
+            ? ''
+            : unopened ? '?' : String(reward.credits))
           .setColor(hex(isActive ? Theme.textOnDark : Theme.textOnDarkMuted));
         dailyStateLabels[index]
           .setPosition(centerX + width * 0.28, dailyStripY + 24)
-          .setText(isClaimed ? '✓' : isActive ? (canDaily ? 'CLAIM' : 'NEXT') : '')
+          // No 'NEXT' on the day that is coming: the tab is already the one
+          // lit and outlined in the accent colour, so the word only repeated
+          // what the highlight had said. 'CLAIM' stays - that is an action to
+          // take, not a description of the state.
+          .setText(isClaimed ? '✓' : isActive && canDaily ? 'CLAIM' : '')
           .setColor(hex(isClaimed ? Theme.accentGreen : accent));
       }
 
@@ -7843,10 +8196,20 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     // carries 9.7% padding above its drawing and 8.9% below - so at a 56px
     // display size the art runs 5.4px to 51px inside its own box, and the chip
     // that satisfies both ends is 37 tall with the box centred 4.5px above it.
+    // Seated like the daily menu's CLAIM: a dark plinth under the chip, a lit
+    // top edge and a shadowed bottom one. These are the only two things on the
+    // panel you can press, and they were the flattest shapes on it.
+    collectionPanel.fillStyle(0x000000, 0.4);
+    collectionPanel.fillRoundedRect(collectionX - 30, collectionY - 15.5, 60, 37, Theme.radiusChip);
+    collectionPanel.fillStyle(Theme.panelAlt, 0.72);
     collectionPanel.fillRoundedRect(collectionX - 30, collectionY - 18.5, 60, 37, Theme.radiusChip);
     collectionPanel.lineStyle(1, profileProjectReady ? Theme.accentAmber : Theme.borderOnDark,
       profileProjectReady ? 0.9 : 1);
     collectionPanel.strokeRoundedRect(collectionX - 30, collectionY - 18.5, 60, 37, Theme.radiusChip);
+    collectionPanel.lineStyle(1, 0xffffff, 0.16);
+    collectionPanel.lineBetween(collectionX - 25, collectionY - 17.5, collectionX + 25, collectionY - 17.5);
+    collectionPanel.lineStyle(1, 0x000000, 0.35);
+    collectionPanel.lineBetween(collectionX - 25, collectionY + 17.5, collectionX + 25, collectionY + 17.5);
     // The owner's house mark, drawn LARGER than its 48x36 tile and allowed to
     // overhang it. Contained inside the chip the building was too small to
     // read as a building - same call as the currency glyphs, which are sized
@@ -7899,11 +8262,17 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const bookX = 0;
     const bookY = collectionY;
     const bookPanel = this.add.graphics();
+    bookPanel.fillStyle(0x000000, 0.4);
+    bookPanel.fillRoundedRect(bookX - 30, bookY - 15.5, 60, 37, Theme.radiusChip);
     bookPanel.fillStyle(Theme.panelAlt, 0.72);
     bookPanel.fillRoundedRect(bookX - 30, bookY - 18.5, 60, 37, Theme.radiusChip);
     bookPanel.lineStyle(1, collectionReady > 0 ? Theme.currencyGem : Theme.borderOnDark,
       collectionReady > 0 ? 0.8 : 1);
     bookPanel.strokeRoundedRect(bookX - 30, bookY - 18.5, 60, 37, Theme.radiusChip);
+    bookPanel.lineStyle(1, 0xffffff, 0.16);
+    bookPanel.lineBetween(bookX - 25, bookY - 17.5, bookX + 25, bookY - 17.5);
+    bookPanel.lineStyle(1, 0x000000, 0.35);
+    bookPanel.lineBetween(bookX - 25, bookY + 17.5, bookX + 25, bookY + 17.5);
     // The book draws centred on its origin at 0.68 of its size tall, so
     // standing it on the chip's bottom edge with the same overhang means its
     // centre sits 5px above the chip's.
@@ -7931,7 +8300,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     card.add([
       cardBg, titleRule, title, profileBand, levelDisc, levelText, levelLabel, xpBar,
       rewardCrate, divider, guidance,
-      dailyStrip, ...dailyIcons, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
+      dailyStrip, ...dailyIcons, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
       collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
       bookPanel, bookIcon, bookBadge, bookZone, closeBtn
     ]);
@@ -7996,6 +8365,347 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         refreshRewardRows();
         rewardClaimPending = false;
       }));
+  }
+
+  /**
+   * The daily supply menu. It opens BY ITSELF on launch when today's reward
+   * is unclaimed, and there is deliberately no button that reaches it: it is
+   * the game's first word of the session, not a screen to go looking for. Once
+   * claimed it does not come back, and the profile panel's strip stays as the
+   * way to claim one that was dismissed.
+   */
+  private openDailyMenu(): void {
+    if (this.modalOpen || this.inputLocked) return;
+    const now = Date.now();
+    if (!dailyAvailable(this.rewards, now)) return;
+    this.modalOpen = true;
+
+    const level = this.dailyLevel(now);
+    // What claiming right now would hand over, previewed on a COPY so the
+    // real streak is only advanced by the button.
+    const preview = claimDaily({ ...this.rewards }, now, level) ?? dailyRewardFor(1, level);
+    const activeIndex = Math.min(preview.streak, 5) - 1;
+    const claimedThrough = Math.min(Math.max(0, preview.streak - 1), 5);
+
+    const W = Math.min(this.scale.width - 36, 380);
+    const H = 336;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+
+    // 0.72, and darker than the other panels' 0.6: this one interrupts the
+    // session rather than being opened, so the board behind it should read as
+    // switched off. The fill alpha is set here and the OBJECT alpha is what
+    // animates - passing 0 as the fill alpha made a rectangle that could
+    // never be seen however far its alpha was tweened.
+    const dim = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, 0x000000, 0.72)
+      .setDepth(3000).setAlpha(0).setInteractive();
+    const card = this.add.container(cx, cy).setDepth(3001);
+
+    const bg = this.add.graphics();
+    // Cast shadow first, so the panel sits ABOVE the board rather than being
+    // painted onto it. Three offset passes rather than one: a single flat
+    // rectangle of black reads as a border, a falloff reads as a shadow.
+    for (let i = 3; i >= 1; i--) {
+      bg.fillStyle(0x000000, 0.13);
+      bg.fillRoundedRect(-W / 2 - i * 2, -H / 2 - i + 8, W + i * 4, H + i * 2, Theme.radiusPanel + i);
+    }
+    // Lit at the top, falling to the base tone at the bottom - the same
+    // upper-left key light every drawn object in the game shares.
+    bg.fillGradientStyle(Theme.bg, Theme.bg, 0x14120f, 0x14120f, 1);
+    bg.fillRoundedRect(-W / 2, -H / 2, W, H, Theme.radiusPanel);
+    bg.fillStyle(Theme.currencyCredit, 0.06);
+    bg.fillRoundedRect(-W / 2, -H / 2, W, H * 0.34, Theme.radiusPanel);
+    bg.lineStyle(Theme.borderWidthStrong, Theme.currencyCredit, 0.85);
+    bg.strokeRoundedRect(-W / 2, -H / 2, W, H, Theme.radiusPanel);
+    // Lit inner edge along the top, shadowed one along the bottom: 1px each,
+    // and the whole panel stops looking like a flat sheet.
+    bg.lineStyle(1, 0xffffff, 0.09);
+    bg.lineBetween(-W / 2 + 8, -H / 2 + 2, W / 2 - 8, -H / 2 + 2);
+    bg.lineStyle(1, 0x000000, 0.3);
+    bg.lineBetween(-W / 2 + 8, H / 2 - 2, W / 2 - 8, H / 2 - 2);
+    card.add(bg);
+
+    card.add(this.add.text(0, -H / 2 + 26, 'DAILY SUPPLY', {
+      resolution: textResolution,
+      fontFamily: Theme.fontHeading, fontSize: '20px', fontStyle: 'bold', color: hex(Theme.textOnDark)
+    }).setOrigin(0.5).setLetterSpacing(2));
+    // The line states what is actually true of THIS day. On day 4 the news is
+    // that tomorrow is the top of the ladder; on day 5+ the player is already
+    // there and telling them to play five days in a row says nothing.
+    const subtitle = preview.streak >= 5
+      ? 'MAXIMUM REWARD  ·  KEEP THE STREAK TO HOLD IT'
+      : preview.streak === 4
+        ? "YOU'LL GET THE MAXIMUM REWARD TOMORROW"
+        : 'PLAY 5 DAYS IN A ROW FOR THE MAXIMUM BONUS';
+    card.add(this.add.text(0, -H / 2 + 50, subtitle, {
+      resolution: textResolution,
+      fontFamily: Theme.fontMono, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
+    }).setOrigin(0.5));
+
+    // Five INTERLOCKING tabs, the same chevron strip the profile panel uses -
+    // that shape is what says "five days in a row" rather than "five separate
+    // prizes". Each one is still its own container so the row can be brought
+    // in a day at a time.
+    const rowW = W - 32;
+    const tabW = rowW / 5;
+    const tabH = 116;
+    const rowY = -14;
+    const NOTCH = 8;
+    /** Sized by its DRAWN width: 44px across, so it reads bigger than a coin. */
+    const CRATE_ART = 44 / CRATE_DRAWN.width;
+    /** The box the Credit artwork is normalised into, matching the crates. */
+    const DAILY_ICON = 46;
+    // The well the strip sits in. Recessed - dark fill, lit BOTTOM edge -
+    // which is the inverse of the raised panel around it, and what makes the
+    // tabs read as sitting inside something.
+    const well = this.add.graphics();
+    well.fillStyle(Theme.bg, 0.55);
+    well.fillRoundedRect(-rowW / 2 - 8, rowY - tabH / 2 - 10, rowW + 16, tabH + 20, 6);
+    well.lineStyle(1, 0x000000, 0.35);
+    well.lineBetween(-rowW / 2 - 2, rowY - tabH / 2 - 9, rowW / 2 + 2, rowY - tabH / 2 - 9);
+    well.lineStyle(1, 0xffffff, 0.05);
+    well.lineBetween(-rowW / 2 - 2, rowY + tabH / 2 + 9, rowW / 2 + 2, rowY + tabH / 2 + 9);
+    card.add(well);
+
+    const tabs: Phaser.GameObjects.Container[] = [];
+    for (let index = 0; index < 5; index++) {
+      const reward = dailyRewardFor(index + 1, level);
+      const isActive = index === activeIndex;
+      const isClaimed = index < claimedThrough;
+      const accent = reward.kind === 'credits' ? Theme.currencyCredit : this.crateAccent(reward.tier);
+      const tab = this.add.container(-rowW / 2 + tabW * index + tabW / 2, rowY);
+
+      // Relative to the tab's own centre, so the containers can be tweened
+      // independently and the chevrons still interlock.
+      const l = -tabW / 2;
+      const r = tabW / 2;
+      const t = -tabH / 2;
+      const b = tabH / 2;
+      const pt = (x: number, y: number) => new Phaser.Geom.Point(x, y);
+      const points = index === 0
+        ? [pt(l, t), pt(r - NOTCH, t), pt(r, 0), pt(r - NOTCH, b), pt(l, b)]
+        : index === 4
+          ? [pt(l + NOTCH, t), pt(r, t), pt(r, b), pt(l + NOTCH, b), pt(l, 0)]
+          : [pt(l + NOTCH, t), pt(r - NOTCH, t), pt(r, 0), pt(r - NOTCH, b), pt(l + NOTCH, b), pt(l, 0)];
+
+      // The chevron's left and right edges at a given y. The notch runs from
+      // the corners to the vertical midpoint, so both edges are a straight
+      // interpolation - which is what lets a horizontal band be clipped to the
+      // shape exactly, instead of a rectangle laid over it. The previous
+      // "highlight" was a rectangle-ish polygon built by filtering the
+      // outline's points, which cut a shape that was not the tab.
+      const edgesAt = (yy: number): [number, number] => {
+        // 1 at the tips, 0 at the waist - the notch is fully open at the top
+        // and bottom edges and closed at the point.
+        const u = Math.min(1, Math.abs(yy) / (tabH / 2));
+        const leftNotch = index === 0 ? 0 : NOTCH;
+        const rightNotch = index === 4 ? 0 : NOTCH;
+        return [l + leftNotch * u, r - rightNotch * u];
+      };
+
+      const plate = this.add.graphics();
+      // Dropped copy first: the tab is a raised key, not a printed shape.
+      plate.fillStyle(0x000000, 0.4);
+      plate.fillPoints(points.map((q) => pt(q.x, q.y + 4)), true);
+      plate.fillStyle(isActive ? accent : Theme.bgElevated, isActive ? 0.26 : 1);
+      plate.fillPoints(points, true);
+
+      // A REFLECTION, built as horizontal bands clipped to the chevron: bright
+      // at the top edge, falling away through the upper half, then a matching
+      // dark ramp rising off the bottom. Sixteen bands is enough that the
+      // steps are invisible at this size, and it is the only way to get a
+      // gradient into an arbitrary polygon - `fillGradientStyle` reaches rects
+      // and triangles only.
+      const BANDS = 16;
+      for (let i = 0; i < BANDS; i++) {
+        const y0 = t + (tabH * i) / BANDS;
+        const y1 = t + (tabH * (i + 1)) / BANDS;
+        const f = i / (BANDS - 1);
+        const [l0, r0] = edgesAt(y0);
+        const [l1, r1] = edgesAt(y1);
+        const quad = [pt(l0, y0), pt(r0, y0), pt(r1, y1), pt(l1, y1)];
+        if (f < 0.5) {
+          // Specular fall-off from the top edge. Squared, so the brightest
+          // part is a thin band at the very top rather than a wash over the
+          // whole upper half - which is what made the old one look painted on.
+          const a = (1 - f * 2) ** 2 * (isActive ? 0.16 : 0.1);
+          plate.fillStyle(0xffffff, a);
+        } else {
+          plate.fillStyle(0x000000, ((f - 0.5) * 2) ** 2 * 0.3);
+        }
+        plate.fillPoints(quad, true);
+      }
+
+      // Bevel: a lit inner edge just inside the top of the outline and a dark
+      // one inside the bottom, both following the chevron rather than running
+      // straight across it.
+      const [bl, br] = edgesAt(t + 2);
+      plate.lineStyle(1.5, 0xffffff, isActive ? 0.3 : 0.16);
+      plate.lineBetween(bl + 2, t + 2, br - 2, t + 2);
+      const [dl, dr] = edgesAt(b - 2);
+      plate.lineStyle(1.5, 0x000000, 0.35);
+      plate.lineBetween(dl + 2, b - 2, dr - 2, b - 2);
+
+      if (isActive) {
+        // The one tab that matters gets a halo, not just a brighter border.
+        plate.lineStyle(4, accent, 0.22);
+        plate.strokePoints(points, true);
+      }
+      plate.lineStyle(isActive ? 2 : 1, isActive ? accent : Theme.borderOnDark, isActive ? 1 : 0.9);
+      plate.strokePoints(points, true);
+      tab.add(plate);
+
+      tab.add(this.add.text(index === 0 ? -2 : 2, -tabH / 2 + 14, index === 4 ? 'DAY 5+' : `DAY ${index + 1}`, {
+        resolution: textResolution,
+        fontFamily: Theme.fontHeading, fontSize: '11px', fontStyle: 'bold',
+        color: hex(isActive ? accent : Theme.textOnDarkMuted)
+      }).setOrigin(0.5));
+
+      // `drawCrate`'s `s` is NOT its drawn size - the front face is a
+      // fraction of it - so a crate is asked for through CRATE_DRAWN. It
+      // centres itself, so there is no offset to apply.
+      const iconX = index === 0 ? -2 : 2;
+      if (reward.kind === 'credits') {
+        // Day 1 is the single Credit - the family's tier 1, which is the SVG
+        // mark rather than a drawn silhouette - and day 2 is the Credit Stack,
+        // tier 3. One coin against a stack is the whole statement.
+        if (index === 0) {
+          const coin = currencyIcon(this, 'credit', 38).setPosition(iconX, -6);
+          if (isClaimed) coin.setAlpha(0.45);
+          tab.add(coin);
+        } else {
+          // Twin Credits, the family's tier 2 - the same pair the board draws,
+          // through the shared cluster so there is one definition of what a
+          // pair of coins looks like.
+          for (const { art, gloss } of buildCurrencyCluster(this, 'credit', 2, DAILY_ICON * 1.35)) {
+            for (const part of [art, gloss]) {
+              part.setPosition(part.x + iconX, part.y - 12);
+              if (isClaimed) part.setAlpha(part.alpha * 0.45);
+              tab.add(part);
+            }
+          }
+        }
+      } else {
+        const crate = this.add.graphics()
+          .setPosition(iconX, -4)
+          .setAlpha(isClaimed ? 0.45 : 1);
+        drawCrate(crate, CRATE_ART, reward.tier);
+        tab.add(crate);
+      }
+
+      // Unopened days show '?': their Credit value is only fixed when the day
+      // rolls over and is priced at the level reached by then.
+      // A crate day carries no figure: the crate IS the statement, and the
+      // tier word under it was both redundant and the widest text in a 70px
+      // tab. Only the Credit days print a number - or '?' when the day has
+      // not opened and its value is not fixed yet.
+      const unopened = index > activeIndex;
+      const valueLine = isClaimed
+        ? '✓'
+        : reward.kind !== 'credits' ? ''
+          : unopened ? '?' : String(reward.credits);
+      if (valueLine) {
+        tab.add(this.add.text(index === 0 ? -2 : 2, tabH / 2 - 16, valueLine, {
+          resolution: textResolution,
+          fontFamily: valueLine === '✓' ? Theme.fontHeading : Theme.fontNumeric,
+          fontSize: '14px', fontStyle: 'bold',
+          color: hex(isClaimed ? Theme.accentGreen : isActive ? Theme.textOnDark : Theme.textOnDarkMuted)
+        }).setOrigin(0.5));
+      }
+
+      card.add(tab);
+      tabs.push(tab);
+    }
+
+    const claimW = 208;
+    const claimH = 44;
+    const claimY = H / 2 - 44;
+    const claimBtn = this.add.container(0, claimY);
+    const claimBg = this.add.graphics();
+    // A seated key: a dark plinth under it, a lit top face, a shadowed lower
+    // edge. A flat filled rectangle was the flattest thing on the panel, on
+    // the one control the player is meant to reach for.
+    claimBg.fillStyle(0x000000, 0.4);
+    claimBg.fillRoundedRect(-claimW / 2, -claimH / 2 + 4, claimW, claimH, Theme.radiusChip);
+    claimBg.fillGradientStyle(
+      Theme.currencyCredit, Theme.currencyCredit,
+      materialLighting(Theme.currencyCredit, 5).dark, materialLighting(Theme.currencyCredit, 5).dark, 1
+    );
+    claimBg.fillRoundedRect(-claimW / 2, -claimH / 2, claimW, claimH, Theme.radiusChip);
+    claimBg.lineStyle(1, 0xffffff, 0.32);
+    claimBg.lineBetween(-claimW / 2 + 4, -claimH / 2 + 1.5, claimW / 2 - 4, -claimH / 2 + 1.5);
+    claimBg.lineStyle(1, 0x000000, 0.35);
+    claimBg.lineBetween(-claimW / 2 + 4, claimH / 2 - 1.5, claimW / 2 - 4, claimH / 2 - 1.5);
+    const claimLabel = this.add.text(0, 0, 'CLAIM', {
+      resolution: textResolution,
+      fontFamily: Theme.fontHeading, fontSize: '17px', fontStyle: 'bold', color: hex(Theme.bg)
+    }).setOrigin(0.5).setLetterSpacing(2);
+    const claimZone = this.add.zone(0, 0, claimW, claimH).setInteractive({ useHandCursor: true });
+    claimBtn.add([claimBg, claimLabel, claimZone]);
+    card.add(claimBtn);
+
+    const closeBtn = this.add.text(W / 2 - 22, -H / 2 + 22, '✕', {
+      resolution: textResolution,
+      fontFamily: Theme.fontHeading, fontSize: '18px', color: hex(Theme.textOnDarkMuted)
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    card.add(closeBtn);
+
+    // ---- the way in ----
+    //
+    // Scale and fade from the centre, then the days light up in sequence.
+    // A daily reward that simply APPEARS reads as an error dialog; the
+    // sequence is what makes it read as something being handed over.
+    card.setScale(0.86).setAlpha(0);
+    tabs.forEach((tab) => tab.setScale(0.6).setAlpha(0));
+    claimBtn.setAlpha(0);
+    this.tweens.add({ targets: dim, alpha: 1, duration: 220, ease: 'Sine.easeOut' });
+    this.tweens.add({ targets: card, scale: 1, alpha: 1, duration: 300, ease: 'Back.easeOut' });
+    tabs.forEach((tab, index) => {
+      this.tweens.add({
+        targets: tab, scale: 1, alpha: 1,
+        delay: 220 + index * 70, duration: 220, ease: 'Back.easeOut'
+      });
+    });
+    this.tweens.add({ targets: claimBtn, alpha: 1, delay: 560, duration: 200 });
+
+    let closing = false;
+    const dismiss = (): void => {
+      if (closing) return;
+      closing = true;
+      this.tweens.add({ targets: dim, alpha: 0, duration: 140 });
+      this.tweens.add({
+        targets: card, scale: 0.92, alpha: 0, duration: 140, ease: 'Sine.easeIn',
+        onComplete: () => {
+          dim.destroy();
+          card.destroy();
+          this.modalOpen = false;
+        }
+      });
+    };
+    dim.on('pointerdown', () => this.time.delayedCall(0, dismiss));
+    closeBtn.on('pointerdown', () => this.time.delayedCall(0, dismiss));
+
+    let claiming = false;
+    claimZone.on('pointerup', () => this.time.delayedCall(0, () => {
+      if (claiming || closing) return;
+      claiming = true;
+      const claimNow = Date.now();
+      const claimed = claimDaily(this.rewards, claimNow, this.dailyLevel(claimNow));
+      if (!claimed) {
+        dismiss();
+        return;
+      }
+      if (claimed.kind === 'credits') {
+        addCoins(this.economy, claimed.credits);
+        this.updateCurrencyText();
+        floatingScore(this, cx, cy + rowY, claimed.credits, 'CR');
+      } else {
+        this.awardCrate(claimed.tier, `DAILY SUPPLY  ·  DAY ${claimed.dayLabel}`, { x: cx, y: cy + rowY });
+      }
+      this.updateLevelBadge();
+      this.saveState();
+      dismiss();
+    }));
   }
 
   private confirmReset(): void {

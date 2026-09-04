@@ -77,10 +77,25 @@ export interface RewardsState {
   /** Local-day index of the last daily claim, or -1 if never. */
   lastDailyDay: number;
   dailyStreak: number;
+  /**
+   * The day today's unclaimed daily was first LOOKED at, and the player level
+   * they were at when they looked. Together they pin the reward's value.
+   *
+   * Without them the daily was priced from the player's CURRENT level every
+   * time it was drawn, so an unclaimed reward grew while you played - and the
+   * strategy was to never claim on login, level up, and claim a bigger one
+   * later. A day's reward is now worth what it was worth when the day opened.
+   */
+  dailyOfferDay: number;
+  dailyOfferLevel: number;
 }
 
 export function createDefaultRewardsState(): RewardsState {
-  return { meterCollects: 0, meterCooldownEndsAt: 0, meterCooldownDurationMs: 0, claimedMilestoneLevel: 1, lastDailyDay: -1, dailyStreak: 0 };
+  return {
+    meterCollects: 0, meterCooldownEndsAt: 0, meterCooldownDurationMs: 0,
+    claimedMilestoneLevel: 1, lastDailyDay: -1, dailyStreak: 0,
+    dailyOfferDay: -1, dailyOfferLevel: 0
+  };
 }
 
 export function normalizeRewardsState(raw: Partial<RewardsState> | undefined): RewardsState {
@@ -95,7 +110,11 @@ export function normalizeRewardsState(raw: Partial<RewardsState> | undefined): R
     claimedMilestoneLevel: Math.max(1, int(raw.claimedMilestoneLevel, 1)),
     // -1 is meaningful (never claimed), so it cannot go through the >= 0 clamp.
     lastDailyDay: Number.isFinite(raw.lastDailyDay) ? Math.floor(raw.lastDailyDay as number) : -1,
-    dailyStreak: int(raw.dailyStreak, 0)
+    dailyStreak: int(raw.dailyStreak, 0),
+    // -1/0 mean "not pinned yet", so an existing save simply pins on the next
+    // time the daily is looked at rather than needing a migration.
+    dailyOfferDay: Number.isFinite(raw.dailyOfferDay) ? Math.floor(raw.dailyOfferDay as number) : -1,
+    dailyOfferLevel: int(raw.dailyOfferLevel, 0)
   };
 }
 
@@ -234,13 +253,27 @@ export function crateForStreak(streak: number): CrateTier {
   return 'bronze';
 }
 
+/**
+ * Day 1's floor. A brand-new player is level 1, where the level-scaled value
+ * works out at ten Credits - a reward that reads as an insult on the screen
+ * that is supposed to bring them back tomorrow. It is a FLOOR rather than a
+ * flat price on purpose: a level-30 player whose streak resets goes back to
+ * day 1 too, and handing them 300 would be the same mistake in reverse.
+ */
+export const DAILY_DAY_ONE_MIN_CREDITS = 300;
+
 /** Five-day Township-style ladder; Day 5 remains the maximum while the streak continues. */
 export function dailyRewardFor(streak: number, playerLevel = 1): DailyReward {
   const day = Math.max(1, Math.floor(streak));
   const typicalCredits = typicalOrderWork(playerLevel) * 3;
   const nearestFive = (value: number) => Math.max(5, Math.round(value / 5) * 5);
   if (day === 1) {
-    return { kind: 'credits', credits: Math.max(10, nearestFive(typicalCredits * 0.4)), streak: day, dayLabel: '1' };
+    return {
+      kind: 'credits',
+      credits: Math.max(DAILY_DAY_ONE_MIN_CREDITS, nearestFive(typicalCredits * 0.4)),
+      streak: day,
+      dayLabel: '1'
+    };
   }
   if (day === 2) {
     return { kind: 'credits', credits: Math.max(20, nearestFive(typicalCredits * 0.8)), streak: day, dayLabel: '2' };
@@ -250,13 +283,30 @@ export function dailyRewardFor(streak: number, playerLevel = 1): DailyReward {
   return { kind: 'crate', tier: 'gold', streak: day, dayLabel: '5+' };
 }
 
+/**
+ * The level today's daily is priced at: the level the player was when the day
+ * opened for them, pinned on first look and held until it is claimed or the
+ * day rolls over. Call this instead of passing the live level.
+ */
+export function dailyOfferLevel(state: RewardsState, now: number, playerLevel: number): number {
+  const today = dayIndexFor(now);
+  if (state.dailyOfferDay !== today || state.dailyOfferLevel <= 0) {
+    state.dailyOfferDay = today;
+    state.dailyOfferLevel = Math.max(1, Math.floor(playerLevel));
+  }
+  return state.dailyOfferLevel;
+}
+
 /** Claims the daily crate, or returns null if today's has already been taken. */
 export function claimDaily(state: RewardsState, now: number, playerLevel = 1): DailyReward | null {
   const today = dayIndexFor(now);
   if (today === state.lastDailyDay) return null;
+  // Priced at the pinned level, so what is handed over is what the panel has
+  // been showing - not what the player has levelled up to since.
+  const level = dailyOfferLevel(state, now, playerLevel);
   state.dailyStreak = today === state.lastDailyDay + 1 ? state.dailyStreak + 1 : 1;
   state.lastDailyDay = today;
-  return dailyRewardFor(state.dailyStreak, playerLevel);
+  return dailyRewardFor(state.dailyStreak, level);
 }
 
 // ---- Loot ----

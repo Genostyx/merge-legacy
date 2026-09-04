@@ -639,15 +639,24 @@ export function iconPresentation(typeId: string, tier: number, s: number): IconP
  * a crate must never be mistaken for something you can merge.
  */
 const CRATE_COLORS: Record<string, number> = {
-  // Bronze, not cardboard. 0xb87a45 was a mid brown with nothing metallic in
-  // it, and against the flat card faces it read as a shipping carton - the one
-  // thing a reward crate must not look like. This is redder and more
-  // saturated, which is what separates cast bronze from packaging.
-  bronze: 0xc86a2e,
-  silver: 0xb9c2ca,
-  gold: 0xe0a929,
+  // Polished COPPER rather than cast bronze: a pinker, brighter orange with
+  // more red than yellow in it, keyed off drawn copper tube. 0xc86a2e still
+  // sat close to a mid brown once the shadowed faces took it down, and brown
+  // is the one thing a reward crate must never read as. This holds its hue
+  // through the dark faces, which is what makes it look like metal that has
+  // been polished rather than a painted box.
+  bronze: 0xd07a4e,
+  // Cool polished steel, not grey plastic: a touch lighter and bluer than the
+  // old tone so the specular band below has somewhere bright to go.
+  silver: 0xc4ccd6,
+  // Deeper and slightly warmer than 0xe0a929, which lit up almost white at
+  // the top of its ramp and lost the metal.
+  gold: 0xdca92f,
   vault: 0x8f5ad6,
-  shipping: 0x647887
+  // Pulled colder and darker, away from the silver case's light cool grey.
+  // Two objects that are both "metal box" have to differ in VALUE, not only
+  // in detail, or they read as the same thing at board size.
+  shipping: 0x4d6270
 };
 
 /**
@@ -659,80 +668,308 @@ const CRATE_COLORS: Record<string, number> = {
  * as machined freight at 40px rather than as a treasure chest. Nothing here
  * is representational beyond the box itself: no latches, hinges or glow.
  */
+/**
+ * The crate's front face as a fraction of the size argument. The DRAWN box -
+ * face plus the projection - is `w + depth` wide by `h + depth` tall, and is
+ * centred on the origin, so a caller wanting a 40px-wide crate asks for
+ * `40 / CRATE_DRAWN.width` and positions it dead centre with no offset.
+ */
+export const CRATE_FACE = { w: 0.6, h: 0.3, depth: 0.13 };
+export const CRATE_DRAWN = {
+  width: CRATE_FACE.w + CRATE_FACE.depth,
+  height: CRATE_FACE.h + CRATE_FACE.depth
+};
+
 export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: string): void {
   if (tier === 'shipping') {
-    const w = s * 0.76;
-    const h = s * 0.42;
-    const d = s * 0.15;
-    const x = -w / 2;
-    const y = -h / 2 + s * 0.06;
-    const front = materialLighting(0x566d7b, 4);
-    drawBlock(g, w, h, d, y, front);
-    // Corrugated steel panels kept broad enough to remain clean at board size.
-    g.lineStyle(Math.max(1, s * 0.018), front.shadow, 0.62);
-    for (let i = 1; i < 7; i++) {
-      const px = x + (w * i) / 7;
-      g.lineBetween(px, y + h * 0.1, px, y + h * 0.9);
+    // An INTERMODAL CONTAINER, and deliberately not built from any of the hard
+    // case's parts. The silver crate is now a polished case with latches,
+    // bumpers and a specular sweep, and the old container - a light blue-grey
+    // block with a few vertical lines - had drifted close enough to be
+    // mistaken for it. A container is a different object: longer and lower,
+    // deeply fluted end to end, corner castings at all four corners, and a
+    // pair of doors with locking bars at one end. None of that vocabulary is
+    // shared with a crate, so the two can never be confused again.
+    // Proportioned for the ISOMETRIC read. At 0.84 long and 0.13 deep the
+    // container was almost a flat panel: the two receding planes were thin
+    // slivers, so it looked like a drawing of a container rather than one
+    // standing in the world. Shorter and much deeper puts real area on the
+    // top and end planes, which is where the three-quarter view lives.
+    const w = s * 0.66;
+    const h = s * 0.32;
+    const d = s * 0.26;
+    const x = -(w + d) / 2;
+    const y = (d - h) / 2;
+    const front = materialLighting(CRATE_COLORS.shipping, 5);
+
+    // Shell: front, receding end, and top, all centred on the origin.
+    g.fillGradientStyle(front.light, front.light, front.shadow, front.dark, 1);
+    g.fillRect(x, y, w, h);
+    g.fillStyle(toneForNormal(front, 0), 1);
+    g.beginPath();
+    g.moveTo(x + w, y);
+    g.lineTo(x + w + d, y - d);
+    g.lineTo(x + w + d, y + h - d);
+    g.lineTo(x + w, y + h);
+    g.closePath();
+    g.fillPath();
+    g.fillGradientStyle(front.highlight, front.highlight, front.light, front.light, 1);
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + d, y - d);
+    g.lineTo(x + w + d, y - d);
+    g.lineTo(x + w, y);
+    g.closePath();
+    g.fillPath();
+
+    // Corrugation on the long side: many narrow flutes, which is what a
+    // container reads as from across a yard and what a machined case never
+    // has.
+    const flutes = 13;
+    for (let i = 0; i < flutes; i++) {
+      const px = x + w * 0.05 + ((w * 0.9) * i) / flutes;
+      g.fillStyle(front.highlight, 0.14);
+      g.fillRect(px, y + h * 0.14, Math.max(1, s * 0.012), h * 0.72);
+      g.fillStyle(front.shadow, 0.42);
+      g.fillRect(px + Math.max(1, s * 0.012), y + h * 0.14, Math.max(1, s * 0.01), h * 0.72);
     }
-    g.lineStyle(Math.max(1.2, s * 0.022), front.dark, 0.9);
+
+    // The DOORS go on the receding end plane, not on the long side - that is
+    // where a container's doors are, and putting them on the plane that
+    // recedes is what sells the three-quarter view.
+    const doorInset = 0.16;
+    const dp = (u: number, v: number): [number, number] => [
+      x + w + d * u,
+      y - d * u + (h - 0) * v
+    ];
+    const [dx0, dy0] = dp(doorInset, 0.12);
+    const [dx1, dy1] = dp(1 - doorInset, 0.12);
+    const [dx2, dy2] = dp(1 - doorInset, 0.88);
+    const [dx3, dy3] = dp(doorInset, 0.88);
+    g.fillStyle(front.shadow, 0.4);
+    g.beginPath();
+    g.moveTo(dx0, dy0);
+    g.lineTo(dx1, dy1);
+    g.lineTo(dx2, dy2);
+    g.lineTo(dx3, dy3);
+    g.closePath();
+    g.fillPath();
+    // Locking bars, running down the doors along the same recede.
+    g.lineStyle(Math.max(1, s * 0.014), front.highlight, 0.55);
+    for (const u of [0.34, 0.46, 0.6, 0.72]) {
+      const [bx0, by0] = dp(u, 0.14);
+      const [bx1, by1] = dp(u, 0.86);
+      g.lineBetween(bx0, by0, bx1, by1);
+    }
+    g.lineStyle(Math.max(1, s * 0.016), front.dark, 0.85);
+    const [sx0, sy0] = dp(0.53, 0.12);
+    const [sx1, sy1] = dp(0.53, 0.88);
+    g.lineBetween(sx0, sy0, sx1, sy1);
+
+    // Rails along the top of the long side, and the ridges across the roof -
+    // the two lines that state the top plane is a plane.
+    g.lineStyle(Math.max(1, s * 0.014), front.shadow, 0.45);
+    for (const t2 of [0.3, 0.7]) {
+      const rx = x + w * t2;
+      g.lineBetween(rx + d * 0.15, y - d * 0.15, rx + d * 0.9, y - d * 0.9);
+    }
+
+    // Corner castings: the heavy blocks a container is lifted and stacked by.
+    const cast = s * 0.05;
+    g.fillStyle(front.dark, 1);
+    for (const cxp of [x, x + w - cast]) {
+      for (const cyp of [y, y + h - cast]) g.fillRect(cxp, cyp, cast, cast);
+    }
+    g.fillStyle(toneForNormal(front, 0), 1);
+    for (const v of [0, 1]) {
+      const [ox, oy] = dp(1, v);
+      g.fillRect(ox - cast, oy - (v === 0 ? 0 : cast), cast, cast);
+    }
+
+    g.lineStyle(Math.max(1.2, s * 0.02), front.dark, 0.85);
     g.strokeRect(x, y, w, h);
-    g.lineBetween(x + w * 0.5, y, x + w * 0.5, y + h);
-    g.lineStyle(Math.max(1, s * 0.017), front.highlight, 0.85);
-    g.lineBetween(x + w * 0.08, y + h * 0.13, x + w * 0.08, y + h * 0.87);
-    g.lineBetween(x + w * 0.92, y + h * 0.13, x + w * 0.92, y + h * 0.87);
     return;
   }
+
   const base = CRATE_COLORS[tier] ?? CRATE_COLORS.bronze;
   // Bronze sits at 6 rather than 3. The tier argument drives CONTRAST, not
   // hue: at 3 the spread across the crate's three faces was so narrow that the
   // block read as flat brown paper. Metal needs the faces to separate.
-  const p = materialLighting(base, tier === 'vault' ? 9 : tier === 'gold' ? 7 : tier === 'silver' ? 6 : 6);
+  // Bronze/copper runs at 7 alongside gold: polished metal's whole tell is a
+  // WIDE specular range - a near-white hit on the lit plane against a deep
+  // shadowed one - and at 6 the copper's faces sat too close together to read
+  // as polished.
+  const p = materialLighting(base, tier === 'vault' ? 9 : tier === 'silver' ? 6 : 7);
 
-  const w = s * 0.5;
-  const h = s * 0.42;
-  const depth = s * 0.17;
-  const x = -w / 2;
-  const y = -h / 2 + s * 0.04;
+  // ---- A HARD CASE, not a box ----
+  //
+  // The earlier version was a cube with a lid seam, which is a crate in the
+  // packing sense and not in the game sense. A loot crate is a transit case:
+  // WIDE and shallow, ribbed shell, end bumpers standing proud of the body,
+  // two latches on the seam, and a blank instrument plate. Every part is a
+  // machined one, so this stays a facility object rather than a treasure
+  // chest.
+  const w = s * CRATE_FACE.w;
+  const h = s * CRATE_FACE.h;
+  const depth = s * CRATE_FACE.depth;
+  // Positioned so the DRAWN box - front face plus the projection up and to
+  // the right - is centred on the origin. Callers used to correct for this
+  // themselves with magic offsets, and each one got it slightly wrong.
+  const x = -(w + depth) / 2;
+  const y = (depth - h) / 2;
 
-  // Ambient contact shading is the caller's job everywhere else in this file;
-  // the crate follows the same rule and draws only itself.
-  drawBlock(g, w, h, depth, y, p);
-
-  // Strap: one horizontal band across the front face, carried over the top.
-  const bandY = y + h * 0.52;
-  const bandH = Math.max(2, s * 0.055);
-  g.fillStyle(p.shadow, 0.85);
-  g.fillRect(x, bandY - bandH / 2, w, bandH);
-  g.fillStyle(toneForNormal(p, 0), 0.9);
+  // ---- shell: three planes, drawn here rather than through drawBlock so the
+  // origin can be the centre of the drawn box.
+  g.fillGradientStyle(p.light, p.light, p.shadow, p.dark, 1);
+  g.fillRect(x, y, w, h);
+  g.fillStyle(toneForNormal(p, 0), 1);
   g.beginPath();
-  g.moveTo(x + w, bandY - bandH / 2);
-  g.lineTo(x + w + depth, bandY - bandH / 2 - depth);
-  g.lineTo(x + w + depth, bandY + bandH / 2 - depth);
-  g.lineTo(x + w, bandY + bandH / 2);
+  g.moveTo(x + w, y);
+  g.lineTo(x + w + depth, y - depth);
+  g.lineTo(x + w + depth, y + h - depth);
+  g.lineTo(x + w, y + h);
+  g.closePath();
+  g.fillPath();
+  g.fillGradientStyle(p.highlight, p.highlight, p.light, p.light, 1);
+  g.beginPath();
+  g.moveTo(x, y);
+  g.lineTo(x + depth, y - depth);
+  g.lineTo(x + w + depth, y - depth);
+  g.lineTo(x + w, y);
   g.closePath();
   g.fillPath();
 
-  // Lid seam - the single line that says "this opens".
-  g.lineStyle(1, p.shadow, 0.75);
-  g.lineBetween(x, y + h * 0.2, x + w, y + h * 0.2);
-  g.lineStyle(1, p.highlight, 0.5);
-  g.lineBetween(x, y + h * 0.2 - 1.5, x + w, y + h * 0.2 - 1.5);
+  // ---- SPECULAR SHEEN.
+  //
+  // What actually makes drawn metal look like metal is not the face-to-face
+  // ramp - that only says "this is a solid" - but a bright reflected BAND
+  // sweeping across the surface, with a second weaker one and a dark trough
+  // between them. Polished copper, steel and gold all read that way, and the
+  // crate had none of it: three flat planes, so it looked painted.
+  //
+  // Drawn as narrow vertical strips with a gaussian falloff, which is the only
+  // way to put a soft non-linear ramp inside a shape Graphics cannot gradient
+  // directly. The same t runs across the top plane's parallelogram, so the
+  // highlight carries over the fold instead of stopping at it.
+  const gauss = (t: number, centre: number, width: number) =>
+    Math.exp(-(((t - centre) / width) ** 2));
+  const SHEEN_BANDS = 26;
+  for (let i = 0; i < SHEEN_BANDS; i++) {
+    const t0 = i / SHEEN_BANDS;
+    const t1 = (i + 1) / SHEEN_BANDS;
+    const t = (t0 + t1) / 2;
+    const bx = x + w * t0;
+    const bw = w * (t1 - t0) + 0.6;   // overlap, or seams show as hairlines
+    // Main reflection left of centre, secondary one right of it, and a
+    // shadowed trough between - the arrangement in every polished-metal
+    // reference, and what stops the two highlights reading as stripes.
+    const lit = gauss(t, 0.29, 0.1) * 0.34 + gauss(t, 0.74, 0.07) * 0.18;
+    const dark = gauss(t, 0.52, 0.09) * 0.22 + gauss(t, 0.95, 0.05) * 0.16;
+    if (lit > 0.004) {
+      g.fillStyle(0xffffff, lit);
+      g.fillRect(bx, y, bw, h);
+    }
+    if (dark > 0.004) {
+      g.fillStyle(0x000000, dark);
+      g.fillRect(bx, y, bw, h);
+    }
+    // The same band across the top plane, at half strength: a lit plane
+    // reflects less of the source than the one facing it.
+    const quad = [
+      new Phaser.Geom.Point(x + w * t0, y),
+      new Phaser.Geom.Point(x + w * t0 + depth, y - depth),
+      new Phaser.Geom.Point(x + w * t1 + depth, y - depth),
+      new Phaser.Geom.Point(x + w * t1, y)
+    ];
+    if (lit > 0.004) {
+      g.fillStyle(0xffffff, lit * 0.5);
+      g.fillPoints(quad, true);
+    }
+    if (dark > 0.004) {
+      g.fillStyle(0x000000, dark * 0.5);
+      g.fillPoints(quad, true);
+    }
+  }
 
-  // Corner brackets, top-left and bottom-right only: enough to read as
-  // reinforced, few enough to stay minimal.
-  const bracket = s * 0.09;
-  g.lineStyle(Math.max(1.5, s * 0.022), p.highlight, 0.8);
-  g.beginPath();
-  g.moveTo(x + bracket, y);
-  g.lineTo(x, y);
-  g.lineTo(x, y + bracket);
-  g.strokePath();
-  g.lineStyle(Math.max(1.5, s * 0.022), p.dark, 0.9);
-  g.beginPath();
-  g.moveTo(x + w - bracket, y + h);
-  g.lineTo(x + w, y + h);
-  g.lineTo(x + w, y + h - bracket);
-  g.strokePath();
+  // ---- ribbed shell. Four raised ribs across the face, each a lit band with
+  // a shadow at its foot - the detail that makes the case read as moulded
+  // rather than printed.
+  const ribW = w * 0.075;
+  for (let i = 0; i < 4; i++) {
+    const rx = x + w * (0.17 + i * 0.22);
+    g.fillStyle(p.highlight, 0.16);
+    g.fillRect(rx, y + h * 0.06, ribW, h * 0.88);
+    g.fillStyle(p.shadow, 0.3);
+    g.fillRect(rx + ribW, y + h * 0.06, Math.max(1, s * 0.008), h * 0.88);
+  }
+
+  // ---- the seam, with the lid overhanging the body it closes onto.
+  const seamY = y + h * 0.44;
+  g.fillStyle(p.shadow, 0.75);
+  g.fillRect(x, seamY, w, Math.max(1.4, s * 0.026));
+  g.lineStyle(1, p.highlight, 0.45);
+  g.lineBetween(x, seamY - 1, x + w, seamY - 1);
+
+  // ---- two latches straddling the seam. The part that says it OPENS.
+  for (const t of [0.3, 0.7]) {
+    const lx = x + w * t;
+    const lw = w * 0.13;
+    const lh = h * 0.34;
+    g.fillStyle(p.dark, 1);
+    g.fillRect(lx - lw / 2 - 1, seamY - lh / 2 - 1, lw + 2, lh + 2);
+    g.fillGradientStyle(p.highlight, p.highlight, p.light, p.light, 1);
+    g.fillRect(lx - lw / 2, seamY - lh / 2, lw, lh);
+    g.fillStyle(p.shadow, 0.85);
+    g.fillRect(lx - lw * 0.3, seamY - lh * 0.06, lw * 0.6, Math.max(1.2, s * 0.022));
+  }
+
+  // ---- end bumpers, standing proud of the shell at both ends. On the
+  // reference these are the heaviest parts of the case, and they are what
+  // stops the silhouette being a plain rectangle.
+  const bump = w * 0.055;
+  for (const bx of [x, x + w - bump]) {
+    g.fillGradientStyle(p.light, p.light, p.dark, p.dark, 1);
+    g.fillRect(bx, y - h * 0.03, bump, h * 1.06);
+    g.lineStyle(1, p.dark, 0.9);
+    g.strokeRect(bx, y - h * 0.03, bump, h * 1.06);
+  }
+
+  // ---- a blank instrument plate, recessed into the lid half. Deliberately
+  // empty: the game's rule is that art carries meaning and captions do not,
+  // and a plate with writing on it would be a caption drawn in pixels.
+  const plateW = w * 0.2;
+  const plateH = h * 0.2;
+  const plateX = x + w * 0.42;
+  const plateY = y + h * 0.14;
+  g.fillStyle(p.shadow, 0.85);
+  g.fillRect(plateX, plateY, plateW, plateH);
+  g.lineStyle(1, p.highlight, 0.4);
+  g.lineBetween(plateX, plateY + plateH, plateX + plateW, plateY + plateH);
+
+  // ---- stacking ridges along the top plane.
+  g.lineStyle(Math.max(1, s * 0.014), p.shadow, 0.5);
+  for (const t of [0.35, 0.65]) {
+    const rx = x + w * t;
+    g.lineBetween(rx + depth * 0.2, y - depth * 0.2, rx + depth * 0.85, y - depth * 0.85);
+  }
+
+  // ---- tier, stated in HARDWARE rather than in a word: one stud for bronze
+  // up to four for the vault. The colour already carries the tier at a
+  // glance; the studs are what keep them apart side by side.
+  const studs = tier === 'vault' ? 4 : tier === 'gold' ? 3 : tier === 'silver' ? 2 : 1;
+  const studR = Math.max(0.9, s * 0.014);
+  for (let i = 0; i < studs; i++) {
+    const spread = w * 0.3;
+    const sx = x + w * 0.5 - spread / 2 + (studs === 1 ? spread / 2 : (spread * i) / (studs - 1));
+    g.fillStyle(p.shadow, 0.9);
+    g.fillCircle(sx, y + h * 0.78 + studR * 0.5, studR);
+    g.fillStyle(p.highlight, 0.9);
+    g.fillCircle(sx, y + h * 0.78 - studR * 0.3, studR);
+  }
+
+  // ---- outline last, so no fill sits on top of it.
+  g.lineStyle(Math.max(1.2, s * 0.018), p.dark, 0.95);
+  g.strokeRect(x, y, w, h);
 }
 
 /**

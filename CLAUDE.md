@@ -30,3 +30,16 @@ This rule applies to Codex, Claude, and any other coding agent working in this p
 - Do not run browser automation or compare rendered output unless the project owner explicitly asks for visual verification.
 - This restriction remains in effect even when visual verification would normally be considered good practice.
 - Non-visual checks are also unnecessary for a small, isolated visual-value edit unless there is a concrete technical risk or the project owner explicitly requests them.
+
+## Show, don't tell - the art speaks for itself
+
+- Do not label a thing that has been drawn. If a crate's artwork already says
+  bronze, silver or gold, no `BRONZE` caption goes under it; the same holds for
+  item tiers, dispensers, sources and currencies.
+- A caption is allowed only where the art genuinely cannot carry the meaning: a
+  NUMBER (a price, an amount, a countdown), a state that has no visual form
+  (`SOLD`, `RESTOCKING`), or a name the player must learn and could not deduce.
+- When a label and the artwork say the same thing, the label is what gets cut,
+  not the art. If the art cannot say it, that is a reason to fix the art.
+- This applies to every surface: board, orders, shop, crates, daily rewards,
+  collection, project.

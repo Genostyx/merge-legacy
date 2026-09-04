@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { getTierDef } from '../data/chains';
 import { drawTierIcon, iconPresentation } from './TierIcons';
-import { currencyBoxFor, type CurrencyKind } from '../ui/CurrencyGlyph';
+import { type CurrencyKind } from '../ui/CurrencyGlyph';
+import { buildCurrencyCluster } from '../ui/CurrencyCluster';
 import type { IconFootprint } from './TierIcons';
 import { Theme, materialLighting } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
@@ -141,97 +142,26 @@ export class TileView extends Phaser.GameObjects.Container {
     if (this.typeId.startsWith('currency-') && !(this.typeId === 'currency-credit' && this.tier >= 3)) {
       this.icon.setVisible(false);
       this.bg.clear();
-      const textureKey = this.typeId === 'currency-credit'
-        ? 'currency-coin'
-        : this.typeId === 'currency-gem'
-          ? 'currency-gem'
-          : 'currency-energy';
       // Credit tiers 1 and 2 keep these established SVG arrangements.
       // Credit tiers 3+ use their distinct named vector silhouettes through
       // drawTierIcon below; Gem and Energy retain the shared-count layout.
-      // Credits keep the stacked, structured arrangement - coins are minted
-      // things and stack squarely. Drops and gems do not: they get loose
-      // clusters, because aligned columns made them read as a bar chart.
-      // Every layout is a FRACTION of the cell. Tiers 1 and 2 used to be
-      // authored in pixels, so their spacing did not track cell size at all -
-      // it was tuned for one board width and the two coins closed up on each
-      // other everywhere else, which got worse the moment the marks grew.
-      const creditLayouts: [number, number][][] = [
-        [[0, 0.07]],
-        // The pair is centred on the tile: the two coins sat at -0.19 and 0, so
-        // their midpoint was 0.095 to the LEFT of centre and the whole mark
-        // hung off one side of the cell.
-        [[-0.095, 0.13], [0.095, 0.07]],
-        [[0, 0.17], [0, 0.05], [0, -0.07]],
-        [[-0.15, 0.15], [-0.15, 0.03], [0.15, 0.11], [0.15, -0.01]],
-        [[-0.21, 0.15], [0, 0.15], [0.21, 0.15], [-0.11, 0.01], [0.11, 0.01]],
-        [[-0.21, 0.18], [0, 0.18], [0.21, 0.18], [-0.11, 0.04], [0.11, 0.04], [0, -0.1]]
-      ];
-      const clusterLayouts: [number, number][][] = [
-        [[0, 0.07]],
-        // Centred on the tile, as with the coin pair: -0.19 and 0 put the
-        // midpoint 0.095 left of centre.
-        [[-0.095, 0.13], [0.095, 0.07]],
-        [[-0.16, 0.14], [0.17, 0.07], [0, -0.07]],
-        [[-0.19, 0.14], [0.16, 0.15], [-0.04, 0], [0.19, -0.08]],
-        [[-0.2, 0.16], [0.05, 0.19], [-0.15, -0.02], [0.2, 0.05], [0.02, -0.13]],
-        [[-0.21, 0.17], [0.03, 0.2], [0.21, 0.1], [-0.16, 0.01], [0.11, -0.06], [-0.03, -0.17]]
-      ];
-      const layouts = this.typeId === 'currency-credit' ? creditLayouts : clusterLayouts;
-      const tier = Math.max(1, Math.min(layouts.length, this.tier));
-      const layout = layouts[tier - 1];
-      // Coins shrink as the count climbs so six occupy the footprint of one -
-      // they stack squarely, so a tidy footprint is the point. Gems and
-      // droplets do NOT shrink: they hold tier 2's size at every tier and are
-      // allowed to overlap, because a higher tier reading as physically
-      // smaller undercuts the merge.
-      // Sized by the mark that ACTUALLY GETS DRAWN, not by the box it is
-      // drawn in. The art fills 59-78% of its own square depending on the
-      // currency, so a flat 0.52 box put a single gem on the board at ~0.31 of
-      // a cell - less than half a tier-1 item standing beside it, and easily
-      // the smallest thing on the board.
       //
-      // Coins shrink as they stack - six have to share the cell where one does
-      // not - but gems and drops do NOT. They hold one size at every tier and
-      // are allowed to overlap, because a higher tier reading as physically
-      // smaller undercuts the merge that produced it.
-      // Energy asks for MORE than the gems do. `currencyBoxFor` sizes by the
-      // mark's height, and the bolt is the one currency far narrower than it
-      // is tall - 55% of its box wide against 78% tall - so at a matched
-      // height it covers about a third less area than a coin or a gem, which
-      // is why it read as the smallest thing in the cell.
-      const drawnFraction = this.typeId === 'currency-credit'
-        ? [0.62, 0.54, 0.46, 0.42, 0.38, 0.36][layout.length - 1] ?? 0.36
-        : this.typeId === 'currency-energy' ? 0.66 : 0.54;
+      // The pile itself - which marks sit where, and how big each is - now
+      // lives in CurrencyCluster, because the daily rewards draw the same
+      // piles to say what a day pays and two copies of those numbers is two
+      // things to keep in step.
       const kind: CurrencyKind = this.typeId === 'currency-credit'
         ? 'credit'
         : this.typeId === 'currency-gem' ? 'gem' : 'energy';
-      const iconSize = currencyBoxFor(kind, this.cellSize * drawnFraction);
-      // The cluster offsets were authored against round marks, which hang
-      // evenly around their centre. A bolt's mass sits low, so the same
-      // offsets drop the whole group below the middle of the cell; energy
-      // lifts by a few percent to put it back.
-      const clusterLift = this.typeId === 'currency-energy' ? -0.04 : 0;
-      layout.forEach(([x, y]) => {
-        const px = x * this.cellSize;
-        const py = (y + clusterLift) * this.cellSize;
-        // Art plus a white top-cropped gloss copy, matching the HUD chips.
-        // NOT their third layer - the black silhouette behind the art reads as
-        // contact shading on a chip, but on the board it only muddied the mark.
-        const image = this.scene.add.image(px, py, textureKey).setDisplaySize(iconSize, iconSize);
-        this.currencyIcons.push(image);
-        this.addAt(image, 2);
-        const gloss = this.scene.add.image(px, py, textureKey)
-          .setDisplaySize(iconSize, iconSize)
-          .setTintFill(0xffffff)
-          .setAlpha(0.2);
-        gloss.setCrop(0, 0, gloss.width, gloss.height * 0.42);
+      for (const { art, gloss } of buildCurrencyCluster(this.scene, kind, this.tier, this.cellSize)) {
+        this.currencyIcons.push(art);
+        this.addAt(art, 2);
         this.currencyIcons.push(gloss);
         // Directly ABOVE its own art. Inserting at a fixed index put it under
         // the image it is meant to catch the light on, because the image had
         // just been inserted at that same index and pushed up.
-        this.addAt(gloss, this.getIndex(image) + 1);
-      });
+        this.addAt(gloss, this.getIndex(art) + 1);
+      }
       return;
     }
     this.icon.setVisible(true);
