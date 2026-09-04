@@ -3437,15 +3437,14 @@ ${familyTierLabel(typeId, tier)}`
       // of thing.
       this.awardCrate('bronze', 'STAGE COMPLETE', from);
     } else if (stage >= 4) {
-      // A permanent inventory slot. Not spent, not consumed - felt in every
-      // session after it, which is what a facility should be paying in.
-      if (this.inventory.slots < INVENTORY_MAX_SLOTS) {
-        this.inventory.slots += 1;
-        this.refreshActionTray(`STAGE COMPLETE  ·  INVENTORY SLOT  ${this.inventory.slots}`);
-      } else {
-        addGems(this.economy, 25);
-        this.playProjectCurrencyReward('gem', 25, from);
-      }
+      // Silver, and NOT a briefcase slot.
+      //
+      // A slot was the one reward in the project with no physical form: the
+      // count went up, a tray line said so, and nothing arrived - so the last
+      // hand-in of the room looked like it had paid nothing at all. Every
+      // rung of this ladder now lands on the board where the player can see
+      // it, and silver sets up the gold that finishing the room pays.
+      this.awardCrate('silver', 'STAGE COMPLETE', from);
     }
     this.projectFooterRefresh?.();
   }
@@ -4045,10 +4044,8 @@ ${familyTierLabel(typeId, tier)}`
         const rewardIcon = this.add.graphics().setPosition(w / 2 + 16, rewardY);
         if (opening === 2) {
           drawSplitterIcon(rewardIcon, 26);
-        } else if (opening >= 4) {
-          drawBriefcase(rewardIcon, 30, Theme.currencyGem);
         } else {
-          drawCrate(rewardIcon, 26 / CRATE_DRAWN.width, 'bronze');
+          drawCrate(rewardIcon, 26 / CRATE_DRAWN.width, opening >= 4 ? 'silver' : 'bronze');
         }
         footer.add(rewardIcon);
       }
