@@ -11,6 +11,19 @@ Newest first.
 
 ## Unreleased
 
+## v0.3.0-beta
+
+- New: the Decagon. Build one from pieces found in shipping containers and
+  crates, then fill its meter with ten Decagons on the board at once for a
+  prize - anything from a coin pouch to the vault crate.
+- Daily rewards now open on their own when you start the game, and a day's
+  reward no longer grows while you put off claiming it.
+- The shop is rebuilt: clearer sections, bigger type, a real reroll button,
+  and crates that tell you why you cannot buy one.
+- Living room stages pay you for handing in the items, not just for buying
+  furniture, and the reward appears without closing the room.
+- Splitters can be stored in the briefcase, and the auto-merge no longer
+  spends them for you.
 - Crates are bigger, sit properly in their square, and bronze looks like metal
   instead of a cardboard box.
 - Energy bolts are sized to match the coins and gems beside them, and board
