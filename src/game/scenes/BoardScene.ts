@@ -222,6 +222,18 @@ import {
   toggleFullscreen,
 } from './board/config';
 import {
+  openSettings as openSettingsExt,
+  buildSettingsButton as buildSettingsButtonExt,
+  confirmReset as confirmResetExt,
+  resetGame as resetGameExt,
+  buildDevResetButton as buildDevResetButtonExt
+} from './board/settingsPanel';
+
+import {
+  offerEnergyRefill as offerEnergyRefillExt
+} from './board/energyPanel';
+
+import {
   openCollection as openCollectionExt,
   closeCollection as closeCollectionExt,
   drawCollectionBook as drawCollectionBookExt,
@@ -278,7 +290,7 @@ export class BoardScene extends Phaser.Scene {
   cellSize = 0;
   boardOriginX = 0;
   boardOriginY = 0;
-  private contentTop = 0;
+  contentTop = 0;
   private boardExpansionUnlocked = new Set<string>();
   private expansionLockViews = new Map<string, ExpansionLockView>();
   private expansionRowLabels: Phaser.GameObjects.Text[] = [];
@@ -345,7 +357,7 @@ export class BoardScene extends Phaser.Scene {
   } =
     { active: false, slot: -1, startX: 0, startScroll: 0, moved: 0, describe: null };
   private dispenserCollectCount = 0;
-  private headerRight = 0;
+  headerRight = 0;
   /** Where a board drag began, to tell a tap from a move that returned home. */
   private dragStartPointer = { x: 0, y: 0 };
   overInventory = false;
@@ -381,7 +393,7 @@ export class BoardScene extends Phaser.Scene {
    */
   private chromeScale = 1;
   /** Fullscreen-only HUD scale, derived from the extra vertical room. */
-  private hudScale = 1;
+  hudScale = 1;
   /**
    * Redraws the open project panel's footer, or null when it is closed.
    *
@@ -450,7 +462,7 @@ export class BoardScene extends Phaser.Scene {
   shopCountdownUpdater: (() => void) | null = null;
   /** Tears down the shop's scroll mask and input listeners. Set while the shop is open. */
   shopScrollCleanup: (() => void) | null = null;
-  private energyMenuUpdater: (() => void) | null = null;
+  energyMenuUpdater: (() => void) | null = null;
   /**
    * Transient one-line feedback shown inside the shop panel. Needed once
    * buying stopped closing the shop: a failed buy (board full, can't
@@ -1795,186 +1807,8 @@ export class BoardScene extends Phaser.Scene {
     zone.on('pointerdown', onTap);
   }
 
-  /**
-   * Settings: a small gear immediately left of the shop button.
-   *
-   * It sits in the band `layoutHudChips` gives up for it - the chips pack
-   * right-to-left from a fixed inset, so the gear's width has to come out of
-   * that inset or the credit balance would slide underneath it.
-   */
-  private buildSettingsButton(): void {
-    const s = this.hudScale;
-    const size = 22 * s;
-    // The shop button is a radius-18 circle centred at `headerRight - 18`, so
-    // its left edge is `headerRight - 36`; four pixels of air, then the gear.
-    const x = this.headerRight - 36 * s - 4 * s - size / 2;
-    // The header row's shared centre line - see `headerMidY` in create().
-    const y = this.contentTop + 42 * this.hudScale - 16;
 
-    const bg = this.add.graphics().setDepth(4);
-    bg.fillStyle(Theme.bg, 0.94);
-    bg.fillRoundedRect(x - size / 2, y - size / 2, size, size, Theme.radiusChip);
-    bg.lineStyle(1, Theme.borderOnDark, 1);
-    bg.strokeRoundedRect(x - size / 2, y - size / 2, size, size, Theme.radiusChip);
 
-    const icon = this.add.graphics().setPosition(x, y).setDepth(5).setScale(s);
-    const lighting = materialLighting(Theme.textOnDarkMuted, 4);
-    icon.fillStyle(lighting.light, 1);
-    const teeth = 8;
-    for (let i = 0; i < teeth; i++) {
-      const angle = (i / teeth) * Math.PI * 2;
-      // Each tooth is drawn at the origin and moved into place by the canvas
-      // transform, so they sit square to their own radius instead of being
-      // axis-aligned squares that read as a blur at this size.
-      icon.save();
-      icon.translateCanvas(Math.cos(angle) * 6, Math.sin(angle) * 6);
-      icon.rotateCanvas(angle);
-      icon.fillRect(-1.9, -1.9, 3.8, 3.8);
-      icon.restore();
-    }
-    icon.fillCircle(0, 0, 5.2);
-    icon.fillStyle(Theme.bg, 1);
-    icon.fillCircle(0, 0, 2.2);
-
-    // Hit area stays finger-sized even though the art shrank - a 22px target
-    // is under every touch guideline, and this one sits next to the shop
-    // button, where a miss costs the player a wrong panel.
-    const zone = this.add.zone(x, y, size + 14, size + 14)
-      .setDepth(6).setInteractive({ useHandCursor: true });
-    zone.on('pointerdown', () => this.time.delayedCall(0, () => this.openSettings()));
-  }
-
-  /**
-   * The settings panel. One setting so far: fullscreen.
-   *
-   * Toggling fullscreen resizes the viewport, and this scene answers a resize
-   * by restarting itself, so the panel closes on its own a moment after the
-   * tap. That is the architecture working rather than a bug - the whole HUD
-   * has to be laid out again against the new size - so the panel does not try
-   * to survive it.
-   */
-  private openSettings(): void {
-    if (this.modalOpen || this.inputLocked) return;
-    this.modalOpen = true;
-    const w = this.scale.width;
-    const h = this.scale.height;
-    const overlay = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.6)
-      .setDepth(3000).setInteractive();
-
-    const card = this.add.container(w / 2, h / 2).setDepth(3001);
-    const cw = Math.min(300, w - 40);
-    const ch = 168;
-    const cardBg = this.add.graphics();
-    cardBg.fillStyle(Theme.panel, 1);
-    cardBg.fillRoundedRect(-cw / 2, -ch / 2, cw, ch, Theme.radiusPanel);
-    cardBg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 0.85);
-    cardBg.strokeRoundedRect(-cw / 2, -ch / 2, cw, ch, Theme.radiusPanel);
-
-    const title = this.add.text(0, -ch / 2 + 26, 'SETTINGS', {
-      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '16px',
-      fontStyle: 'bold', color: hex(Theme.textOnLight)
-    }).setOrigin(0.5);
-
-    // Not every browser has the Fullscreen API - iOS Safari on iPhone has
-    // never shipped it - so the row says so plainly and points at the route
-    // that does work there, rather than offering a control that does nothing.
-    const available = fullscreenSupported();
-    const rowY = -6;
-    const label = this.add.text(-cw / 2 + 20, rowY, 'FULLSCREEN', {
-      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
-      fontStyle: 'bold', color: hex(available ? Theme.textOnLight : Theme.textOnLightMuted)
-    }).setOrigin(0, 0.5);
-
-    const toggleW = 68;
-    const toggleH = 28;
-    const toggleX = cw / 2 - 20 - toggleW / 2;
-    const toggleBg = this.add.graphics();
-    const toggleText = this.add.text(toggleX, rowY, '', {
-      resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '11px',
-      fontStyle: 'bold', color: hex(Theme.textOnLight)
-    }).setOrigin(0.5);
-
-    const paintToggle = (): void => {
-      const on = !!fullscreenElement();
-      const tone = !available ? Theme.textOnLightMuted : on ? Theme.accentGreen : Theme.textOnLightMuted;
-      toggleBg.clear();
-      toggleBg.fillStyle(on && available ? Theme.accentGreen : Theme.panelAlt, on && available ? 0.22 : 1);
-      toggleBg.fillRoundedRect(toggleX - toggleW / 2, rowY - toggleH / 2, toggleW, toggleH, Theme.radiusChip);
-      toggleBg.lineStyle(1, tone, 0.9);
-      toggleBg.strokeRoundedRect(toggleX - toggleW / 2, rowY - toggleH / 2, toggleW, toggleH, Theme.radiusChip);
-      toggleText.setText(!available ? 'N/A' : on ? 'ON' : 'OFF').setColor(hex(tone));
-    };
-    paintToggle();
-
-    const note = this.add.text(
-      0, ch / 2 - 46,
-      available
-        ? 'THE GAME REBUILDS ITS LAYOUT WHEN THIS CHANGES.'
-        : 'THIS BROWSER HAS NO FULLSCREEN API.\nADD THE GAME TO YOUR HOME SCREEN INSTEAD.',
-      {
-        resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px',
-        color: hex(Theme.textOnLightMuted), align: 'center', lineSpacing: 3
-      }
-    ).setOrigin(0.5);
-
-    const close = this.add.text(0, ch / 2 - 22, 'CLOSE', {
-      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '13px',
-      fontStyle: 'bold', color: hex(Theme.textOnLightMuted)
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    card.add([cardBg, title, label, toggleBg, toggleText, note, close]);
-
-    const dismiss = () => {
-      overlay.destroy();
-      card.destroy();
-      this.modalOpen = false;
-    };
-
-    if (available) {
-      const toggleZone = this.add.zone(toggleX, rowY, toggleW, toggleH)
-        .setInteractive({ useHandCursor: true });
-      // Fullscreen has to be requested from inside a real user gesture, which
-      // a pointerdown handler is - so this is NOT deferred through a
-      // delayedCall the way the panel's other taps are. Deferring drops it
-      // out of the gesture and the browser refuses the request.
-      toggleZone.on('pointerdown', () => {
-        // Phaser's own toggle wraps the canvas in an element it creates, which
-        // does not survive this scene's restart-on-resize; the request went
-        // through the DOM instead, and `toggleFullscreen` handles the prefixed
-        // spellings phones still ship.
-        toggleFullscreen();
-        // Closed immediately rather than left open to be torn down by the
-        // resize-driven restart. Entering fullscreen moves and resizes the
-        // canvas, and until the scale manager re-reads its bounds every
-        // pointer hit lands at the old coordinates - so CLOSE stops
-        // responding and the panel becomes a trap with the game running
-        // behind it. Nothing to be trapped in if it is already gone.
-        dismiss();
-      });
-      card.add(toggleZone);
-    }
-
-    const deferDismiss = () => this.time.delayedCall(0, dismiss);
-    overlay.on('pointerdown', deferDismiss);
-    close.on('pointerdown', deferDismiss);
-  }
-
-  /**
-   * RESET is a dev-only utility, not part of the real game's HUD. Pinned to
-   * an absolute screen corner with its own tiny footprint so it can be
-   * deleted in one line without touching any other header element.
-   */
-  private buildDevResetButton(): void {
-    const text = this.add.text(this.scale.width - 8, this.scale.height - 8, 'reset', {
-      resolution: textResolution,
-      fontFamily: Theme.fontMono,
-      fontSize: '10px',
-      color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(1, 1).setAlpha(0.5).setInteractive({ useHandCursor: true });
-    text.on('pointerover', () => text.setAlpha(1));
-    text.on('pointerout', () => text.setAlpha(0.5));
-    text.on('pointerdown', () => this.confirmReset());
-  }
 
   private buildAutoMergeButton(): void {
     this.autoMergeText = this.add.text(this.scale.width - 48, this.scale.height - 8, '', {
@@ -4951,324 +4785,11 @@ ${familyTierLabel(typeId, tier)}`
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
   }
 
-  /** Wipes the save and starts over. Confirmed via confirmReset() before this runs. */
-  private resetGame(): void {
-    localStorage.removeItem(SAVE_KEY);
-    localStorage.removeItem(AUTO_MERGE_KEY);
-    window.location.reload();
-  }
-
-  /**
-   * Gem-for-energy refill, opened by tapping the energy chip. Lives here
-   * rather than as a third pack row in the shop: the shop panel is already
-   * near its height ceiling, and the energy bar is where a player looks when
-   * they run out anyway.
-   */
-  private offerEnergyRefill(): void {
-    if (this.modalOpen || this.inputLocked) return;
-    syncEnergy(this.energy);
-
-    this.modalOpen = true;
-    const missing = Math.max(0, ENERGY_CAP - this.energy.current);
-    const refillCost = energyRefillCost(this.energy);
-    const affordable = this.economy.gems >= refillCost;
-
-    const overlay = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2,
-      this.scale.width, this.scale.height,
-      0x000000, 0.6
-    ).setDepth(3000).setInteractive();
-
-    // Dark card, matching every other panel in the game. It was previously
-    // the light `Theme.panel`, which is the one surface in the palette that
-    // the resource colours DON'T work on - the energy cyan and gem violet are
-    // both tuned for dark grounds, so the panel's own subject matter was the
-    // least legible thing on it.
-    const CARD_W = 320;
-    // Room for a gauge and a proper hierarchy. This panel used to be three
-    // lines of identical mono text, where the number that matters - the
-    // current energy - carried the same weight as a help string, and a panel
-    // ABOUT energy showed no energy.
-    const CARD_H = 288;
-    const card = this.add.container(this.scale.width / 2, this.scale.height / 2).setDepth(3001);
-    const cardBg = this.add.graphics();
-    cardBg.fillStyle(Theme.bgElevated, 1);
-    cardBg.fillRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, Theme.radiusPanel);
-    cardBg.lineStyle(Theme.borderWidthStrong, Theme.currencyEnergy, 0.85);
-    cardBg.strokeRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, Theme.radiusPanel);
-    // Lit top edge, same fixed upper-left key every panel and drawn object
-    // in the game shares.
-    cardBg.fillStyle(Theme.currencyEnergy, 0.07);
-    cardBg.fillRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H * 0.4, Theme.radiusPanel);
-
-    const title = this.add.text(0, -CARD_H / 2 + 18, 'ENERGY', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '17px', fontStyle: 'bold', color: hex(Theme.currencyEnergy)
-    }).setOrigin(0.5);
-    // The hero reading: current value large, cap small beside it, mark
-    // alongside, so the panel names its own subject at a glance.
-    const heroValue = this.add.text(0, -84, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontNumeric, fontSize: '38px', fontStyle: 'bold', color: hex(Theme.textOnDark)
-    }).setOrigin(0, 0.5);
-    const heroCap = this.add.text(0, -76, `/ ${ENERGY_CAP}`, {
-      resolution: textResolution,
-      fontFamily: Theme.fontNumeric, fontSize: '16px', color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(0, 0.5);
-    const heroMark = currencyIcon(this, 'energy', 30);
-
-    // The gauge, in the same language as the HUD bars: a recessed track with
-    // a filled portion. The thing the old panel was missing entirely.
-    const GAUGE_W = CARD_W - 48;
-    const GAUGE_H = 12;
-    const GAUGE_Y = -40;
-    const gauge = this.add.graphics();
-
-    /** One label/value row: label left, value right, across the gauge width. */
-    const statRow = (y: number, label: string): Phaser.GameObjects.Text[] => {
-      const key = this.add.text(-GAUGE_W / 2, y, label, {
-        resolution: textResolution,
-        fontFamily: Theme.fontMono, fontSize: '10px', color: hex(Theme.textOnDarkMuted)
-      }).setOrigin(0, 0.5);
-      const value = this.add.text(GAUGE_W / 2, y, '', {
-        resolution: textResolution,
-        fontFamily: Theme.fontNumeric, fontSize: '12px', fontStyle: 'bold', color: hex(Theme.textOnDark)
-      }).setOrigin(1, 0.5);
-      return [key, value];
-    };
-    const [nextKey, nextValue] = statRow(-8, 'NEXT ENERGY');
-    const [fullKey, fullValue] = statRow(14, 'FULL IN');
-    // Two lines: what energy is spent on, and what a refill will cost NEXT
-    // time. The price doubles per purchase and drops back 24 hours after the
-    // first one, and a player who is not told that reads the second refill's
-    // 40 as a bug - or, worse, learns it by spending.
-    const footnote = this.add.text(0, 42, '1 ENERGY PER SOURCE ITEM', {
-      resolution: textResolution,
-      fontFamily: Theme.fontMono, fontSize: '9px', color: hex(Theme.textOnDarkMuted),
-      align: 'center', lineSpacing: 3
-    }).setOrigin(0.5).setAlpha(0.7);
-
-    // The refill gets its own full-width bar, and the WHOLE bar is the hit
-    // target. It used to be a bare `currencyLabel` whose interactive rectangle
-    // was only as wide as the number itself, so most of the row looked
-    // pressable and wasn't.
-    const BAR_W = CARD_W - 40;
-    const BAR_H = 38;
-    const BAR_Y = 74;
-    const buyBar = this.add.graphics();
-    /**
-     * At full energy the bar stays in place as a muted status strip instead
-     * of hiding. Hiding it left a hole the rest of the card had to shuffle
-     * into, and a panel that rearranges itself as you watch reads as broken.
-     */
-    const drawBuyBar = (full: boolean): number => {
-      const color = full ? Theme.currencyEnergy : affordable ? Theme.currencyGem : Theme.textOnDarkMuted;
-      buyBar.clear();
-      buyBar.fillStyle(Theme.bg, 0.92);
-      buyBar.fillRoundedRect(-BAR_W / 2, BAR_Y - BAR_H / 2, BAR_W, BAR_H, Theme.radiusChip);
-      buyBar.lineStyle(Theme.borderWidth, color, full ? 0.35 : affordable ? 0.9 : 0.5);
-      buyBar.strokeRoundedRect(-BAR_W / 2, BAR_Y - BAR_H / 2, BAR_W, BAR_H, Theme.radiusChip);
-      return color;
-    };
-    const barColor = drawBuyBar(missing === 0);
-
-    const buyVerb = this.add.text(0, BAR_Y, 'REFILL', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '14px', fontStyle: 'bold', color: hex(barColor)
-    }).setOrigin(0, 0.5);
-    const buyCost = currencyLabel(this, String(refillCost), 'gem', {
-      fontSize: 14,
-      align: 'center',
-      color: barColor
-    });
-    // Verb and price centred as one group, so the pair sits on the bar's
-    // middle however wide the price gets.
-    const groupW = buyVerb.width + 12 + buyCost.width;
-    buyVerb.setX(-groupW / 2);
-    buyCost.setPosition(-groupW / 2 + buyVerb.width + 12 + buyCost.width / 2, BAR_Y);
-
-    const buyZone = this.add.zone(0, BAR_Y, BAR_W, BAR_H).setInteractive({ useHandCursor: true });
-    const buyBtn = this.add.container(0, 0, [buyBar, buyVerb, buyCost, buyZone]);
-
-    // No CANCEL button: there is nothing to cancel. The panel commits nothing
-    // until REFILL is pressed, and tapping outside already dismisses it - it
-    // was a leftover from a confirm-dialog shape. Closing is the corner X,
-    // the same affordance the shop panel uses.
-    const cancelBtn = this.add.text(CARD_W / 2 - 22, -CARD_H / 2 + 20, '✕', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '16px', color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    // A refill is priced in gems, so the panel is a dead end for anyone who
-    // hasn't got them - which is exactly the moment a player needs the gem
-    // shop. Opens the gem row specifically rather than the whole store: they
-    // came here for energy, not to browse offers.
-    const storeBtnText = this.add.text(0, 0, 'GET', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold', color: hex(Theme.currencyGem)
-    }).setOrigin(0, 0.5);
-    const storeBtnMark = currencyIcon(this, 'gem', 19);
-    const storeBtnW = storeBtnText.width + 5 + 14;
-    storeBtnText.setX(-storeBtnW / 2);
-    storeBtnMark.setPosition(storeBtnW / 2 - 7, 0);
-    const storeBtn = this.add.container(0, CARD_H / 2 - 26, [storeBtnText, storeBtnMark]);
-    storeBtn.setSize(storeBtnW, 20).setInteractive(
-      new Phaser.Geom.Rectangle(-storeBtnW / 2, -10, storeBtnW, 20),
-      Phaser.Geom.Rectangle.Contains
-    );
-
-    const divider = this.add.graphics();
-    divider.lineStyle(1, Theme.borderOnDark, 0.9);
-    divider.lineBetween(-CARD_W / 2 + 18, CARD_H / 2 - 52, CARD_W / 2 - 18, CARD_H / 2 - 52);
-
-    card.add([
-      cardBg, title, gauge, heroValue, heroCap, heroMark,
-      nextKey, nextValue, fullKey, fullValue, footnote,
-      cancelBtn, buyBtn, divider, storeBtn
-    ]);
-
-    const updateEnergyInfo = (): void => {
-      syncEnergy(this.energy);
-      const full = this.energy.current >= ENERGY_CAP;
-
-      heroValue.setText(String(this.energy.current));
-      // The hero group is laid out as one unit and re-centred every tick,
-      // because the number changes width as it counts up.
-      const groupW = heroValue.width + 6 + heroCap.width + 8 + 30;
-      heroValue.setX(-groupW / 2);
-      heroCap.setX(-groupW / 2 + heroValue.width + 6);
-      heroMark.setPosition(groupW / 2 - 15, -80);
-
-      const fraction = Phaser.Math.Clamp(this.energy.current / ENERGY_CAP, 0, 1);
-      gauge.clear();
-      gauge.fillStyle(Theme.bg, 0.92);
-      gauge.fillRoundedRect(-GAUGE_W / 2, GAUGE_Y - GAUGE_H / 2, GAUGE_W, GAUGE_H, GAUGE_H / 2);
-      if (fraction > 0) {
-        const energyLighting = materialLighting(Theme.currencyEnergy, 5);
-        gauge.fillGradientStyle(
-          energyLighting.highlight, energyLighting.light,
-          energyLighting.dark, energyLighting.base, 1
-        );
-        // Never narrower than its own cap radius, so one point of energy is
-        // still a visible sliver rather than nothing.
-        const w = Math.max(GAUGE_H, GAUGE_W * fraction);
-        gauge.fillRoundedRect(-GAUGE_W / 2, GAUGE_Y - GAUGE_H / 2, w, GAUGE_H, GAUGE_H / 2);
-      }
-      gauge.lineStyle(1, Theme.currencyEnergy, 0.5);
-      gauge.strokeRoundedRect(-GAUGE_W / 2, GAUGE_Y - GAUGE_H / 2, GAUGE_W, GAUGE_H, GAUGE_H / 2);
-
-      // At full, the countdowns have nothing to count, so the rows state what
-      // IS true rather than showing 0:00.
-      nextKey.setText(full ? 'STATUS' : 'NEXT ENERGY');
-      nextValue.setText(full ? 'FULL' : formatCountdown(msUntilNextEnergy(this.energy)))
-        .setColor(hex(full ? Theme.currencyEnergy : Theme.textOnDark));
-      fullKey.setText(full ? 'NATURAL REFILL' : 'FULL IN');
-      fullValue.setText(full
-        ? `1 / ${formatCountdown(ENERGY_REFILL_MS)}`
-        : formatCountdown(msUntilEnergyFull(this.energy)));
-
-      // The price line rides the same tick as the countdowns, so the time
-      // left on the window ticks down while the panel is open.
-      const resetAt = this.energy.refillPriceResetAt;
-      const priceNote = resetAt > Date.now()
-        ? `BACK TO ${ENERGY_REFILL_BASE_GEMS} GEMS IN ${formatCountdown(resetAt - Date.now())}`
-        : 'EACH REFILL DOUBLES THE PRICE FOR 24H';
-      footnote.setText(['1 ENERGY PER SOURCE ITEM', priceNote]);
-
-      const color = drawBuyBar(full);
-      buyVerb.setText(full ? 'ENERGY FULL' : 'REFILL').setColor(hex(color));
-      buyCost.setVisible(!full);
-      // Re-centred each tick: the group is the verb alone at full, and the
-      // verb plus the price otherwise.
-      const barGroupW = buyVerb.width + (full ? 0 : 12 + buyCost.width);
-      buyVerb.setX(-barGroupW / 2);
-      buyCost.setPosition(-barGroupW / 2 + buyVerb.width + 12 + buyCost.width / 2, BAR_Y);
-      if (full) buyZone.disableInteractive();
-      else buyZone.setInteractive({ useHandCursor: true });
-    };
-    updateEnergyInfo();
-    this.energyMenuUpdater = updateEnergyInfo;
-
-    const dismiss = () => {
-      this.energyMenuUpdater = null;
-      overlay.destroy();
-      card.destroy();
-      this.modalOpen = false;
-    };
-    const deferDismiss = () => this.time.delayedCall(0, dismiss);
-    overlay.on('pointerdown', deferDismiss);
-    cancelBtn.on('pointerdown', deferDismiss);
-    // Dismiss first: openShop refuses to run while another modal is up.
-    storeBtn.on('pointerdown', () => this.time.delayedCall(0, () => {
-      dismiss();
-      this.openShop('gem');
-    }));
-    if (missing > 0) {
-      buyZone.on('pointerdown', () => this.time.delayedCall(0, () => {
-        if (!spendGems(this.economy, refillCost)) {
-          dismiss();
-          this.refreshActionTray(`NOT ENOUGH GEMS\nENERGY REFILL COSTS ${refillCost} GEMS`);
-          return;
-        }
-        recordEnergyRefillPurchase(this.energy);
-        addEnergy(this.energy, Math.max(0, ENERGY_CAP - this.energy.current));
-        dismiss();
-        this.updateCurrencyText();
-        this.saveState();
-        this.refreshActionTray(`ENERGY REFILLED  ·  ${this.energy.current}/${ENERGY_CAP}`);
-      }));
-    }
-  }
 
 
 
 
-  private confirmReset(): void {
-    if (this.modalOpen || this.inputLocked) return;
-    this.modalOpen = true;
-    const overlay = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2,
-      this.scale.width, this.scale.height,
-      0x000000, 0.6
-    ).setDepth(3000).setInteractive();
 
-    const card = this.add.container(this.scale.width / 2, this.scale.height / 2).setDepth(3001);
-    const cardBg = this.add.graphics();
-    cardBg.fillStyle(Theme.panel, 1);
-    cardBg.fillRoundedRect(-150, -80, 300, 160, Theme.radiusPanel);
-    cardBg.lineStyle(Theme.borderWidthStrong, Theme.danger, 0.85);
-    cardBg.strokeRoundedRect(-150, -80, 300, 160, Theme.radiusPanel);
-
-    const title = this.add.text(0, -44, 'Reset progress?', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '17px', fontStyle: 'bold', color: hex(Theme.textOnLight)
-    }).setOrigin(0.5);
-    const subtitle = this.add.text(0, -14, 'This clears the board, coins,\ngems, and goals for good.', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '12px', color: hex(Theme.textOnLightMuted), align: 'center'
-    }).setOrigin(0.5);
-
-    const cancelBtn = this.add.text(-60, 40, 'CANCEL', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '14px', color: hex(Theme.textOnLightMuted)
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    const resetBtn = this.add.text(60, 40, 'RESET', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '14px', fontStyle: 'bold', color: hex(Theme.danger)
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-    card.add([cardBg, title, subtitle, cancelBtn, resetBtn]);
-
-    const dismiss = () => {
-      overlay.destroy();
-      card.destroy();
-      this.modalOpen = false;
-    };
-    const deferDismiss = () => this.time.delayedCall(0, dismiss);
-    overlay.on('pointerdown', deferDismiss);
-    cancelBtn.on('pointerdown', deferDismiss);
-    resetBtn.on('pointerdown', () => this.resetGame());
-  }
 
   private completeOrder(index: number, order: OrderDef, position: number): void {
     // Captured BEFORE anything advances: `refreshOrderBar` below re-sorts and
@@ -6037,4 +5558,16 @@ ${familyTierLabel(typeId, tier)}`
   drawCollectionBook(g: Phaser.GameObjects.Graphics, size: number, color: number): void { drawCollectionBookExt(this, g, size, color); }
   buildMainCollectionButton(): void { buildMainCollectionButtonExt(this); }
   refreshMainCollectionButton(): void { refreshMainCollectionButtonExt(this); }
+
+  // Forwards to board/energyPanel.ts, so the scene's own call sites
+  // still read as methods.
+  offerEnergyRefill(): void { offerEnergyRefillExt(this); }
+
+  // Forwards to board/settingsPanel.ts, so the scene's own call sites
+  // still read as methods.
+  openSettings(): void { openSettingsExt(this); }
+  buildSettingsButton(): void { buildSettingsButtonExt(this); }
+  confirmReset(): void { confirmResetExt(this); }
+  resetGame(): void { resetGameExt(this); }
+  buildDevResetButton(): void { buildDevResetButtonExt(this); }
 }
