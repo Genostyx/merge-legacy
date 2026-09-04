@@ -222,6 +222,26 @@ import {
   toggleFullscreen,
 } from './board/config';
 import {
+  openCollection as openCollectionExt,
+  closeCollection as closeCollectionExt,
+  drawCollectionBook as drawCollectionBookExt,
+  buildMainCollectionButton as buildMainCollectionButtonExt,
+  refreshMainCollectionButton as refreshMainCollectionButtonExt
+} from './board/collectionPanel';
+
+import {
+  showInventory as showInventoryExt,
+  retrieveStoredItem as retrieveStoredItemExt,
+  deployStoredCrate as deployStoredCrateExt,
+  storeDraggedView as storeDraggedViewExt,
+  refreshInventoryButton as refreshInventoryButtonExt,
+  setInventoryHover as setInventoryHoverExt,
+  playInventoryNudge as playInventoryNudgeExt,
+  inventoryButtonBounds as inventoryButtonBoundsExt,
+  isOverInventoryButton as isOverInventoryButtonExt
+} from './board/inventoryPanel';
+
+import {
   openProject as openProjectExt,
   closeProjectPanel as closeProjectPanelExt,
   restoreBoardAfterRoom as restoreBoardAfterRoomExt,
@@ -255,9 +275,9 @@ import {
 export class BoardScene extends Phaser.Scene {
   grid = new Grid(COLS, ROWS);
   views = new Map<string, BoardView>(); // key = `${col},${row}`
-  private cellSize = 0;
-  private boardOriginX = 0;
-  private boardOriginY = 0;
+  cellSize = 0;
+  boardOriginX = 0;
+  boardOriginY = 0;
   private contentTop = 0;
   private boardExpansionUnlocked = new Set<string>();
   private expansionLockViews = new Map<string, ExpansionLockView>();
@@ -291,7 +311,7 @@ export class BoardScene extends Phaser.Scene {
 
   economy: EconomyState = createDefaultEconomy();
   private coinText!: Phaser.GameObjects.Text;
-  private gemText!: Phaser.GameObjects.Text;
+  gemText!: Phaser.GameObjects.Text;
   private energyText!: Phaser.GameObjects.Text;
   energy: EnergyState = createDefaultEnergy();
 
@@ -328,7 +348,7 @@ export class BoardScene extends Phaser.Scene {
   private headerRight = 0;
   /** Where a board drag began, to tell a tap from a move that returned home. */
   private dragStartPointer = { x: 0, y: 0 };
-  private overInventory = false;
+  overInventory = false;
   private hudChips: HudChip[] = [];
   rewards: RewardsState = createDefaultRewardsState();
   private crateMeterBar!: Phaser.GameObjects.Graphics;
@@ -349,7 +369,7 @@ export class BoardScene extends Phaser.Scene {
    * whatever is left over. `BOARD_TO_TRAY_GAP` is its floor, for screens with
    * nothing to spare.
    */
-  private boardToTrayGap = BOARD_TO_TRAY_GAP;
+  boardToTrayGap = BOARD_TO_TRAY_GAP;
   /**
    * How much bigger the chrome is than its tuned size.
    *
@@ -406,15 +426,15 @@ export class BoardScene extends Phaser.Scene {
   private projectButtonZone!: Phaser.GameObjects.Zone;
   private projectBadge!: Phaser.GameObjects.Graphics;
   /** Per-colour segments of the meter label, rebuilt on every refresh. */
-  private inventory: InventoryState = createDefaultInventory();
+  inventory: InventoryState = createDefaultInventory();
   collection: CollectionState = createDefaultCollectionState();
-  private collectionOverlay: Phaser.GameObjects.Container | null = null;
-  private mainCollectionBadge!: Phaser.GameObjects.Text;
-  private mainCollectionPanel!: Phaser.GameObjects.Graphics;
-  private invBg!: Phaser.GameObjects.Graphics;
+  collectionOverlay: Phaser.GameObjects.Container | null = null;
+  mainCollectionBadge!: Phaser.GameObjects.Text;
+  mainCollectionPanel!: Phaser.GameObjects.Graphics;
+  invBg!: Phaser.GameObjects.Graphics;
   private invLabel!: Phaser.GameObjects.Text;
-  private invIcon!: Phaser.GameObjects.Graphics;
-  private invZone!: Phaser.GameObjects.Zone;
+  invIcon!: Phaser.GameObjects.Graphics;
+  invZone!: Phaser.GameObjects.Zone;
   /** Infinite, automatic LIFO holding area for rewards that require a board cell. */
   private forcedSpawnVault: ForcedSpawn[] = [];
   private vaultBg!: Phaser.GameObjects.Graphics;
@@ -2240,17 +2260,7 @@ export class BoardScene extends Phaser.Scene {
     this.orderScrollHint = this.add.graphics().setDepth(8);
   }
 
-  private inventoryButtonBounds(): Phaser.Geom.Rectangle {
-    const x = this.boardOriginX;
-    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
-    // Generous on purpose: a drop target the size of the drawn chip is
-    // fiddly to hit with a fingertip that is already holding a tile.
-    return new Phaser.Geom.Rectangle(x - 3, y - 3, 48, 37);
-  }
 
-  private isOverInventoryButton(x: number, y: number): boolean {
-    return Phaser.Geom.Rectangle.Contains(this.inventoryButtonBounds(), x, y);
-  }
 
   /** Level milestone crates are automatic physical rewards, never profile claims. */
   private autoDeliverLevelRewards(): { level: number; tier: CrateTier }[] {
@@ -2266,69 +2276,6 @@ export class BoardScene extends Phaser.Scene {
     return earned;
   }
 
-  /**
-   * Moves a dragged board piece into storage. Returns false when it cannot
-   * go - full inventory, or a locked tile - so the caller snaps it back.
-   */
-  private storeDraggedView(view: BoardView, fromCell: GridPosition): boolean {
-    const cell = this.grid.get(fromCell);
-    if (!cell) return false;
-
-    let entry: StoredItem | null = null;
-    let label = '';
-    if (view instanceof CrateView && cell.kind === 'crate') {
-      // Carries its REMAINING contents, so tidying a part-emptied crate away
-      // never refills or resets it.
-      // `readyAt` travels with it. Without this, storing a sealed supply crate
-      // and taking it back out cleared its timer and it opened immediately -
-      // and it also freed a SUPPLY_CRATE_LIMIT slot while still sealed, so the
-      // cap could be sidestepped by shuffling crates through the inventory.
-      entry = { kind: 'crate', tier: cell.tier, remaining: cell.remaining, readyAt: cell.readyAt };
-      label = CRATE_LABELS[cell.tier as CrateTier];
-    } else if (view instanceof ResourceProducerView && cell.kind === 'resource-producer') {
-      entry = { kind: 'resource-producer', producerId: cell.producerId, remaining: cell.remaining, tier: 1 };
-      label = RESOURCE_PRODUCERS[cell.producerId].label.toUpperCase();
-    } else if (view instanceof TileView) {
-      if (view.locked) {
-        this.refreshActionTray('LOCKED ITEMS CANNOT BE STORED\nMERGE A MATCH ONTO IT TO UNLOCK');
-        return false;
-      }
-      entry = { kind: 'item', typeId: view.typeId, tier: view.tier };
-      label = familyTierLabel(view.typeId, view.tier);
-    } else if (view instanceof SpawnerPieceView) {
-      entry = { kind: 'spawner-piece', typeId: view.typeId, tier: view.tier };
-      label = spawnerPieceLabel(view.typeId, view.tier);
-    } else if (view instanceof SplitterView && cell.kind === 'splitter') {
-      // A Splitter is a one-shot TOOL, and the board is the scarcest thing in
-      // the game - so being unable to put one aside meant an unspent Splitter
-      // taxed a cell until it was used. Sources stay unstorable, which is a
-      // different case: they are fixtures that produce where they stand.
-      entry = { kind: 'splitter' };
-      label = 'SPLITTER';
-    }
-    if (!entry) return false;
-
-    if (!storeItem(this.inventory, entry)) {
-      this.refreshActionTray(
-        `INVENTORY FULL  ·  ${this.inventory.slots}/${this.inventory.slots}\nOPEN IT TO BUY A SLOT OR TAKE SOMETHING OUT`
-      );
-      return false;
-    }
-
-    this.grid.set(fromCell, null);
-    this.views.delete(this.keyOf(fromCell));
-    if (this.selectedItemKey === this.keyOf(fromCell)) this.selectedItemKey = null;
-    view.destroy();
-    this.refreshInventoryButton();
-    this.playInventoryNudge();
-    this.tryReleaseVaultItem();
-    this.tryDeliverMeterGold();
-    this.saveState();
-    this.refreshOrderBar();
-    this.checkDeadlock();
-    this.refreshActionTray(`${label} STORED\n${freeSlots(this.inventory)} INVENTORY SLOTS FREE`);
-    return true;
-  }
 
   /** World-space centre of a card, for the delivery animation to fly toward. */
   private orderCardWorldCenter(position: number): { x: number; y: number } | null {
@@ -3361,7 +3308,7 @@ ${familyTierLabel(typeId, tier)}`
   }
 
   /** Converts a completed Gold meter into a forced spawn exactly once. */
-  private tryDeliverMeterGold(): boolean {
+  tryDeliverMeterGold(): boolean {
     if (this.rewards.meterCollects < METER_MAX || availableCrate(this.rewards) !== 'gold') return false;
     const payload = cratePayload(rollCrate(
       'gold', playerLevel(this.orderState), Math.random, this.ownedDispenserTypeIds()
@@ -3539,7 +3486,7 @@ ${familyTierLabel(typeId, tier)}`
     });
   }
 
-  private tryReleaseVaultItem(): boolean {
+  tryReleaseVaultItem(): boolean {
     if (this.vaultDeliveryPending || this.vaultInboundPending > 0) return false;
     const next = this.forcedSpawnVault[this.forcedSpawnVault.length - 1];
     const spot = this.firstFreeCellInReadingOrder();
@@ -3582,329 +3529,10 @@ ${familyTierLabel(typeId, tier)}`
     return this.placeTile(spot, spawn.typeId, spawn.tier, false);
   }
 
-  drawCollectionBook(g: Phaser.GameObjects.Graphics, size: number, color: number): void {
-    const w = size;
-    const h = size * 0.68;
-    const half = w / 2;
-    g.fillStyle(color, 0.18);
-    g.fillRoundedRect(-half, -h / 2, w, h, 3);
-    g.lineStyle(1.5, color, 0.95);
-    g.beginPath();
-    g.moveTo(-half + 2, -h / 2 + 2);
-    g.lineTo(-2, -h / 2 + 5);
-    g.lineTo(0, h / 2 - 2);
-    g.lineTo(2, -h / 2 + 5);
-    g.lineTo(half - 2, -h / 2 + 2);
-    g.lineTo(half - 2, h / 2 - 2);
-    g.lineTo(2, h / 2);
-    g.lineTo(0, h / 2 - 2);
-    g.lineTo(-2, h / 2);
-    g.lineTo(-half + 2, h / 2 - 2);
-    g.closePath();
-    g.strokePath();
-    g.lineStyle(1, color, 0.45);
-    g.lineBetween(-half + 6, -2, -5, 0);
-    g.lineBetween(5, 0, half - 6, -2);
-  }
 
-  private buildMainCollectionButton(): void {
-    const x = this.scale.width / 2;
-    const y = this.scale.height - 18;
-    const w = 44;
-    const h = 30;
-    this.mainCollectionPanel = this.add.graphics().setDepth(12);
-    this.mainCollectionPanel.fillStyle(Theme.bgElevated, 0.96);
-    this.mainCollectionPanel.fillRoundedRect(x - w / 2, y - h / 2, w, h, Theme.radiusChip);
-    this.mainCollectionPanel.lineStyle(1, Theme.borderOnDark, 1);
-    this.mainCollectionPanel.strokeRoundedRect(x - w / 2, y - h / 2, w, h, Theme.radiusChip);
-    const icon = this.add.graphics().setPosition(x, y).setDepth(13);
-    this.drawCollectionBook(icon, 20, Theme.textOnDarkMuted);
-    this.mainCollectionBadge = this.add.text(x + 17, y - 12, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontNumeric,
-      fontSize: '8px',
-      fontStyle: 'bold',
-      color: hex(Theme.textOnDark),
-      backgroundColor: hex(Theme.currencyGem),
-      padding: { x: 3, y: 1 }
-    }).setOrigin(0.5).setDepth(14);
-    const zone = this.add.zone(x, y, w, h).setDepth(15).setInteractive({ useHandCursor: true });
-    zone.on('pointerdown', () => this.openCollection());
-    this.refreshMainCollectionButton();
-  }
 
-  private refreshMainCollectionButton(): void {
-    if (!this.mainCollectionBadge) return;
-    const count = unclaimedDiscoveryCount(this.collection);
-    this.mainCollectionBadge.setText(count > 9 ? '9+' : String(count)).setVisible(count > 0);
-  }
 
-  private closeCollection(): void {
-    this.collectionOverlay?.destroy(true);
-    this.collectionOverlay = null;
-    this.modalOpen = false;
-  }
 
-  openCollection(initialScroll = 0): void {
-    if (this.modalOpen || this.inputLocked) return;
-    this.modalOpen = true;
-
-    const overlay = this.add.container(0, 0).setDepth(3001);
-    this.collectionOverlay = overlay;
-    const shade = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2,
-      this.scale.width, this.scale.height,
-      0x000000, 0.68
-    ).setInteractive();
-
-    const panelW = Math.min(430, this.scale.width - 24);
-    const panelH = Math.min(620, this.scale.height - 28);
-    const left = this.scale.width / 2 - panelW / 2;
-    const top = this.scale.height / 2 - panelH / 2;
-    const bg = this.add.graphics();
-    bg.fillStyle(Theme.bgElevated, 1);
-    bg.fillRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
-    bg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
-    bg.strokeRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
-
-    const title = this.add.text(this.scale.width / 2, top + 24, 'COLLECTION', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading,
-      fontSize: '19px',
-      fontStyle: 'bold',
-      color: hex(Theme.textOnDark)
-    }).setOrigin(0.5);
-    const subtitle = this.add.text(this.scale.width / 2, top + 45, 'DISCOVER ITEMS  ·  CLAIM ONE GEM EACH', {
-      resolution: textResolution,
-      fontFamily: Theme.fontMono,
-      fontSize: '8px',
-      color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(0.5);
-    const close = this.add.text(left + panelW - 18, top + 18, '×', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading,
-      fontSize: '24px',
-      color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    close.on('pointerdown', () => this.closeCollection());
-    overlay.add([shade, bg, title, subtitle, close]);
-
-    const viewportTop = top + 65;
-    const viewportBottom = top + panelH - 14;
-    const viewportH = viewportBottom - viewportTop;
-    const scrollZone = this.add.zone(this.scale.width / 2, viewportTop + viewportH / 2, panelW - 20, viewportH)
-      .setInteractive({ useHandCursor: true });
-    const content = this.add.container(0, 0);
-    const maskShape = this.add.graphics().setVisible(false);
-    maskShape.fillStyle(0xffffff).fillRect(left + 10, viewportTop, panelW - 20, viewportH);
-    content.setMask(maskShape.createGeometryMask());
-    overlay.add([scrollZone, content, maskShape]);
-
-    const innerW = panelW - 36;
-    const slotGap = 3;
-    const slotSize = Math.min(54, (innerW - slotGap * 2) / 3);
-    const familyW = slotSize * 3 + slotGap * 2;
-    const familyLeft = left + (panelW - familyW) / 2;
-    // Derived from the viewport, not a fixed offset from the panel. Family
-    // labels are drawn 25px ABOVE their grid, so a hardcoded `top + 85` put the
-    // first one at top+60 while the scroll mask began at top+65 - clipping
-    // "WOOD" and its count in half. Anchoring to the mask keeps them clear
-    // however the header above changes.
-    let nextGridTop = viewportTop + 34;
-    let collectionDragMoved = 0;
-
-    CHAINS.filter((chain) => !isCurrencyChain(chain.typeId)).forEach((chain) => {
-      const gridTop = nextGridTop;
-      const familyColor = chain.tiers[Math.min(4, chain.tiers.length - 1)].color;
-      const label = this.add.text(familyLeft, gridTop - 25, chain.typeId === 'mineral' ? 'STONE' : chain.typeId.toUpperCase(), {
-        resolution: textResolution,
-        fontFamily: Theme.fontHeading,
-        fontSize: '10px',
-        fontStyle: 'bold',
-        color: hex(familyColor)
-      });
-      const count = this.add.text(familyLeft + familyW, gridTop - 25,
-        `${claimedInFamily(this.collection, chain.typeId)}/${chain.tiers.length}`, {
-          resolution: textResolution,
-          fontFamily: Theme.fontNumeric,
-          fontSize: '9px',
-          color: hex(Theme.textOnDarkMuted)
-        }).setOrigin(1, 0);
-      content.add([label, count]);
-
-      chain.tiers.forEach((def, index) => {
-        const column = index % 3;
-        const row = Math.floor(index / 3);
-        const cellTop = gridTop + row * (slotSize + slotGap);
-        const cx = familyLeft + slotSize / 2 + column * (slotSize + slotGap);
-        const cy = cellTop + slotSize / 2;
-        const discovered = isDiscovered(this.collection, chain.typeId, def.tier);
-        const claimed = isClaimed(this.collection, chain.typeId, def.tier);
-        const plate = this.add.graphics();
-        plate.fillStyle(Theme.bg, discovered ? 0.92 : 0.48);
-        plate.fillRoundedRect(cx - slotSize / 2, cellTop, slotSize, slotSize, Theme.radiusChip);
-        plate.lineStyle(1, discovered && !claimed ? Theme.currencyGem : Theme.borderOnDark, discovered && !claimed ? 0.9 : 0.55);
-        plate.strokeRoundedRect(cx - slotSize / 2, cellTop, slotSize, slotSize, Theme.radiusChip);
-        content.add(plate);
-
-        if (!discovered) {
-          const question = this.add.text(cx, cy, '?', {
-            resolution: textResolution,
-            fontFamily: Theme.fontNumeric,
-            fontSize: `${Math.max(13, slotSize * 0.42)}px`,
-            fontStyle: 'bold',
-            color: hex(Theme.textOnDarkMuted)
-          }).setOrigin(0.5).setAlpha(0.5);
-          content.add(question);
-          return;
-        }
-
-        const iconSize = slotSize * 0.9;
-        const icon = this.add.graphics();
-        const render = drawTierIcon(icon, chain.typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
-        const present = iconPresentation(chain.typeId, def.tier, iconSize);
-        icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
-        icon.setScale(present.scale).setPosition(cx + present.offsetX, cy + present.offsetY);
-        content.add(icon);
-
-        if (!claimed) {
-          const scrim = this.add.graphics();
-          scrim.fillStyle(Theme.bg, 0.35);
-          scrim.fillRoundedRect(cx - slotSize / 2 + 1, cellTop + 1, slotSize - 2, slotSize - 2, Theme.radiusChip);
-          const gem = currencyIcon(this, 'gem', Math.min(44, slotSize * 1.13)).setPosition(cx, cy);
-          const gemBaseScaleX = gem.scaleX;
-          const gemBaseScaleY = gem.scaleY;
-          const hit = this.add.zone(cx, cy, slotSize, slotSize).setInteractive({ useHandCursor: true });
-          hit.on('pointerup', () => this.time.delayedCall(0, () => {
-            if (collectionDragMoved > 6) return;
-            if (!claimDiscovery(this.collection, chain.typeId, def.tier)) return;
-            hit.disableInteractive();
-            addGems(this.economy, 1);
-            this.updateCurrencyText();
-            this.updateLevelBadge();
-            this.saveState();
-
-            // The slot resolves IN PLACE. This used to close the whole
-            // collection and reopen it at the saved scroll when the gem
-            // landed, which flashed the entire panel for one claim - most of
-            // why claiming felt bad. The item art is already drawn under the
-            // scrim, so revealing it is just a fade.
-            this.tweens.add({ targets: scrim, alpha: 0, duration: 260, ease: 'Quad.Out' });
-            this.tweens.add({
-              targets: icon, alpha: render.materialAlpha, duration: 300, ease: 'Quad.Out'
-            });
-            plate.clear();
-            plate.fillStyle(Theme.bg, 0.92);
-            plate.fillRoundedRect(cx - slotSize / 2, cellTop, slotSize, slotSize, Theme.radiusChip);
-            plate.lineStyle(1, Theme.borderOnDark, 0.55);
-            plate.strokeRoundedRect(cx - slotSize / 2, cellTop, slotSize, slotSize, Theme.radiusChip);
-
-            // The gem leaves the list and finishes its flight in SCENE space.
-            // Inside `content` it was clipped by the list's mask and drawn
-            // under the panel header, so it disappeared behind the top of the
-            // collection exactly as it arrived. Reparenting keeps it whole and
-            // lets it pass over everything on its way to the counter.
-            const flightX = cx;
-            const flightY = cy + content.y;
-            content.remove(gem);
-            this.add.existing(gem);
-            gem.setPosition(flightX, flightY).setDepth(4200);
-
-            const targetX = this.gemText.x;
-            const targetY = this.gemText.y;
-            // Arc rather than a straight line, and a control point pulled up
-            // and toward the counter - a collected thing thrown to a counter
-            // reads as a lob, and a linear slide reads as a sprite being
-            // dragged.
-            const ctrlX = (flightX + targetX) / 2 + (targetX - flightX) * 0.1;
-            const ctrlY = Math.min(flightY, targetY) - Math.abs(targetX - flightX) * 0.22 - 40;
-            // The claim beat is now a HOLD, not a swell. A short pause before
-            // the gem leaves still gives the tap its own moment, without the
-            // gem ever growing - which is what read as bloated at any size the
-            // swell was tuned to.
-            this.time.delayedCall(90, () => {
-              burstParticles(this, flightX, flightY, Theme.currencyGem, 1);
-              this.tweens.addCounter({
-                from: 0,
-                to: 1,
-                duration: 430,
-                ease: 'Cubic.In',
-                onUpdate: (tween) => {
-                  const t = tween.getValue() ?? 0;
-                  const inv = 1 - t;
-                  gem.setPosition(
-                    inv * inv * flightX + 2 * inv * t * ctrlX + t * t * targetX,
-                    inv * inv * flightY + 2 * inv * t * ctrlY + t * t * targetY
-                  );
-                  // Preserve the SVG's display-size scale. Setting this to a
-                  // literal 1 reset the image to its huge native dimensions.
-                  const flightScale = Phaser.Math.Linear(1.06, 0.42, t);
-                  gem.setScale(gemBaseScaleX * flightScale, gemBaseScaleY * flightScale);
-                  // Holds full opacity almost the whole way, then goes in
-                  // the last stretch. Fading from the start made it vanish
-                  // in mid-air instead of arriving anywhere.
-                  gem.setAlpha(t < 0.72 ? 1 : 1 - (t - 0.72) / 0.28);
-                },
-                onComplete: () => {
-                  gem.destroy();
-                  // The counter reacts, so the gem lands somewhere rather
-                  // than simply disappearing off the top of the panel.
-                  this.tweens.add({
-                    targets: this.gemText,
-                    scale: { from: 1.35, to: 1 },
-                    duration: 260,
-                    ease: 'Back.Out'
-                  });
-                }
-              });
-            });
-          }));
-          content.add([scrim, gem, hit]);
-        }
-      });
-      const rows = Math.ceil(chain.tiers.length / 3);
-      nextGridTop += rows * (slotSize + slotGap) + 38;
-    });
-
-    const contentBottom = nextGridTop - 38;
-    const maxScroll = Math.max(0, contentBottom - viewportBottom);
-    let scroll = 0;
-    let dragging = false;
-    let dragStartY = 0;
-    let dragStartScroll = 0;
-    const setScroll = (value: number): void => {
-      scroll = Phaser.Math.Clamp(value, 0, maxScroll);
-      content.y = -scroll;
-    };
-    setScroll(initialScroll);
-    const onDown = (pointer: Phaser.Input.Pointer): void => {
-      if (pointer.x < left + 10 || pointer.x > left + panelW - 10 || pointer.y < viewportTop || pointer.y > viewportBottom) return;
-      dragging = true;
-      dragStartY = pointer.y;
-      dragStartScroll = scroll;
-      collectionDragMoved = 0;
-    };
-    const onMove = (pointer: Phaser.Input.Pointer): void => {
-      if (!dragging) return;
-      collectionDragMoved = Math.max(collectionDragMoved, Math.abs(pointer.y - dragStartY));
-      setScroll(dragStartScroll + dragStartY - pointer.y);
-    };
-    const onUp = (): void => { dragging = false; };
-    const onWheel = (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void => {
-      if (pointer.x < left || pointer.x > left + panelW || pointer.y < viewportTop || pointer.y > viewportBottom) return;
-      setScroll(scroll + dy * 0.55);
-    };
-    this.input.on('pointerdown', onDown);
-    this.input.on('pointermove', onMove);
-    this.input.on('pointerup', onUp);
-    this.input.on('wheel', onWheel);
-    overlay.once('destroy', () => {
-      this.input.off('pointerdown', onDown);
-      this.input.off('pointermove', onMove);
-      this.input.off('pointerup', onUp);
-      this.input.off('wheel', onWheel);
-    });
-  }
 
   /** Tier colour for a crate. Metallic, deliberately outside every family ramp. */
   crateAccent(tier: CrateTier): number {
@@ -3916,73 +3544,8 @@ ${familyTierLabel(typeId, tier)}`
 
 
 
-  private refreshInventoryButton(hovered = false): void {
-    if (!this.invBg) return;
-    const x = this.boardOriginX;
-    const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
-    const full = isFull(this.inventory);
-    const accent = full ? Theme.accentAmber : Theme.textOnDarkMuted;
 
-    // Drag-over enlargement expands evenly around the original centre while
-    // staying inside the narrow control rail beside the information panel.
-    const w = hovered ? 46 : 42;
-    const h = hovered ? 35 : 31;
-    const bx = x - (w - 42) / 2;
-    const by = y - (h - 31) / 2;
-    const hoverGrey = 0xe2e5e7;
 
-    this.invBg.clear();
-    this.invBg.fillStyle(Theme.bgElevated, 1);
-    this.invBg.fillRoundedRect(bx, by, w, h, Theme.radiusChip);
-    this.invBg.lineStyle(
-      hovered ? Theme.borderWidthStrong : Theme.borderWidth,
-      hovered ? hoverGrey : full ? accent : Theme.borderOnDark,
-      1
-    );
-    this.invBg.strokeRoundedRect(bx, by, w, h, Theme.radiusChip);
-    this.invIcon.clear();
-    this.invIcon.setPosition(bx + w / 2, by + h / 2);
-    drawBriefcase(this.invIcon, hovered ? 29 : 27, hovered ? hoverGrey : full ? accent : 0x9aa3ab);
-    this.invZone?.setPosition(bx + w / 2, by + h / 2).setSize(w, h);
-  }
-
-  /**
-   * Drives the drop-target feedback. The tray carries it because it is the
-   * one surface a fingertip is never on top of mid-drag; the button also
-   * grows modestly from its centre and turns very light grey while targeted.
-   */
-  private setInventoryHover(hovered: boolean): void {
-    if (hovered === this.overInventory) return;
-    this.overInventory = hovered;
-    this.refreshInventoryButton(hovered);
-    if (hovered) {
-      this.refreshActionTray(
-        isFull(this.inventory)
-          ? `INVENTORY FULL  ·  ${this.inventory.slots}/${this.inventory.slots}
-RELEASE TO PUT IT BACK`
-          : `RELEASE TO STORE
-${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
-      );
-    } else {
-      this.refreshActionTray();
-    }
-  }
-
-  /** A small jolt when something drops in, so the store visibly lands. */
-  private playInventoryNudge(): void {
-    if (!this.invIcon) return;
-    this.tweens.killTweensOf(this.invIcon);
-    this.invIcon.setAngle(0);
-    this.tweens.add({
-      targets: this.invIcon,
-      angle: { from: -7, to: 7 },
-      duration: 55,
-      yoyo: true,
-      repeat: 1,
-      ease: 'Sine.InOut',
-      onComplete: () => this.invIcon.setAngle(0)
-    });
-  }
 
 
   /** Earned crates are forced spawns: board immediately, or the infinite vault until space opens. */
@@ -4016,36 +3579,8 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     return null;
   }
 
-  /**
-   * Takes a crate out of storage and puts it on the BOARD. It is not opened
-   * here - a crate can only be opened where it sits, one tap at a time, so
-   * the reveal happens on the board rather than in a modal that hands over
-   * everything at once.
-   */
-  private deployStoredCrate(index: number, tier: CrateTier, kept?: CratePayloadEntry[], readyAt?: number): void {
-    const empties = this.grid.emptyCells();
-    if (empties.length === 0) {
-      this.refreshActionTray('BOARD FULL  ·  MAKE SPACE FIRST\nTHE CRATE IS SAFE IN YOUR INVENTORY');
-      return;
-    }
-    retrieveItem(this.inventory, index);
-    // Rolled ONCE, here, and stored in the cell. Rolling at open time would
-    // re-roll the contents on every reload part-way through emptying it.
-    const payload = kept ?? cratePayload(rollCrate(
-      tier, playerLevel(this.orderState), Math.random, this.ownedDispenserTypeIds()
-    ));
-    const pos = this.firstFreeCellInReadingOrder() ?? empties[0];
-    // An absolute timestamp, so the wait kept running while it sat in the
-    // inventory rather than pausing or restarting.
-    this.placeCrate(pos, tier, payload, readyAt).playArrive();
-    this.refreshInventoryButton();
-    this.saveState();
-    this.refreshActionTray(
-      `${CRATE_LABELS[tier]} PLACED\nTAP IT TO TAKE OUT ONE THING AT A TIME`
-    );
-  }
 
-  private placeCrate(pos: GridPosition, tier: string, remaining: CratePayloadEntry[], readyAt?: number): CrateView {
+  placeCrate(pos: GridPosition, tier: string, remaining: CratePayloadEntry[], readyAt?: number): CrateView {
     const world = this.cellToWorld(pos);
     const view = new CrateView(this, world.x, world.y, this.cellSize, tier, pos);
     this.grid.set(pos, { kind: 'crate', tier, remaining, readyAt });
@@ -4352,307 +3887,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
   }
 
 
-  /** Puts a stored item back on the board, if there is a free cell. */
-  private retrieveStoredItem(index: number): void {
-    const empties = this.grid.emptyCells();
-    if (empties.length === 0) {
-      this.refreshActionTray('BOARD FULL  ·  MAKE SPACE FIRST\nTHE ITEM IS SAFE IN YOUR INVENTORY');
-      return;
-    }
-    const item = retrieveItem(this.inventory, index);
-    if (!item || item.kind === 'crate') return;
-    const pos = empties[Math.floor(Math.random() * empties.length)];
-    if (item.kind === 'item') this.placeTile(pos, item.typeId, item.tier, true);
-    else if (item.kind === 'spawner-piece') this.placeSpawnerPiece(pos, item.typeId, item.tier, true);
-    else if (item.kind === 'splitter') this.placeSplitter(pos, true);
-    else this.placeResourceProducer(pos, item.producerId, item.remaining, true);
-    this.refreshInventoryButton();
-    this.updateLevelBadge();
-    this.saveState();
-    this.refreshOrderBar();
-    const label = item.kind === 'item'
-      ? familyTierLabel(item.typeId, item.tier)
-      : item.kind === 'spawner-piece'
-        ? spawnerPieceLabel(item.typeId, item.tier)
-        : item.kind === 'splitter'
-          ? 'SPLITTER'
-          : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();
-    this.refreshActionTray(`${label} RETRIEVED`);
-  }
 
-  /**
-   * The inventory panel: one tile per slot, filled slots drawn with their
-   * real icon so storage reads like a shelf rather than a list, plus the
-   * next slot's gem price.
-   */
-  private showInventory(initialScroll = 0): void {
-    if (this.modalOpen || this.inputLocked) return;
-    this.modalOpen = true;
-
-    const COLS_N = INVENTORY_GRID;
-    const CELL = 72;
-    const rows = Math.ceil(INVENTORY_MAX_SLOTS / COLS_N);
-    const W = COLS_N * CELL + 40;
-    const H = Math.min(this.scale.height - 40, 96 + INVENTORY_GRID * CELL);
-
-    const overlay = this.add.rectangle(
-      this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x000000, 0.6
-    ).setDepth(3000).setInteractive();
-    const card = this.add.container(this.scale.width / 2, this.scale.height / 2).setDepth(3001);
-    const bg = this.add.graphics();
-    bg.fillStyle(Theme.bgElevated, 1);
-    bg.fillRoundedRect(-W / 2, -H / 2, W, H, Theme.radiusPanel);
-    bg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
-    bg.strokeRoundedRect(-W / 2, -H / 2, W, H, Theme.radiusPanel);
-    const titleIcon = this.add.graphics().setPosition(-50, -H / 2 + 18);
-    drawBriefcase(titleIcon, 26, Theme.textOnDarkMuted);
-    card.add([bg, titleIcon, this.add.text(-36, -H / 2 + 18, 'INVENTORY', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '16px', fontStyle: 'bold', color: hex(Theme.textOnDark)
-    }).setOrigin(0, 0.5)]);
-
-    const gridTop = -H / 2 + 40;
-    const viewportBottom = H / 2 - 38;
-    const viewportH = viewportBottom - gridTop;
-    const content = this.add.container(0, 0);
-    const maskShape = this.add.graphics().setVisible(false);
-    maskShape.fillStyle(0xffffff).fillRect(
-      card.x - W / 2 + 10,
-      card.y + gridTop,
-      W - 20,
-      viewportH
-    );
-    content.setMask(maskShape.createGeometryMask());
-    card.add(content);
-    let scroll = 0;
-    const maxScroll = Math.max(0, rows * CELL - viewportH);
-    const setScroll = (value: number): void => {
-      scroll = Phaser.Math.Clamp(value, 0, maxScroll);
-      content.y = -scroll;
-    };
-    setScroll(initialScroll);
-    let inventoryItemPressed = false;
-    let scrolling = false;
-    let scrollStartY = 0;
-    let scrollStart = 0;
-    const onScrollDown = (pointer: Phaser.Input.Pointer): void => {
-      if (inventoryItemPressed) return;
-      if (pointer.x < card.x - W / 2 + 10 || pointer.x > card.x + W / 2 - 10
-        || pointer.y < card.y + gridTop || pointer.y > card.y + viewportBottom) return;
-      scrolling = true;
-      scrollStartY = pointer.y;
-      scrollStart = scroll;
-    };
-    const onScrollMove = (pointer: Phaser.Input.Pointer): void => {
-      if (!scrolling || inventoryItemPressed) return;
-      setScroll(scrollStart + scrollStartY - pointer.y);
-    };
-    const onScrollUp = (): void => { scrolling = false; };
-    const onScrollWheel = (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void => {
-      if (pointer.x < card.x - W / 2 || pointer.x > card.x + W / 2
-        || pointer.y < card.y + gridTop || pointer.y > card.y + viewportBottom) return;
-      setScroll(scroll + dy * 0.55);
-    };
-    this.input.on('pointerdown', onScrollDown);
-    this.input.on('pointermove', onScrollMove);
-    this.input.on('pointerup', onScrollUp);
-    this.input.on('wheel', onScrollWheel);
-    const slotAtPointer = (x: number, y: number): number | null => {
-      const localX = x - card.x + W / 2 - 20;
-      const localY = y - card.y - content.y - gridTop;
-      const col = Math.floor(localX / CELL);
-      const row = Math.floor(localY / CELL);
-      if (col < 0 || col >= COLS_N || row < 0 || row >= rows) return null;
-      const slot = row * COLS_N + col;
-      return slot < this.inventory.slots ? slot : null;
-    };
-
-    const dismiss = () => {
-      this.input.off('pointerdown', onScrollDown);
-      this.input.off('pointermove', onScrollMove);
-      this.input.off('pointerup', onScrollUp);
-      this.input.off('wheel', onScrollWheel);
-      maskShape.destroy();
-      overlay.destroy();
-      card.destroy();
-      this.modalOpen = false;
-      this.refreshActionTray();
-    };
-    const reopen = () => {
-      const preservedScroll = scroll;
-      dismiss();
-      this.time.delayedCall(0, () => this.showInventory(preservedScroll));
-    };
-
-    const nextCost = slotCost(this.inventory.slots);
-    // Every cell of the 3x3 is drawn from the start. Owned slots are live,
-    // the NEXT one carries its gem price, and the rest are shown locked
-    // without a price - one number to act on rather than a wall of them.
-    for (let slot = 0; slot < INVENTORY_MAX_SLOTS; slot++) {
-      const cx = -W / 2 + 20 + (slot % COLS_N) * CELL + CELL / 2;
-      const cy = gridTop + Math.floor(slot / COLS_N) * CELL + CELL / 2;
-      const owned = slot < this.inventory.slots;
-      const isNext = slot === this.inventory.slots && nextCost !== null;
-      const item = owned ? this.inventory.items[slot] : undefined;
-
-      const cell = this.add.graphics();
-      const inset = 5;
-      const box: [number, number, number, number] = [
-        cx - CELL / 2 + inset, cy - CELL / 2 + inset, CELL - inset * 2, CELL - inset * 2
-      ];
-      cell.fillStyle(owned ? (item ? Theme.bg : Theme.panelAlt) : Theme.bg, owned && item ? 0.85 : 0.3);
-      cell.fillRoundedRect(...box, Theme.radiusChip);
-      cell.lineStyle(
-        1,
-        isNext ? Theme.currencyGem : Theme.borderOnDark,
-        owned ? 1 : isNext ? 0.9 : 0.35
-      );
-      cell.strokeRoundedRect(...box, Theme.radiusChip);
-      content.add(cell);
-
-      if (item) {
-        const icon = this.add.graphics();
-        let visual: Phaser.GameObjects.Graphics | Phaser.GameObjects.Image | Phaser.GameObjects.Container = icon;
-        const size = CELL - 26;
-        if (item.kind === 'crate') {
-          drawCrate(icon, size, item.tier);
-          icon.setPosition(cx, cy);
-        } else if (item.kind === 'resource-producer') {
-          const image = this.add.image(cx, cy, RESOURCE_PRODUCERS[item.producerId].textureKey).setDisplaySize(size, size);
-          visual = image;
-          content.add(image);
-        } else if (item.kind === 'splitter') {
-          drawSplitterIcon(icon, size * 0.9);
-          icon.setPosition(cx, cy);
-        } else if (item.kind === 'spawner-piece') {
-          drawSpawnerPieceIcon(icon, item.typeId, item.tier, size);
-          icon.setPosition(cx, cy - 2);
-        } else if (item.typeId.startsWith('currency-') && !(item.typeId === 'currency-credit' && item.tier >= 3)) {
-          const textureKey = item.typeId === 'currency-credit'
-            ? 'currency-coin'
-            : item.typeId === 'currency-gem'
-              ? 'currency-gem'
-              : 'currency-energy';
-          const count = item.tier === 1 ? 1 : item.tier === 2 ? 2 : Math.min(6, item.tier + 1);
-          const positions: [number, number][] = [
-            [0, 4], [-10, 7], [10, 0], [-6, -9], [8, -11], [1, 12]
-          ];
-          const currencyIcon = this.add.container(cx, cy);
-          const iconSize = CELL * (item.tier <= 2 ? 0.52 : 0.36);
-          for (let i = count - 1; i >= 0; i--) {
-            const [x, y] = positions[i];
-            currencyIcon.add(this.add.image(x, y, textureKey).setDisplaySize(iconSize, iconSize));
-          }
-          visual = currencyIcon;
-          content.add(currencyIcon);
-        } else {
-          const def = getTierDef(item.typeId, item.tier);
-          const { materialAlpha } = drawTierIcon(
-            icon, item.typeId, item.tier, size, materialLighting(def?.color ?? Theme.panelAlt, item.tier)
-          );
-          icon.setAlpha(materialAlpha);
-          const present = iconPresentation(item.typeId, item.tier, size);
-          icon.setScale(present.scale).setPosition(cx + present.offsetX, cy - 4 + present.offsetY);
-        }
-        const hit = this.add.zone(cx, cy, CELL - 10, CELL - 10).setInteractive({ useHandCursor: true });
-        this.input.setDraggable(hit);
-        let wasDragged = false;
-        let pressX = 0;
-        let pressY = 0;
-        hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-          inventoryItemPressed = true;
-          pressX = pointer.x;
-          pressY = pointer.y;
-        });
-        hit.on('drag', (pointer: Phaser.Input.Pointer) => {
-          if (!wasDragged && Phaser.Math.Distance.Between(pressX, pressY, pointer.x, pointer.y) <= 6) return;
-          if (!wasDragged) {
-            wasDragged = true;
-            content.bringToTop(visual);
-            content.bringToTop(hit);
-          }
-          visual.setPosition(pointer.x - card.x, pointer.y - card.y - content.y);
-        });
-        hit.on('dragend', (pointer: Phaser.Input.Pointer) => {
-          inventoryItemPressed = false;
-          if (!wasDragged) return;
-          const target = slotAtPointer(pointer.x, pointer.y);
-          if (target === null || target === slot) {
-            visual.setPosition(cx, cy);
-            return;
-          }
-          const items = this.inventory.items;
-          if (target < items.length) {
-            [items[slot], items[target]] = [items[target], items[slot]];
-          } else {
-            const [movedItem] = items.splice(slot, 1);
-            items.splice(Math.min(target, items.length), 0, movedItem);
-          }
-          this.saveState();
-          reopen();
-        });
-        hit.on('pointerup', () => {
-          inventoryItemPressed = false;
-          if (wasDragged) return;
-          this.time.delayedCall(0, () => {
-            if (item.kind === 'crate') this.deployStoredCrate(slot, item.tier as CrateTier, item.remaining, item.readyAt);
-            else this.retrieveStoredItem(slot);
-            reopen();
-          });
-        });
-        content.add([icon, hit]);
-      } else if (isNext) {
-        // Priced in full colour whether or not the player can afford it. A
-        // greyed-out price reads as "not for sale"; this one is for sale, and
-        // the answer to not having the gems is the gem store, not a dead
-        // button.
-        // A labelled buy PILL rather than a bare number: the word says what
-        // the price does, and putting the cost on a filled chip is what makes
-        // it read as a button instead of a caption.
-        const unlockLabel = this.add.text(cx, cy - 20, 'UNLOCK', {
-          resolution: textResolution,
-          fontFamily: Theme.fontHeading, fontSize: '11px', fontStyle: 'bold',
-          color: hex(Theme.textOnDark)
-        }).setOrigin(0.5);
-
-        const pillGroup = currencyPill(this, `${nextCost}`, 'gem').setPosition(cx, cy + 6);
-
-        // The WHOLE cell is the target. The hit area used to be the price
-        // text itself, which is a ~20px sliver next to the glyph - the cell
-        // looks like a button and has to behave like one.
-        const buyHit = this.add.zone(cx, cy, CELL - 10, CELL - 10)
-          .setInteractive({ useHandCursor: true });
-        buyHit.on('pointerdown', () => this.time.delayedCall(0, () => {
-          const result = buySlot(this.inventory, (amount) => spendGems(this.economy, amount));
-          if (!result.ok) {
-            // Short of gems: go where the gems are, rather than reporting a
-            // shortfall and leaving the player to find the store themselves.
-            dismiss();
-            this.openShop('gem');
-            return;
-          }
-          this.updateCurrencyText();
-          this.refreshInventoryButton();
-          this.saveState();
-          reopen();
-        }));
-        content.add([unlockLabel, pillGroup, buyHit]);
-      } else if (!owned) {
-        content.add(this.add.text(cx, cy, '·', {
-          resolution: textResolution,
-          fontFamily: Theme.fontNumeric, fontSize: '14px', color: hex(Theme.borderOnDark)
-        }).setOrigin(0.5));
-      }
-    }
-
-    const close = this.add.text(0, H / 2 - 18, 'CLOSE', {
-      resolution: textResolution,
-      fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    card.add(close);
-    overlay.on('pointerdown', () => this.time.delayedCall(0, dismiss));
-    close.on('pointerdown', () => this.time.delayedCall(0, dismiss));
-  }
 
   private buildActionTray(): void {
     const railW = 48;
@@ -5194,7 +4429,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
   }
 
   /** Families eligible for orders are unlocked only by owning a real dispenser. */
-  private ownedDispenserTypeIds(): string[] {
+  ownedDispenserTypeIds(): string[] {
     const owned = new Set<string>();
     for (const row of this.grid.serialize()) {
       for (const cell of row) {
@@ -5426,7 +4661,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     return view;
   }
 
-  private placeResourceProducer(pos: GridPosition, producerId: ResourceProducerId, remaining: number, animateIn: boolean): ResourceProducerView {
+  placeResourceProducer(pos: GridPosition, producerId: ResourceProducerId, remaining: number, animateIn: boolean): ResourceProducerView {
     const world = this.cellToWorld(pos);
     const view = new ResourceProducerView(this, world.x, world.y, this.cellSize, producerId, pos);
     this.grid.set(pos, { kind: 'resource-producer', producerId, remaining });
@@ -5435,7 +4670,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     return view;
   }
 
-  private placeSpawnerPiece(pos: GridPosition, typeId: string, tier: number, animateIn: boolean): SpawnerPieceView {
+  placeSpawnerPiece(pos: GridPosition, typeId: string, tier: number, animateIn: boolean): SpawnerPieceView {
     const world = this.cellToWorld(pos);
     const view = new SpawnerPieceView(this, world.x, world.y, this.cellSize, typeId, tier, pos);
     this.grid.set(pos, { kind: 'spawner-piece', typeId, tier });
@@ -5444,7 +4679,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     return view;
   }
 
-  private placeSplitter(pos: GridPosition, animateIn: boolean): SplitterView {
+  placeSplitter(pos: GridPosition, animateIn: boolean): SplitterView {
     const world = this.cellToWorld(pos);
     const view = new SplitterView(this, world.x, world.y, this.cellSize, pos);
     this.grid.set(pos, { kind: 'splitter' });
@@ -6782,4 +6017,24 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
   projectStageFurnished(stage: number): boolean { return projectStageFurnishedExt(this, stage); }
   projectShortfall(stage: ProjectStage): number { return projectShortfallExt(this, stage); }
   completeProjectStage(stageDef: ProjectStage, from: { x: number; y: number }, reopenProject = false): boolean { return completeProjectStageExt(this, stageDef, from, reopenProject); }
+
+  // Forwards to board/inventoryPanel.ts, so the scene's own call sites
+  // still read as methods.
+  showInventory(initialScroll = 0): void { showInventoryExt(this, initialScroll); }
+  retrieveStoredItem(index: number): void { retrieveStoredItemExt(this, index); }
+  deployStoredCrate(index: number, tier: CrateTier, kept?: CratePayloadEntry[], readyAt?: number): void { deployStoredCrateExt(this, index, tier, kept, readyAt); }
+  storeDraggedView(view: BoardView, fromCell: GridPosition): boolean { return storeDraggedViewExt(this, view, fromCell); }
+  refreshInventoryButton(hovered = false): void { refreshInventoryButtonExt(this, hovered); }
+  setInventoryHover(hovered: boolean): void { setInventoryHoverExt(this, hovered); }
+  playInventoryNudge(): void { playInventoryNudgeExt(this); }
+  inventoryButtonBounds(): Phaser.Geom.Rectangle { return inventoryButtonBoundsExt(this); }
+  isOverInventoryButton(x: number, y: number): boolean { return isOverInventoryButtonExt(this, x, y); }
+
+  // Forwards to board/collectionPanel.ts, so the scene's own call sites
+  // still read as methods.
+  openCollection(initialScroll = 0): void { openCollectionExt(this, initialScroll); }
+  closeCollection(): void { closeCollectionExt(this); }
+  drawCollectionBook(g: Phaser.GameObjects.Graphics, size: number, color: number): void { drawCollectionBookExt(this, g, size, color); }
+  buildMainCollectionButton(): void { buildMainCollectionButtonExt(this); }
+  refreshMainCollectionButton(): void { refreshMainCollectionButtonExt(this); }
 }
