@@ -36,3 +36,8 @@ This rule applies to Codex, Claude, and any other coding agent working in this p
   not the art. If the art cannot say it, that is a reason to fix the art.
 - This applies to every surface: board, orders, shop, crates, daily rewards,
   collection, project.
+
+## Keep responses as short as possible
+
+- Keep responses as short as possible, even down to one word answers.
+- Do not explain things unless asked.
