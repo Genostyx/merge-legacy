@@ -222,6 +222,14 @@ import {
   toggleFullscreen,
 } from './board/config';
 import {
+  onPointerUp as onPointerUpExt,
+  onPointerDown as onPointerDownExt,
+  onPointerMove as onPointerMoveExt,
+  canMergeViews as canMergeViewsExt,
+  selectItem as selectItemExt
+} from './board/boardInput';
+
+import {
   buildCurrencyChip as buildCurrencyChipExt
 } from './board/hudChrome';
 
@@ -436,7 +444,7 @@ export class BoardScene extends Phaser.Scene {
   dispenserCollectCount = 0;
   headerRight = 0;
   /** Where a board drag began, to tell a tap from a move that returned home. */
-  private dragStartPointer = { x: 0, y: 0 };
+  dragStartPointer = { x: 0, y: 0 };
   overInventory = false;
   hudChips: HudChip[] = [];
   rewards: RewardsState = createDefaultRewardsState();
@@ -548,7 +556,7 @@ export class BoardScene extends Phaser.Scene {
    */
   shopNotice: { text: string; error: boolean } | null = null;
 
-  private draggingView: BoardView | null = null;
+  draggingView: BoardView | null = null;
   /**
    * Whether the pending press has crossed `DRAG_START_PX` and become a drag.
    *
@@ -556,11 +564,11 @@ export class BoardScene extends Phaser.Scene {
    * piece under the finger; this says whether the piece has actually been
    * picked up.
    */
-  private dragActive = false;
-  private dragFromCell: GridPosition | null = null;
-  private mergeReadyTarget: BoardView | null = null;
+  dragActive = false;
+  dragFromCell: GridPosition | null = null;
+  mergeReadyTarget: BoardView | null = null;
   selectedItemKey: string | null = null;
-  private lastCurrencyTap: { key: string; at: number } | null = null;
+  lastCurrencyTap: { key: string; at: number } | null = null;
   // Board cell of the source most recently tapped. Its tray stays consistent
   // across ready/recharging states; when empty, the same panel also offers
   // the gem refill action.
@@ -1170,7 +1178,7 @@ export class BoardScene extends Phaser.Scene {
     };
   }
 
-  private worldToCell(x: number, y: number): GridPosition | null {
+  worldToCell(x: number, y: number): GridPosition | null {
     const col = Math.floor((x - this.boardOriginX) / this.cellSize);
     const row = Math.floor((y - this.boardOriginY) / this.cellSize);
     const pos = { col, row };
@@ -1619,7 +1627,7 @@ export class BoardScene extends Phaser.Scene {
    * spawn onto the board through the normal placement path, so they also
    * trigger the locked-match hint. The crate is consumed once empty.
    */
-  private tapCrate(view: CrateView): void {
+  tapCrate(view: CrateView): void {
     const cell = this.grid.get(view.gridPos);
     if (cell?.kind !== 'crate') return;
     if (!crateReady(cell.readyAt, Date.now())) {
@@ -1719,7 +1727,7 @@ export class BoardScene extends Phaser.Scene {
     this.checkDeadlock();
   }
 
-  private tapResourceProducer(view: ResourceProducerView): void {
+  tapResourceProducer(view: ResourceProducerView): void {
     const cell = this.grid.get(view.gridPos);
     if (cell?.kind !== 'resource-producer') return;
     const empties = this.grid.emptyCells();
@@ -1752,7 +1760,7 @@ export class BoardScene extends Phaser.Scene {
     this.refreshActionTray();
   }
 
-  private collectCurrencyItem(view: TileView): void {
+  collectCurrencyItem(view: TileView): void {
     const payout = currencyPayout(view.typeId, view.tier);
     if (payout <= 0) return;
     const key = this.keyOf(view.gridPos);
@@ -1773,7 +1781,7 @@ export class BoardScene extends Phaser.Scene {
     this.refreshActionTray(`${getTierDef(view.typeId, view.tier)?.label?.toUpperCase() ?? 'RESOURCE'} COLLECTED`);
   }
 
-  private collectFinalWater(view: TileView): void {
+  collectFinalWater(view: TileView): void {
     if (view.typeId !== 'water' || getTierDef('water', view.tier + 1) != null) return;
     const key = this.keyOf(view.gridPos);
     const world = this.cellToWorld(view.gridPos);
@@ -2090,27 +2098,6 @@ export class BoardScene extends Phaser.Scene {
     this.refreshActionTray();
   }
 
-  private selectItem(key: string): void {
-    if (this.selectedItemKey) {
-      const previous = this.views.get(this.selectedItemKey);
-      if (previous instanceof TileView || previous instanceof SpawnerPieceView) previous.setSelected(false);
-    }
-    const next = this.views.get(key);
-    if (next instanceof CrateView) {
-      this.selectedItemKey = key;
-      this.rushTargetKey = null;
-      this.refreshActionTray();
-      return;
-    }
-    if (!(next instanceof TileView) && !(next instanceof SpawnerPieceView)) {
-      this.selectedItemKey = null;
-      this.refreshActionTray();
-      return;
-    }
-    this.selectedItemKey = key;
-    next.setSelected(true);
-    this.refreshActionTray();
-  }
 
   /** Small recovery value for freeing board space; orders remain the main coin source. */
   private sellValueFor(typeId: string, tier: number): number {
@@ -2474,497 +2461,13 @@ export class BoardScene extends Phaser.Scene {
 
 
 
-  private onPointerDown(pointer: Phaser.Input.Pointer): void {
-    if (this.inputLocked || this.modalOpen) return;
-    const cell = this.worldToCell(pointer.x, pointer.y);
-    if (!cell) return;
-    const key = this.keyOf(cell);
-    const view = this.views.get(key);
-    if (!view) return;
-    if (view instanceof TileView && view.locked) {
-      const def = getTierDef(view.typeId, view.tier);
-      this.refreshActionTray(
-        `LOCKED ${def?.label?.toUpperCase() ?? 'ITEM'}  ·  ${familyTierLabel(view.typeId, view.tier)}\n` +
-        'MERGE A MATCH ONTO IT TO UNLOCK'
-      );
-      return;
-    }
-    this.draggingView = view;
-    this.dragFromCell = cell;
-    this.dragStartPointer = { x: pointer.x, y: pointer.y };
-    // Deliberately NOT picked up here - see `DRAG_START_PX`. The lift, the
-    // scale-up and the raise to the top all wait until the finger has moved
-    // far enough to mean it.
-    this.dragActive = false;
-  }
 
-  private onPointerMove(pointer: Phaser.Input.Pointer): void {
-    // Order-bar flick. Checked before the tile drag because the bar sits
-    // outside the board and can never own a tile.
-    if (this.orderDrag.active) {
-      const dx = pointer.x - this.orderDrag.startX;
-      this.orderDrag.moved = Math.max(this.orderDrag.moved, Math.abs(dx));
-      this.setOrderScroll(this.orderDrag.startScroll - dx);
-      return;
-    }
-    if (!this.draggingView) return;
-    if (!this.dragActive) {
-      const travelled = Math.hypot(
-        pointer.x - this.dragStartPointer.x,
-        pointer.y - this.dragStartPointer.y
-      );
-      if (travelled < DRAG_START_PX) return;
-      this.dragActive = true;
-      this.draggingView.state = 'dragging';
-      this.children.bringToTop(this.draggingView);
-      this.draggingView.setScale(1.08);
-    }
-    this.draggingView.setPosition(pointer.x, pointer.y);
 
-    // Merge-ready highlight: a thin acid-green pulse on whatever tile is
-    // currently under the drag, but only while it's a legal merge target -
-    // purely visual, driven by the same typeId+tier check onPointerUp
-    // already makes, so it can't diverge from the real merge rule.
-    // Live feedback on the drop target, so storage is discoverable at all.
-    this.setInventoryHover(this.isOverInventoryButton(pointer.x, pointer.y));
 
-    const hoverCell = this.worldToCell(pointer.x, pointer.y);
-    const hoverView = hoverCell ? this.views.get(this.keyOf(hoverCell)) : undefined;
-    const isLegalTarget = !!hoverView && this.canMergeViews(this.draggingView, hoverView);
 
-    const nextTarget = isLegalTarget ? hoverView! : null;
-    if (nextTarget !== this.mergeReadyTarget) {
-      if (this.mergeReadyTarget instanceof TileView || this.mergeReadyTarget instanceof SpawnerView || this.mergeReadyTarget instanceof SpawnerPieceView) {
-        this.mergeReadyTarget.setMergeReady(false);
-      }
-      this.mergeReadyTarget = nextTarget;
-      if (this.mergeReadyTarget instanceof TileView || this.mergeReadyTarget instanceof SpawnerView || this.mergeReadyTarget instanceof SpawnerPieceView) {
-        this.mergeReadyTarget.setMergeReady(true);
-      }
-    }
-  }
 
-  private async onPointerUp(pointer: Phaser.Input.Pointer): Promise<void> {
-    // An order card only submits on a TAP. Without this, flicking the bar
-    // sideways to reach a later order would fire whichever card the flick
-    // happened to start on - the same rule the shop's scrolling list uses.
-    if (this.orderDrag.active) {
-      const { slot, moved, describe } = this.orderDrag;
-      this.orderDrag = { active: false, slot: -1, startX: 0, startScroll: 0, moved: 0, describe: null };
-      if (moved > 6) return;
-      // Tapping the ITEM on a card asks what it is; tapping the card asks to
-      // deliver it. Same description the board gives for the same item, so
-      // the card is a place to learn the ladder rather than only to read a
-      // target off.
-      if (describe) this.describeOrderItem(describe.typeId, describe.tier);
-      else this.submitOrderSlot(slot);
-      return;
-    }
 
-    const view = this.draggingView;
-    // Captured before it is cleared: the release path below asks whether the
-    // piece was ever actually picked up, which is what separates a tap from a
-    // drag that wandered and came back to its own cell.
-    const wasDragging = this.dragActive;
-    const fromCell = this.dragFromCell;
-    this.draggingView = null;
-    this.dragActive = false;
-    this.dragFromCell = null;
-    if (this.mergeReadyTarget instanceof TileView || this.mergeReadyTarget instanceof SpawnerView || this.mergeReadyTarget instanceof SpawnerPieceView) {
-      this.mergeReadyTarget.setMergeReady(false);
-    }
-    this.mergeReadyTarget = null;
-    if (!view || !fromCell) return;
-
-    const fromWorld = this.cellToWorld(fromCell);
-
-    // Dropped on the briefcase: storage is a DRAG target, not a button in
-    // the tray. The tray version could not work for a crate at all - the tap
-    // that selected it also dispensed from it, so the button only appeared
-    // after the crate had already given something up.
-    this.setInventoryHover(false);
-    if (this.isOverInventoryButton(pointer.x, pointer.y)) {
-      if (this.storeDraggedView(view, fromCell)) return;
-      view.setScale(1);
-      await view.snapTo(fromWorld.x, fromWorld.y);
-      view.state = 'idle';
-      return;
-    }
-
-    const targetCell = this.worldToCell(pointer.x, pointer.y);
-
-    if (!targetCell || (targetCell.col === fromCell.col && targetCell.row === fromCell.row)) {
-      view.setScale(1);
-      await view.snapTo(fromWorld.x, fromWorld.y);
-      view.state = 'idle';
-      // Landing back on the starting cell is only a TAP if the piece was
-      // never picked up at all. Carrying a crate around and setting it back
-      // down was dispensing from it, because "same cell" was being treated as
-      // "tapped" no matter how far it had travelled.
-      if (targetCell && !wasDragging) {
-        if (view instanceof CrateView) this.tapCrate(view);
-        else if (view instanceof ResourceProducerView) this.tapResourceProducer(view);
-        else if (view instanceof SpawnerView) this.spawnFromSpawner(view);
-        else if (view instanceof TileView && (
-          isCurrencyChain(view.typeId) ||
-          (view.typeId === 'water' && getTierDef('water', view.tier + 1) == null)
-        )) {
-          const key = this.keyOf(fromCell);
-          const now = Date.now();
-          if (this.lastCurrencyTap?.key === key && now - this.lastCurrencyTap.at <= 360) {
-            this.lastCurrencyTap = null;
-            if (view.typeId === 'water') this.collectFinalWater(view);
-            else this.collectCurrencyItem(view);
-          } else {
-            this.lastCurrencyTap = { key, at: now };
-            this.selectItem(key);
-          }
-        } else this.selectItem(this.keyOf(fromCell));
-      }
-      return;
-    }
-
-    const targetKey = this.keyOf(targetCell);
-    const targetView = this.views.get(targetKey);
-
-    if (!targetView) {
-      if (this.grid.isBlocked(targetCell)) {
-        view.setScale(1);
-        await view.snapTo(fromWorld.x, fromWorld.y);
-        view.state = 'idle';
-        this.refreshActionTray('BOARD TILE LOCKED\nTAP THE LOCKED TILE TO VIEW ITS REQUIREMENT');
-        return;
-      }
-      const movingData = this.grid.get(fromCell);
-      if (!movingData) return;
-      this.grid.set(fromCell, null);
-      this.grid.set(targetCell, movingData);
-      this.views.delete(this.keyOf(fromCell));
-      this.views.set(targetKey, view);
-      view.setGridPos(targetCell);
-      if (this.selectedItemKey === this.keyOf(fromCell)) this.selectedItemKey = targetKey;
-      const worldTarget = this.cellToWorld(targetCell);
-      view.setScale(1);
-      await view.snapTo(worldTarget.x, worldTarget.y);
-      view.state = 'idle';
-      this.saveState();
-      this.refreshActionTray();
-      return;
-    }
-
-    if (view instanceof SplitterView && targetView instanceof TileView && this.canMergeViews(view, targetView)) {
-      view.setScale(1);
-      await view.snapTo(fromWorld.x, fromWorld.y);
-      view.state = 'idle';
-      this.showSplitConfirmation(view, targetView, fromCell, targetCell);
-      return;
-    }
-
-    if (view instanceof TileView && targetView instanceof TileView && this.canMergeViews(view, targetView)) {
-      const nextDef = getTierDef(view.typeId, view.tier + 1);
-      if (!nextDef) return;
-      const unlockedItem = targetView.locked;
-      this.inputLocked = true;
-      const worldTarget = this.cellToWorld(targetCell);
-      view.setScale(1);
-      await view.snapTo(worldTarget.x, worldTarget.y);
-
-      this.grid.set(fromCell, null);
-      this.views.delete(this.keyOf(fromCell));
-      if (this.selectedItemKey === this.keyOf(fromCell) || this.selectedItemKey === targetKey) this.selectedItemKey = null;
-
-      await Promise.all([view.playMergeOutAndDestroy(), targetView.playMergeOutAndDestroy()]);
-      this.views.delete(targetKey);
-
-      burstParticles(this, worldTarget.x, worldTarget.y, nextDef.color, nextDef.tier);
-      shakeForTier(this, nextDef.tier);
-      const normalMergeXp = xpForMergeTier(nextDef.tier);
-      const mergeXp = view.typeId === 'water' ? Math.max(1, Math.floor(normalMergeXp / 2)) : normalMergeXp;
-      const levelBefore = playerLevel(this.orderState);
-
-      this.placeTile(targetCell, view.typeId, nextDef.tier, true);
-      this.orderState.totalXp += mergeXp;
-      const levelAfter = playerLevel(this.orderState);
-      // Merge XP can push the player over a level boundary, which may have
-      // earned another order slot. advanceOrder syncs on its own path; this
-      // is the other way XP is gained.
-      syncOrderSlots(this.orderState, this.dispenserCollectCount, this.ownedDispenserTypeIds());
-      const automaticLevelRewards = levelAfter > levelBefore ? this.autoDeliverLevelRewards() : [];
-      this.updateCurrencyText();
-      this.updateLevelBadge();
-      this.inputLocked = false;
-      this.saveState();
-      this.refreshOrderBar();
-      this.checkDeadlock();
-      this.tryReleaseVaultItem();
-      this.tryDeliverMeterGold();
-      const newest = automaticLevelRewards[automaticLevelRewards.length - 1];
-      this.refreshActionTray(
-        newest
-          ? `LEVEL ${levelAfter} REACHED  ·  ${CRATE_LABELS[newest.tier]} DELIVERED`
-          : unlockedItem
-            ? `ITEM UNLOCKED  ·  ${nextDef.label.toUpperCase()}\nNEW BOARD SPACE RECOVERED`
-            : undefined
-      );
-      return;
-    }
-
-    if (view instanceof SpawnerPieceView && targetView instanceof SpawnerPieceView && this.canMergeViews(view, targetView)) {
-      this.inputLocked = true;
-      const worldTarget = this.cellToWorld(targetCell);
-      view.setScale(1);
-      await view.snapTo(worldTarget.x, worldTarget.y);
-
-      this.grid.set(fromCell, null);
-      this.views.delete(this.keyOf(fromCell));
-      if (this.selectedItemKey === this.keyOf(fromCell) || this.selectedItemKey === targetKey) this.selectedItemKey = null;
-
-      await Promise.all([view.playMergeOutAndDestroy(), targetView.playMergeOutAndDestroy()]);
-      this.views.delete(targetKey);
-
-      // Tier 1 as the second fallback, before amber: a one-tier family like
-      // the Decagon has no tier+1 to look up, so its merge burst came out in
-      // the generic accent instead of its own colour.
-      const color = getTierDef(view.typeId, Math.min(view.tier + 1, 9))?.color
-        ?? getTierDef(view.typeId, 1)?.color
-        ?? Theme.accentAmber;
-      burstParticles(this, worldTarget.x, worldTarget.y, color, Math.min(view.tier + 1, 5));
-      // The Decagon takes five piece tiers, not four, so the tier that
-      // promotes into a source is a per-family number rather than a constant.
-      const topPiece = spawnerPieceTiers(view.typeId);
-      const message = view.tier >= topPiece
-        ? `${sourceTierLabel(view.typeId, 1)} BUILT\nTAP IT TO PRODUCE ${familyTierLabel(view.typeId, 1)}`
-        : `${spawnerPieceLabel(view.typeId, view.tier + 1)} BUILT`;
-      if (view.tier >= topPiece) {
-        this.placeSpawner(targetCell, view.typeId, 1, true);
-      } else {
-        this.placeSpawnerPiece(targetCell, view.typeId, view.tier + 1, true);
-      }
-      this.inputLocked = false;
-      this.saveState();
-      this.tryReleaseVaultItem();
-      this.tryDeliverMeterGold();
-      this.refreshOrderBar();
-      this.checkDeadlock();
-      this.refreshActionTray(message);
-      return;
-    }
-
-    if (view instanceof SpawnerView && targetView instanceof SpawnerView && this.canMergeViews(view, targetView)) {
-      this.inputLocked = true;
-      const worldTarget = this.cellToWorld(targetCell);
-      view.setScale(1);
-      await view.snapTo(worldTarget.x, worldTarget.y);
-      const mergedSpawner = mergeDispenserPair(view.spawner, targetView.spawner);
-      const nextTier = mergedSpawner.tier;
-      const typeId = mergedSpawner.typeId;
-
-      this.grid.set(fromCell, null);
-      this.views.delete(this.keyOf(fromCell));
-      await Promise.all([view.playMergeOutAndDestroy(), targetView.playMergeOutAndDestroy()]);
-      this.views.delete(targetKey);
-
-      const color = getTierDef(typeId, Math.min(nextTier, 9))?.color ?? Theme.accentAmber;
-      burstParticles(this, worldTarget.x, worldTarget.y, color, nextTier);
-      this.placeSpawner(targetCell, typeId, nextTier, true, { kind: 'spawner', ...mergedSpawner });
-      this.inputLocked = false;
-      this.saveState();
-      this.tryReleaseVaultItem();
-      this.tryDeliverMeterGold();
-      this.refreshActionTray(
-        `SOURCE UPGRADED  ·  ${sourceTierLabel(view.spawner.typeId, nextTier)}\n` +
-        `MINIMUM OUTPUT  ·  ${familyTierLabel(view.spawner.typeId, nextTier)}`
-      );
-      return;
-    }
-
-    // Nothing merged. A locked target can't move (it's pinned to its cell
-    // until a matching merge clears it), so that still snaps back - with a
-    // reason, since a silent snap-back reads as the drag being dropped.
-    if (targetView instanceof TileView && targetView.locked) {
-      const def = getTierDef(targetView.typeId, targetView.tier);
-      view.setScale(1);
-      await view.snapTo(fromWorld.x, fromWorld.y);
-      view.state = 'idle';
-      this.refreshActionTray(
-        `LOCKED ${def?.label?.toUpperCase() ?? 'ITEM'}  ·  ${familyTierLabel(targetView.typeId, targetView.tier)}\n` +
-        'MERGE A MATCH ONTO IT TO UNLOCK'
-      );
-      return;
-    }
-
-    await this.swapCells(view, targetView, fromCell, targetCell);
-  }
-
-  /**
-   * Trades two occupied cells when a drag lands on something it can't merge
-   * with. Previously any non-matching drop just snapped back, which made
-   * rearranging the board impossible - the only way to move a piece was
-   * onto an empty cell, so a full board couldn't be reorganised at all.
-   *
-   * Locked items are excluded by the caller: they're pinned to their cell
-   * until a matching merge clears them.
-   */
-  private async swapCells(
-    view: BoardView,
-    targetView: BoardView,
-    fromCell: GridPosition,
-    targetCell: GridPosition
-  ): Promise<void> {
-    const fromKey = this.keyOf(fromCell);
-    const targetKey = this.keyOf(targetCell);
-    const movingData = this.grid.get(fromCell);
-    const targetData = this.grid.get(targetCell);
-    const fromWorld = this.cellToWorld(fromCell);
-    const targetWorld = this.cellToWorld(targetCell);
-
-    if (!movingData || !targetData) {
-      view.setScale(1);
-      await view.snapTo(fromWorld.x, fromWorld.y);
-      view.state = 'idle';
-      return;
-    }
-
-    this.grid.set(fromCell, targetData);
-    this.grid.set(targetCell, movingData);
-    this.views.set(fromKey, targetView);
-    this.views.set(targetKey, view);
-    view.setGridPos(targetCell);
-    targetView.setGridPos(fromCell);
-
-    // Selection follows whichever piece the player was holding.
-    if (this.selectedItemKey === fromKey) this.selectedItemKey = targetKey;
-    else if (this.selectedItemKey === targetKey) this.selectedItemKey = fromKey;
-
-    view.setScale(1);
-    await Promise.all([
-      view.snapTo(targetWorld.x, targetWorld.y),
-      targetView.snapTo(fromWorld.x, fromWorld.y)
-    ]);
-    view.state = 'idle';
-    targetView.state = 'idle';
-
-    this.saveState();
-    this.refreshActionTray();
-  }
-
-  private showSplitConfirmation(
-    splitter: SplitterView,
-    target: TileView,
-    splitterCell: GridPosition,
-    targetCell: GridPosition
-  ): void {
-    if (this.modalOpen || target.tier < 2) return;
-    const def = getTierDef(target.typeId, target.tier);
-    const lower = getTierDef(target.typeId, target.tier - 1);
-    if (!def || !lower) return;
-    this.modalOpen = true;
-    const overlay = this.add.container(0, 0).setDepth(3300);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    const w = Math.min(340, this.scale.width - 36);
-    const h = 280;
-    const dim = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, 0x000000, 0.7).setInteractive();
-    const panel = this.add.graphics();
-    panel.fillStyle(Theme.bgElevated, 1);
-    panel.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, Theme.radiusPanel);
-    panel.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
-    panel.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, Theme.radiusPanel);
-    const title = this.add.text(cx, cy - h / 2 + 28, 'SPLIT THIS ITEM?', {
-      resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '18px', fontStyle: 'bold', color: hex(Theme.textOnDark)
-    }).setOrigin(0.5);
-    const subtitle = this.add.text(cx, cy - h / 2 + 51, `TURN ${def.label.toUpperCase()} INTO TWO ${lower.label.toUpperCase()}`, {
-      resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '9px', color: hex(Theme.textOnDarkMuted), align: 'center'
-    }).setOrigin(0.5);
-    const icon = this.add.graphics().setPosition(cx, cy - 20);
-    const iconSize = 82;
-    const render = drawTierIcon(icon, target.typeId, target.tier, iconSize, materialLighting(def.color, def.tier));
-    const present = iconPresentation(target.typeId, target.tier, iconSize);
-    icon.setAlpha(render.materialAlpha).setScale(present.scale);
-    icon.x += present.offsetX;
-    icon.y += present.offsetY;
-
-    const button = (x: number, label: string, color: number): { bg: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; zone: Phaser.GameObjects.Zone } => {
-      const bw = 116, bh = 38;
-      const bg = this.add.graphics();
-      bg.fillStyle(Theme.panelAlt, 1).fillRoundedRect(x - bw / 2, cy + 82, bw, bh, Theme.radiusChip);
-      bg.lineStyle(1, color, 0.9).strokeRoundedRect(x - bw / 2, cy + 82, bw, bh, Theme.radiusChip);
-      const text = this.add.text(x, cy + 101, label, {
-        resolution: textResolution, fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold', color: hex(color)
-      }).setOrigin(0.5);
-      const zone = this.add.zone(x, cy + 101, bw, bh).setInteractive({ useHandCursor: true });
-      return { bg, text, zone };
-    };
-    const cancel = button(cx - 68, 'CANCEL', Theme.textOnDarkMuted);
-    const confirm = button(cx + 68, 'SPLIT', Theme.currencyGem);
-    overlay.add([dim, panel, title, subtitle, icon, cancel.bg, cancel.text, cancel.zone, confirm.bg, confirm.text, confirm.zone]);
-
-    const close = (): void => {
-      overlay.destroy(true);
-      this.modalOpen = false;
-      this.refreshActionTray();
-    };
-    dim.on('pointerdown', close);
-    cancel.zone.on('pointerdown', close);
-    confirm.zone.on('pointerdown', () => {
-      const splitterData = this.grid.get(splitterCell);
-      const targetData = this.grid.get(targetCell);
-      if (splitterData?.kind !== 'splitter' || targetData?.kind !== 'item'
-        || targetData.typeId !== target.typeId || targetData.tier !== target.tier) {
-        close();
-        return;
-      }
-      this.grid.set(splitterCell, null);
-      this.grid.set(targetCell, null);
-      this.views.delete(this.keyOf(splitterCell));
-      this.views.delete(this.keyOf(targetCell));
-      splitter.destroy();
-      target.destroy();
-      this.placeTile(targetCell, target.typeId, target.tier - 1, true);
-      this.placeTile(splitterCell, target.typeId, target.tier - 1, true);
-      close();
-      this.saveState();
-      this.refreshOrderBar();
-      this.checkDeadlock();
-    });
-  }
-
-  private canMergeViews(a: BoardView, b: BoardView): boolean {
-    if (a === b) return false;
-    if (a instanceof TileView && b instanceof TileView) {
-      return !a.locked && a.typeId === b.typeId && a.tier === b.tier && getTierDef(a.typeId, a.tier + 1) != null;
-    }
-    if (a instanceof SpawnerPieceView && b instanceof SpawnerPieceView) {
-      return a.typeId === b.typeId && a.tier === b.tier && a.tier >= 1 && a.tier <= spawnerPieceTiers(a.typeId);
-    }
-    if (a instanceof SpawnerView && b instanceof SpawnerView) {
-      // Decagons never merge. The family has ONE item tier, so a tier-2
-      // Decagon machine would produce a tier-2 Decagon item that does not
-      // exist - and merging two temporary machines into one would destroy
-      // half the drops the player collected the pieces for.
-      if (a.spawner.typeId === 'decagon' || b.spawner.typeId === 'decagon') return false;
-      if (a.spawner.typeId !== b.spawner.typeId || a.spawner.tier !== b.spawner.tier || a.spawner.tier >= MAX_DISPENSER_TIER) return false;
-      // Merging two tier-1 spawners removes both and replaces them with one
-      // tier-2+ spawner. If that would leave zero tier-1 spawners of this
-      // family while a locked tier-1 cell of it still exists, refuse - that
-      // cell can only ever be cleared by a tier-1 spawner of its own
-      // family (merges only go up), so this would strand it permanently.
-      // See canSafelyDeliverSpawnerReward for the matching reward-side gate.
-      if (a.spawner.tier === 1) {
-        const otherTierOneSpawners = [...this.views.values()].filter(
-          (v) => v instanceof SpawnerView && v !== a && v !== b && v.spawner.typeId === a.spawner.typeId && v.spawner.tier === 1
-        ).length;
-        if (otherTierOneSpawners === 0 && this.grid.hasLockedItem(a.spawner.typeId, 1)) return false;
-      }
-      return true;
-    }
-    if (a instanceof SplitterView && b instanceof TileView) {
-      return !b.locked && b.tier >= 2;
-    }
-    return false;
-  }
-
-  private spawnFromSpawner(view: SpawnerView): void {
+  spawnFromSpawner(view: SpawnerView): void {
     this.selectedItemKey = null;
     this.rushTargetKey = this.keyOf(view.gridPos);
 
@@ -3258,4 +2761,12 @@ export class BoardScene extends Phaser.Scene {
   // Forwards to board/hudChrome.ts, so the scene's own call sites
   // still read as methods.
   buildCurrencyChip(y: number, accent: number, glyph: 'coin' | 'gem', onTap: () => void): HudChip { return buildCurrencyChipExt(this, y, accent, glyph, onTap); }
+
+  // Forwards to board/boardInput.ts, so the scene's own call sites
+  // still read as methods.
+  async onPointerUp(pointer: Phaser.Input.Pointer): Promise<void> { await onPointerUpExt(this, pointer); }
+  onPointerDown(pointer: Phaser.Input.Pointer): void { onPointerDownExt(this, pointer); }
+  onPointerMove(pointer: Phaser.Input.Pointer): void { onPointerMoveExt(this, pointer); }
+  canMergeViews(a: BoardView, b: BoardView): boolean { return canMergeViewsExt(this, a, b); }
+  selectItem(key: string): void { selectItemExt(this, key); }
 }
