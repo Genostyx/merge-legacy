@@ -20,7 +20,7 @@ import { createDefaultEconomy } from '../../economy/Economy';
 import type { EconomyState } from '../../economy/Economy';
 import { normalizeEnergy } from '../../economy/Energy';
 import type { EnergyState } from '../../economy/Energy';
-import { normalizeOrderState, levelForXp, xpForLevel } from '../../levels/Orders';
+import { normalizeOrderState, migrateXpCurve, XP_CURVE_VERSION } from '../../levels/Orders';
 import type { OrderState } from '../../levels/Orders';
 import { normalizeShopState, refreshIfDue } from '../../shop/Shop';
 import type { ShopState } from '../../shop/Shop';
@@ -69,46 +69,13 @@ export function migrateLockedItemsToWiderBoard(scene: BoardScene, savedCells: (G
   }
 }
 
-/**
- * Carries a save across the doubling of `xpForLevel`.
- *
- * The curve went from `50 * L * (L - 1)` to `100 * L * (L - 1)`, and level is
- * DERIVED from `totalXp` rather than stored - so without this a returning
- * player would simply find themselves several levels lower, having lost
- * nothing but seeing the badge fall. The owner's rule is that pacing is what
- * changes, not where anyone already is: they got there, so it is theirs.
- *
- * So the XP is moved rather than the level: the player's level and their
- * exact progress through it are measured on the OLD curve, then rewritten as
- * the point on the new one that reads identically. The bar does not move.
- * Only the next level costs more.
- *
- * A new save is untouched - 0 XP is level 1 with 0 progress on either curve.
- */
-function remapXpToDoubledCurve(scene: BoardScene): void {
-  const OLD_XP_FOR_LEVEL = (level: number): number => 50 * level * (level - 1);
-  const total = scene.orderState.totalXp;
-  if (!Number.isFinite(total) || total <= 0) return;
-
-  let level = 1;
-  while (OLD_XP_FOR_LEVEL(level + 1) <= total) level++;
-  const oldStart = OLD_XP_FOR_LEVEL(level);
-  const oldSpan = OLD_XP_FOR_LEVEL(level + 1) - oldStart;
-  const progress = oldSpan > 0 ? (total - oldStart) / oldSpan : 0;
-
-  const newStart = xpForLevel(level);
-  const newSpan = xpForLevel(level + 1) - newStart;
-  scene.orderState.totalXp = Math.round(newStart + progress * newSpan);
-  // Belt and braces: the remap must never cost a level, whatever rounding does.
-  if (levelForXp(scene.orderState.totalXp) < level) scene.orderState.totalXp = xpForLevel(level);
-}
-
 export function loadOrSeed(scene: BoardScene): void {
   const raw = localStorage.getItem(SAVE_KEY);
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as {
         boardVersion?: number;
+        xpCurve?: number;
         grid: (GridCellData | null)[][];
         economy?: EconomyState;
         energy?: EnergyState;
@@ -211,8 +178,22 @@ export function loadOrSeed(scene: BoardScene): void {
       let saveMigration = false;
       const needsLockedBoardMigration = (parsed.boardVersion ?? 0) < 8;
       const needsBoardWidthMigration = (parsed.boardVersion ?? 0) < 9;
-      if ((parsed.boardVersion ?? 0) < 10) {
-        remapXpToDoubledCurve(scene);
+      // THE XP CURVE CONVERSION GUARDS ITSELF.
+      //
+      // It is gated on its own `xpCurve` field, not on `boardVersion`, and
+      // `migrateXpCurve` returns the total untouched once that field is
+      // current - so calling it on every load is safe by construction rather
+      // than by the caller remembering to check.
+      //
+      // Both were needed. The first version hung this off `boardVersion`, and
+      // the version the save STAMPED was never bumped, so the doubling re-ran
+      // on every refresh: XP compounded, levels jumped, and milestone crates
+      // paid out each time. A gate that lives with the thing it guards cannot
+      // drift apart from it that way.
+      const xpCurve = typeof parsed.xpCurve === 'number' ? parsed.xpCurve : undefined;
+      const migratedXp = migrateXpCurve({ totalXp: scene.orderState.totalXp, xpCurve });
+      if (xpCurve !== XP_CURVE_VERSION) {
+        scene.orderState.totalXp = migratedXp.totalXp;
         saveMigration = true;
       }
       let spawnerCount = 0;
@@ -350,6 +331,7 @@ export function loadOrSeed(scene: BoardScene): void {
 export function saveState(scene: BoardScene): void {
   const payload = {
     boardVersion: 10,
+    xpCurve: XP_CURVE_VERSION,
     grid: scene.grid.serialize(),
     economy: scene.economy,
     energy: scene.energy,

@@ -11,6 +11,17 @@ Newest first.
 
 ## Unreleased
 
+## v0.3.1-beta
+
+- The vault hands things back one at a time when you tap it, instead of
+  emptying onto the board on its own.
+- Crates, containers, pouches and baskets no longer jam on a full board -
+  what they give goes to the vault and waits there.
+- The Decagon is now the solid it is named for, and pays a far bigger haul
+  one piece at a time before it spends itself.
+- Water merges pay much less XP and every level costs more. Existing games
+  keep the level and progress they already had.
+
 ## v0.3.0-beta
 
 - New: the Decagon. Build one from pieces found in shipping containers and

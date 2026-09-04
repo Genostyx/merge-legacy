@@ -16,6 +16,9 @@ import {
   orderSlotsForLevel,
   playerXpProgress,
   syncOrderSlots,
+  migrateXpCurve,
+  XP_CURVE_VERSION,
+  levelForXp,
   xpForLevel,
   xpForMergeTier
 } from './Orders';
@@ -349,6 +352,42 @@ describe('multi-item deliveries', () => {
       .toEqual([[0, 1, false], [1, 2, false]]);
     expect(status.current).toBe(1);
     expect(status.target).toBe(3);
+  });
+});
+
+describe('xp curve migration', () => {
+  // The property that matters is not that the conversion is right once. It is
+  // that REFRESHING CANNOT COMPOUND IT. The first version of this doubled the
+  // player's XP on every single load - levels jumping, milestone crates paying
+  // out each time - because its gate was never closed.
+  it('never moves a save twice, however many times it is run', () => {
+    for (const startXp of [0, 1, 99, 100, 150, 1000, 4948, 43500, 122500, 500000]) {
+      let save = { totalXp: startXp, xpCurve: undefined as number | undefined };
+      save = migrateXpCurve(save);
+      const afterFirst = save.totalXp;
+      // Twenty refreshes.
+      for (let i = 0; i < 20; i++) save = migrateXpCurve(save);
+      expect(save.totalXp, `xp ${startXp}`).toBe(afterFirst);
+      expect(save.xpCurve).toBe(XP_CURVE_VERSION);
+    }
+  });
+
+  it('keeps the player at the level and progress they already had', () => {
+    const OLD = (level: number) => 50 * level * (level - 1);
+    for (let level = 1; level <= 60; level++) {
+      for (const into of [0, 0.5, 0.99]) {
+        const startXp = Math.round(OLD(level) + into * (OLD(level + 1) - OLD(level)));
+        const { totalXp } = migrateXpCurve({ totalXp: startXp });
+        expect(levelForXp(totalXp), `level ${level} + ${into}`).toBe(level);
+        const span = xpForLevel(level + 1) - xpForLevel(level);
+        const progress = span > 0 ? (totalXp - xpForLevel(level)) / span : 0;
+        expect(Math.abs(progress - into), `progress at level ${level}`).toBeLessThan(0.01);
+      }
+    }
+  });
+
+  it('leaves a brand new save alone', () => {
+    expect(migrateXpCurve({ totalXp: 0 })).toEqual({ totalXp: 0, xpCurve: XP_CURVE_VERSION });
   });
 });
 

@@ -538,6 +538,60 @@ export function xpForMerge(typeId: string, resultTier: number): number {
  * that holds the same level and the same progress into it - the player keeps
  * where they are, and only what comes next costs more.
  */
+/**
+ * WHICH XP CURVE A SAVE HAS ALREADY BEEN CONVERTED TO.
+ *
+ * Stored in the save in its OWN field rather than being inferred from
+ * `boardVersion`, and that separation is the whole point: `boardVersion`
+ * carries several unrelated migrations and gets bumped for board-shape
+ * reasons, so hanging the XP conversion off it means any future bump could
+ * re-trigger a doubling. This number changes only when the curve changes.
+ *
+ * The conversion is NOT idempotent - old and new totals are just numbers, and
+ * running it twice doubles twice - so the record of having run it is the only
+ * thing that can prevent it. That is what this is.
+ */
+export const XP_CURVE_VERSION = 2;
+
+/** The curve every save written before XP_CURVE_VERSION 2 was measured on. */
+const XP_FOR_LEVEL_V1 = (level: number): number => 50 * level * (level - 1);
+
+/**
+ * Converts a save onto the current XP curve, exactly once.
+ *
+ * Returns the state unchanged - same object values, no arithmetic at all -
+ * when `xpCurve` says the save is already current, which is what makes
+ * calling this on every single load safe.
+ *
+ * The conversion keeps the player where they are: their level and their exact
+ * progress through it are measured on the old curve, then rewritten as the
+ * point on the new one that reads identically. The bar does not move; only
+ * the next level costs more.
+ *
+ * Pure, and separated from the scene, so the "runs once" property is a unit
+ * test rather than something to be careful about.
+ */
+export function migrateXpCurve(
+  save: { totalXp: number; xpCurve?: number }
+): { totalXp: number; xpCurve: number } {
+  if (save.xpCurve === XP_CURVE_VERSION) return { totalXp: save.totalXp, xpCurve: XP_CURVE_VERSION };
+
+  const total = save.totalXp;
+  if (!Number.isFinite(total) || total <= 0) return { totalXp: total, xpCurve: XP_CURVE_VERSION };
+
+  let level = 1;
+  while (XP_FOR_LEVEL_V1(level + 1) <= total) level++;
+  const oldStart = XP_FOR_LEVEL_V1(level);
+  const oldSpan = XP_FOR_LEVEL_V1(level + 1) - oldStart;
+  const progress = oldSpan > 0 ? (total - oldStart) / oldSpan : 0;
+
+  const newStart = xpForLevel(level);
+  let moved = Math.round(newStart + progress * (xpForLevel(level + 1) - newStart));
+  // The remap must never cost a level, whatever rounding does.
+  if (levelForXp(moved) < level) moved = newStart;
+  return { totalXp: moved, xpCurve: XP_CURVE_VERSION };
+}
+
 export function xpForLevel(level: number): number {
   return 100 * level * (level - 1);
 }
