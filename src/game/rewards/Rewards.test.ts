@@ -384,7 +384,7 @@ describe('decagon meter', () => {
     expect(carried.decagonMeter).toBe(2);
   });
 
-  it('empties the meter when it rolls, and pays a full twenty items', () => {
+  it('empties the meter when it rolls, and pays the full payout count', () => {
     const state = createDefaultRewardsState();
     for (let i = 0; i < 10; i++) feedDecagonMeter(state);
     const payout = rollDecagonPayout(state, () => 0.999);

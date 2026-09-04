@@ -1073,7 +1073,6 @@ export function completeOrder(scene: BoardScene, index: number, order: OrderDef,
       : `LEVEL ${levelAfter} REACHED\nTAP THE LEVEL BADGE TO VIEW PROGRESS`;
   }
   scene.checkDeadlock();
-  scene.tryReleaseVaultItem();
   scene.tryDeliverMeterGold();
   scene.refreshActionTray(trayMessage);
 }

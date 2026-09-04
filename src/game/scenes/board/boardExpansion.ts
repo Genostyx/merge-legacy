@@ -236,7 +236,6 @@ export function buyExpansionCell(scene: BoardScene, pos: GridPosition): void {
   scene.updateCurrencyText();
   scene.refreshProjectButton();
   scene.saveState();
-  scene.tryReleaseVaultItem();
   scene.tryDeliverMeterGold();
   scene.checkDeadlock();
   scene.refreshActionTray(`BOARD TILE UNLOCKED\n${cost.toLocaleString()} CREDITS SPENT`);

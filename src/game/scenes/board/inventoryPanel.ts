@@ -102,7 +102,6 @@ export function storeDraggedView(scene: BoardScene, view: BoardView, fromCell: G
   view.destroy();
   refreshInventoryButton(scene);
   playInventoryNudge(scene);
-  scene.tryReleaseVaultItem();
   scene.tryDeliverMeterGold();
   scene.saveState();
   scene.refreshOrderBar();

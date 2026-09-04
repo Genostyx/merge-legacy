@@ -274,7 +274,6 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     scene.saveState();
     scene.refreshOrderBar();
     scene.checkDeadlock();
-    scene.tryReleaseVaultItem();
     scene.tryDeliverMeterGold();
     const newest = automaticLevelRewards[automaticLevelRewards.length - 1];
     scene.refreshActionTray(
@@ -320,7 +319,6 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     }
     scene.inputLocked = false;
     scene.saveState();
-    scene.tryReleaseVaultItem();
     scene.tryDeliverMeterGold();
     scene.refreshOrderBar();
     scene.checkDeadlock();
@@ -347,7 +345,6 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     scene.placeSpawner(targetCell, typeId, nextTier, true, { kind: 'spawner', ...mergedSpawner });
     scene.inputLocked = false;
     scene.saveState();
-    scene.tryReleaseVaultItem();
     scene.tryDeliverMeterGold();
     scene.refreshActionTray(
       `SOURCE UPGRADED  ·  ${sourceTierLabel(view.spawner.typeId, nextTier)}\n` +

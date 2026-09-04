@@ -386,7 +386,15 @@ export function openPlayerInfo(scene: BoardScene): void {
       // the level reached by then, so printing today's estimate would be
       // stating a figure the game has not committed to - and the player
       // would read a later, larger payout as the game shortchanging them.
-      const unopened = index > activeIndex;
+      // Measured against the last day whose value is actually FIXED, which
+      // is not the same as the active tab. Once today's daily is claimed the
+      // strip moves `activeIndex` on to tomorrow to show what is next - and
+      // tomorrow's Credits are priced at the level reached by then, so
+      // printing a figure there stated a number the game has not committed
+      // to. That is the same fault the '?' was introduced to fix, surviving
+      // in the one case where the day had already been taken.
+      const fixedThrough = canDaily ? activeIndex : Math.min(scene.rewards.dailyStreak, 5) - 1;
+      const unopened = index > fixedThrough;
       dailyRewardLabels[index]
         .setPosition(centerX, dailyStripY + 63)
         // No tier word under a crate. The art says which crate it is, and

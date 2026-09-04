@@ -242,7 +242,7 @@ export const DECAGON_METER_MAX = 10;
  * overruns it. Roughly half the payout lands in the vault and comes back as
  * the board clears, which is the owner's own rule for overflow.
  */
-export const DECAGON_PAYOUT_ITEMS = 20;
+export const DECAGON_PAYOUT_ITEMS = 10;
 
 export type DecagonPayoutEntry =
   | { kind: 'crate'; tier: CrateTier }
@@ -251,17 +251,21 @@ export type DecagonPayoutEntry =
 /**
  * THE CRATE QUOTA. Fixed slots, not a lottery.
  *
- * Every fill pays at least one vault crate. That is a deliberate reversal of
+ * Every fill pays exactly one vault crate. That is a deliberate reversal of
  * how the table started - the vault used to be a 4% jackpot - and it is what
  * makes a Decagon an event worth building rather than a spin worth taking.
- * The variance moved OFF whether you get the good crate and ONTO how many of
- * each you get.
+ *
+ * HALVED from the first pass, which paid twenty items on a 7-11 crate quota.
+ * That put four to six premium crates on the board per fill and made the
+ * Decagon the cheapest crate source in the game by a wide margin. The
+ * guarantee is what the feature is built on, so the counts came down instead
+ * of the guarantee.
  */
 export const DECAGON_CRATE_QUOTA: { tier: CrateTier; min: number; max: number }[] = [
-  { tier: 'vault', min: 1, max: 2 },
-  { tier: 'gold', min: 1, max: 2 },
-  { tier: 'silver', min: 2, max: 2 },
-  { tier: 'bronze', min: 3, max: 5 }
+  { tier: 'vault', min: 1, max: 1 },
+  { tier: 'gold', min: 1, max: 1 },
+  { tier: 'silver', min: 1, max: 1 },
+  { tier: 'bronze', min: 2, max: 3 }
 ];
 
 /**

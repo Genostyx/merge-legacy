@@ -263,7 +263,7 @@ import {
   drawForcedSpawnIcon as drawForcedSpawnIconExt,
   hideBehindRoomPanel as hideBehindRoomPanelExt,
   enqueueForcedSpawn as enqueueForcedSpawnExt,
-  tryReleaseVaultItem as tryReleaseVaultItemExt,
+  releaseOneVaultItem as releaseOneVaultItemExt,
   placeForcedSpawn as placeForcedSpawnExt,
   vaultPosition as vaultPositionExt
 } from './board/boardVault';
@@ -534,9 +534,10 @@ export class BoardScene extends Phaser.Scene {
   /** Infinite, automatic LIFO holding area for rewards that require a board cell. */
   forcedSpawnVault: ForcedSpawn[] = [];
   vaultBg!: Phaser.GameObjects.Graphics;
-  vaultIcon!: Phaser.GameObjects.Graphics;
+  vaultIcon!: Phaser.GameObjects.Container;
   vaultCountDot!: Phaser.GameObjects.Graphics;
   vaultCount!: Phaser.GameObjects.Text;
+  vaultZone?: Phaser.GameObjects.Zone;
   vaultDeliveryPending = false;
   vaultInboundPending = 0;
 
@@ -818,7 +819,6 @@ export class BoardScene extends Phaser.Scene {
     this.loadOrSeed();
     this.buildBoardExpansionLocks();
     this.refreshForcedSpawnVault();
-    this.tryReleaseVaultItem();
     this.tryDeliverMeterGold();
     this.refreshCrateMeter();
     this.refreshInventoryButton();
@@ -1646,17 +1646,23 @@ export class BoardScene extends Phaser.Scene {
       // The item needs somewhere to go; the crate's own cell is not free yet.
       const empties = this.grid.emptyCells();
       if (empties.length === 0) {
-        if (entry.kind === 'resource-producer') {
-          cell.remaining.shift();
-          this.enqueueForcedSpawn({ kind: 'resource-producer', producerId: entry.producerId, remaining: entry.remaining }, world);
-          view.playDispensePulse();
-          if (cell.remaining.length === 0) void this.consumeCrate(view);
-          else this.grid.set(view.gridPos, cell);
-          this.saveState();
-          this.refreshActionTray('BOARD FULL  ·  PRODUCER SENT TO VAULT');
-          return;
-        }
-        this.refreshActionTray('BOARD FULL  ·  MAKE SPACE\nTHE CRATE KEEPS WHAT IS STILL INSIDE');
+        // A FULL BOARD NO LONGER STOPS A CRATE. Only producers used to be
+        // routed to the vault here; items and source pieces were refused, so
+        // a crate opened on a full board handed over some of its contents and
+        // then jammed on the first tile. Everything placeable now takes the
+        // same route, and the player draws it back out when they make room.
+        cell.remaining.shift();
+        const stored: ForcedSpawn = entry.kind === 'resource-producer'
+          ? { kind: 'resource-producer', producerId: entry.producerId, remaining: entry.remaining }
+          : entry.kind === 'spawner-piece'
+            ? { kind: 'spawner-piece', typeId: entry.typeId, tier: entry.tier }
+            : { kind: 'item', typeId: entry.typeId, tier: entry.tier };
+        this.enqueueForcedSpawn(stored, world);
+        view.playDispensePulse();
+        if (cell.remaining.length === 0) void this.consumeCrate(view);
+        else this.grid.set(view.gridPos, cell);
+        this.saveState();
+        this.refreshActionTray('BOARD FULL  ·  SENT TO THE VAULT');
         return;
       }
       cell.remaining.shift();
@@ -1720,7 +1726,6 @@ export class BoardScene extends Phaser.Scene {
     this.grid.set(view.gridPos, null);
     this.views.delete(key);
     await view.playEmptyAndDestroy();
-    this.tryReleaseVaultItem();
     this.tryDeliverMeterGold();
     this.saveState();
     this.checkDeadlock();
@@ -1731,7 +1736,29 @@ export class BoardScene extends Phaser.Scene {
     if (cell?.kind !== 'resource-producer') return;
     const empties = this.grid.emptyCells();
     if (empties.length === 0) {
-      this.refreshActionTray('BOARD FULL  ·  MAKE SPACE\nNO DROP WAS USED');
+      // Same rule the crates now follow: a full board sends the drop to the
+      // vault instead of refusing the tap. A pouch or basket that could not
+      // be emptied while the board was full was the slowest thing on it -
+      // the player had to clear space to reclaim the space it was sitting on.
+      const config = RESOURCE_PRODUCERS[cell.producerId];
+      const world = this.cellToWorld(view.gridPos);
+      this.enqueueForcedSpawn(
+        { kind: 'item', typeId: config.typeId, tier: rollResourceTier(cell.producerId) },
+        world
+      );
+      cell.remaining--;
+      view.playDispensePulse();
+      if (cell.remaining <= 0) {
+        const key = this.keyOf(view.gridPos);
+        this.grid.set(view.gridPos, null);
+        this.views.delete(key);
+        if (this.selectedItemKey === key) this.selectedItemKey = null;
+        void view.playEmptyAndDestroy();
+      } else {
+        this.grid.set(view.gridPos, cell);
+      }
+      this.saveState();
+      this.refreshActionTray('BOARD FULL  ·  SENT TO THE VAULT');
       return;
     }
     const nearest = this.nearestEmptyCells(view.gridPos, empties);
@@ -1749,7 +1776,6 @@ export class BoardScene extends Phaser.Scene {
       this.views.delete(key);
       if (this.selectedItemKey === key) this.selectedItemKey = null;
       void view.playEmptyAndDestroy();
-      this.tryReleaseVaultItem();
     } else {
       this.grid.set(view.gridPos, cell);
       this.selectedItemKey = this.keyOf(view.gridPos);
@@ -1775,7 +1801,6 @@ export class BoardScene extends Phaser.Scene {
     floatingScore(this, world.x, world.y, payout, unit);
     this.updateCurrencyText();
     this.updateEnergyText();
-    this.tryReleaseVaultItem();
     this.saveState();
     this.refreshActionTray(`${getTierDef(view.typeId, view.tier)?.label?.toUpperCase() ?? 'RESOURCE'} COLLECTED`);
   }
@@ -1807,7 +1832,6 @@ export class BoardScene extends Phaser.Scene {
       ease: 'Cubic.Out',
       onComplete: () => {
         view.destroy();
-        this.tryReleaseVaultItem();
       }
     });
   }
@@ -2147,7 +2171,6 @@ export class BoardScene extends Phaser.Scene {
     this.views.delete(this.selectedItemKey!);
     this.selectedItemKey = null;
     view.destroy();
-    this.tryReleaseVaultItem();
     this.tryDeliverMeterGold();
     addCoins(this.economy, value);
     this.updateCurrencyText();
@@ -2174,7 +2197,6 @@ export class BoardScene extends Phaser.Scene {
     this.selectedItemKey = null;
     addCoins(this.economy, value);
     this.updateCurrencyText();
-    this.tryReleaseVaultItem();
     this.tryDeliverMeterGold();
     this.saveState();
     this.refreshOrderBar();
@@ -2389,13 +2411,11 @@ export class BoardScene extends Phaser.Scene {
             this.views.delete(key);
             view.destroy();
             this.refreshDecagonMachines();
-            this.tryReleaseVaultItem();
             this.saveState();
             this.checkDeadlock();
           });
         }
         this.refreshDecagonMachines();
-        this.tryReleaseVaultItem();
         this.saveState();
         this.refreshOrderBar();
         this.checkDeadlock();
@@ -2789,7 +2809,7 @@ export class BoardScene extends Phaser.Scene {
   drawForcedSpawnIcon(g: Phaser.GameObjects.Graphics, spawn: ForcedSpawn, size: number): void { drawForcedSpawnIconExt(this, g, spawn, size); }
   hideBehindRoomPanel(view: Phaser.GameObjects.GameObject & { visible: boolean }): void { hideBehindRoomPanelExt(this, view); }
   enqueueForcedSpawn(spawn: ForcedSpawn, from?: { x: number; y: number }): void { enqueueForcedSpawnExt(this, spawn, from); }
-  tryReleaseVaultItem(): boolean { return tryReleaseVaultItemExt(this); }
+  releaseOneVaultItem(): boolean { return releaseOneVaultItemExt(this); }
   placeForcedSpawn(spot: GridPosition, spawn: ForcedSpawn): BoardView { return placeForcedSpawnExt(this, spot, spawn); }
   vaultPosition(): { x: number; y: number } { return vaultPositionExt(this); }
 
