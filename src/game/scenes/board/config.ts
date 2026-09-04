@@ -357,3 +357,21 @@ export const SOURCE_TEXTURE_PX = potTextureSize(96);
 /** The small currency and producer marks. */
 export const ICON_TEXTURE_PX = potTextureSize(48);
 
+/** Height of one shop offer card. Shared by the layout cursor and the card itself. */
+/**
+ * 122, up from 104. The name band now has to hold TWO lines at a readable
+ * size - "JOINED STONE BEAMS" is three words in a ~115px card - and the price
+ * sits in its own recessed footer rather than floating over the card. At 104
+ * the name was 11px, wrapped to three cramped lines, and collided with the
+ * item art.
+ */
+export const SHOP_SLOT_HEIGHT = 122;
+/** The recessed band at the bottom of every shop card, holding the price. */
+export const SHOP_CARD_FOOTER = 30;
+/**
+ * The matching band at the TOP, holding the name. Flat and full-width rather
+ * than a pill: the price chip is the thing being decided on and should be the
+ * only pill on the card, but a name still needs a defined area or a two-line
+ * one reads as ragged text floating over the art. 38 holds two lines at 12px.
+ */
+export const SHOP_CARD_HEADER = 38;
