@@ -45,7 +45,12 @@ describe('storing and retrieving', () => {
     const source = { kind: 'item' as const, typeId: 'glass', tier: 7 };
     storeItem(state, source);
     source.tier = 1;
-    expect(state.items[0].tier).toBe(7);
+    // Narrowed rather than indexed blind: not every stored kind carries a
+    // tier - a Splitter has no fields at all - so the type will not let this
+    // reach through without saying which kind it expects.
+    const stored = state.items[0];
+    expect(stored.kind).toBe('item');
+    if (stored.kind === 'item') expect(stored.tier).toBe(7);
   });
 
   it('refuses an out-of-range retrieve rather than returning undefined', () => {
@@ -194,5 +199,20 @@ describe('save handling', () => {
   it('trims a saved overflow rather than exceeding the slot count', () => {
     const items = Array.from({ length: 9 }, () => plank);
     expect(normalizeInventory({ slots: 5, items }).items.length).toBe(5);
+  });
+});
+
+describe('storing a splitter', () => {
+  it('round-trips through storage with no fields of its own', () => {
+    const state = createDefaultInventory();
+    expect(storeItem(state, { kind: 'splitter' })).toBe(true);
+    expect(retrieveItem(state, 0)).toEqual({ kind: 'splitter' });
+    expect(state.items).toEqual([]);
+  });
+
+  it('survives a save round trip, and an older save without one still loads', () => {
+    const saved = { slots: 5, items: [{ kind: 'splitter' }, { kind: 'item', typeId: 'wood', tier: 3 }] };
+    const loaded = normalizeInventory(JSON.parse(JSON.stringify(saved)));
+    expect(loaded.items).toEqual([{ kind: 'splitter' }, { kind: 'item', typeId: 'wood', tier: 3 }]);
   });
 });

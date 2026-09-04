@@ -2274,6 +2274,28 @@ export class BoardScene extends Phaser.Scene {
     }
     if (now >= this.nextAutoDispenserAt) {
       this.nextAutoDispenserAt = now + 1_000;
+
+      // OUT OF ENERGY: sweep every Water source, not one of them.
+      //
+      // The round-robin below taps a single dispenser per second, which is
+      // right while energy is the constraint - it is the energy that is being
+      // rationed, not the taps. At zero energy nothing else on the board can
+      // be run at all and Water costs nothing, so there is no reason to
+      // trickle: every Water source with something in it gets collected in
+      // this pass.
+      if (this.energy.current <= 0) {
+        let tappedWater = false;
+        for (const view of [...this.views.values()]) {
+          if (!(view instanceof SpawnerView) || view.spawner.typeId !== 'water') continue;
+          if (this.grid.emptyCells().length === 0) break;
+          syncDispenser(view.spawner, now);
+          if (view.spawner.charges <= 0) continue;
+          this.spawnFromSpawner(view);
+          tappedWater = true;
+        }
+        if (tappedWater) return;
+      }
+
       const dispensers = [...this.views.values()].filter(
         (view): view is SpawnerView | CrateView | ResourceProducerView =>
           view instanceof SpawnerView || view instanceof CrateView || view instanceof ResourceProducerView
@@ -2296,12 +2318,15 @@ export class BoardScene extends Phaser.Scene {
           }
           // Water already releases one stored item on its own one-second
           // timer, so auto-tapping it normally hands it a second production
-          // pass. The one exception is an EMPTY ENERGY BAR: every other source
-          // is unusable at zero energy and water costs none, so tapping it is
-          // the only work left to do rather than a double dip.
-          if (dispenser.spawner.typeId === 'water' && this.energy.current > 0) continue;
+          // pass - it is skipped while there is energy to spend elsewhere.
+          const isWater = dispenser.spawner.typeId === 'water';
+          if (isWater && this.energy.current > 0) continue;
           if (this.grid.emptyCells().length === 0 || dispenser.spawner.charges <= 0) continue;
-          if (!canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) continue;
+          // The energy gate MUST NOT apply to Water: collecting from it spends
+          // none. Without this exclusion the zero-energy case above was undone
+          // one line later - `canSpendEnergy` fails at zero, so the one source
+          // that could still be run was the one being skipped.
+          if (!isWater && !canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) continue;
         } else if (dispenser instanceof ResourceProducerView) {
           if (this.grid.emptyCells().length === 0) continue;
         } else {
@@ -2519,6 +2544,13 @@ export class BoardScene extends Phaser.Scene {
     } else if (view instanceof SpawnerPieceView) {
       entry = { kind: 'spawner-piece', typeId: view.typeId, tier: view.tier };
       label = spawnerPieceLabel(view.typeId, view.tier);
+    } else if (view instanceof SplitterView && cell.kind === 'splitter') {
+      // A Splitter is a one-shot TOOL, and the board is the scarcest thing in
+      // the game - so being unable to put one aside meant an unspent Splitter
+      // taxed a cell until it was used. Sources stay unstorable, which is a
+      // different case: they are fixtures that produce where they stand.
+      entry = { kind: 'splitter' };
+      label = 'SPLITTER';
     }
     if (!entry) return false;
 
@@ -3416,10 +3448,9 @@ ${familyTierLabel(typeId, tier)}`
     this.builtPieces.add(piece.key);
     this.roomView?.setBuilt(this.builtPieces);
     if (this.projectStageFurnished(piece.stage)) {
-      // The purchase that FINISHES a stage closes the panel before paying.
-      // There is nothing left to buy in that stage, and the reward has to
-      // land on a board the player can actually see - see closeProjectPanel.
-      this.closeProjectPanel();
+      // The panel STAYS OPEN. The reward is shown on top of it as a float, so
+      // finishing a stage no longer throws the player out of the room they
+      // are working on just to watch a crate land.
       this.time.delayedCall(0, () => {
         this.grantFurnishReward(piece.stage, from);
         this.updateCurrencyText();
@@ -3458,11 +3489,13 @@ ${familyTierLabel(typeId, tier)}`
       // Still a crate: it is the first hand-in, and a crate is the reward the
       // player already understands at that point.
       this.awardCrate('bronze', 'STAGE COMPLETE', from);
+      this.playProjectRewardFloat({ kind: 'crate', tier: 'bronze' });
     } else if (stage === 2) {
       // A Splitter. A board TOOL rather than a payout - it changes how the
       // board is played, and it is otherwise a rare special-shop offer.
       this.enqueueForcedSpawn({ kind: 'splitter' });
       this.refreshActionTray('STAGE COMPLETE  ·  SPLITTER DELIVERED');
+      this.playProjectRewardFloat({ kind: 'splitter' });
     } else if (stage === 3) {
       // Bronze, not silver. The room costs 9,700 Credits and 240 energy -
       // about 210 Gems of input - and a bronze/silver/gold ladder paid ~25
@@ -3472,6 +3505,7 @@ ${familyTierLabel(typeId, tier)}`
       // when the point of this ladder was that each rung is a different KIND
       // of thing.
       this.awardCrate('bronze', 'STAGE COMPLETE', from);
+      this.playProjectRewardFloat({ kind: 'crate', tier: 'bronze' });
     } else if (stage >= 4) {
       // Silver, and NOT a briefcase slot.
       //
@@ -3481,6 +3515,7 @@ ${familyTierLabel(typeId, tier)}`
       // rung of this ladder now lands on the board where the player can see
       // it, and silver sets up the gold that finishing the room pays.
       this.awardCrate('silver', 'STAGE COMPLETE', from);
+      this.playProjectRewardFloat({ kind: 'crate', tier: 'silver' });
     }
     this.projectFooterRefresh?.();
   }
@@ -3492,10 +3527,10 @@ ${familyTierLabel(typeId, tier)}`
     // reopened. Redrawn at the end of this method.
     if (stage === 2) {
       addEnergy(this.energy, 25);
-      this.playProjectCurrencyReward('energy', 25, from);
+      this.playProjectRewardFloat({ kind: 'currency', currency: 'energy', amount: 25 });
     } else if (stage === 3) {
       addEnergy(this.energy, 40);
-      this.playProjectCurrencyReward('energy', 40, from);
+      this.playProjectRewardFloat({ kind: 'currency', currency: 'energy', amount: 40 });
     } else if (stage >= 4) {
       // The last piece of the last stage is the moment the ROOM IS FINISHED.
       // GOLD, not the vault: the whole living room costs 9,700 Credits and
@@ -3506,6 +3541,7 @@ ${familyTierLabel(typeId, tier)}`
       // for the cheapest project in it, and there would be nothing left to
       // pay a room that costs fifteen times as much.
       this.awardCrate('gold', 'ROOM COMPLETE', from);
+      this.playProjectRewardFloat({ kind: 'crate', tier: 'gold' });
     }
     this.projectFooterRefresh?.();
   }
@@ -4225,51 +4261,91 @@ ${rewardLine}`,
     return true;
   }
 
-  private playProjectCurrencyReward(
-    kind: 'energy' | 'gem',
-    amount: number,
-    from: { x: number; y: number }
+  /**
+   * A project reward, shown WHERE THE PLAYER IS.
+   *
+   * Rewards used to fly to the board or to a HUD counter, which meant they
+   * could only be watched with the project panel shut - the panel hides every
+   * board object under depth 3000, so a reward granted behind it animated
+   * invisibly. The fix was briefly to close the panel first, which threw the
+   * player out of the room they were in the middle of furnishing.
+   *
+   * Instead the reward pops up over the panel and floats away: its own art,
+   * a neon `+` to the left of it, and for currency the amount. The thing it
+   * represents is still granted through the ordinary path underneath - a
+   * crate really does land on the board - so this is the presentation, not
+   * the delivery.
+   */
+  private playProjectRewardFloat(
+    reward:
+      | { kind: 'crate'; tier: CrateTier }
+      | { kind: 'splitter' }
+      | { kind: 'currency'; currency: CurrencyKind; amount: number }
   ): void {
-    const target = kind === 'energy' ? this.energyText : this.gemText;
-    const color = kind === 'energy' ? Theme.currencyEnergy : Theme.currencyGem;
-    const icon = currencyIcon(this, kind, 48).setPosition(from.x, from.y).setDepth(4100);
-    const label = this.add.text(from.x, from.y + 34, `+${amount} ${kind.toUpperCase()}`, {
+    const ART = 62;
+    const GAP = 8;
+    // Neon rather than the theme's accent green: this sits over a lit panel
+    // rather than on the dark board, and the muted green disappeared into it.
+    const NEON = 0x4dff9a;
+
+    const group = this.add.container(this.scale.width / 2, this.scale.height / 2 + 12)
+      .setDepth(4200);
+
+    const plus = this.add.text(0, 0, '+', {
       resolution: textResolution,
-      fontFamily: Theme.fontHeading,
-      fontSize: '14px',
-      fontStyle: 'bold',
-      color: hex(color)
-    }).setOrigin(0.5).setDepth(4100);
-    burstParticles(this, from.x, from.y, color, 1);
+      fontFamily: Theme.fontHeading, fontSize: '42px', fontStyle: 'bold', color: hex(NEON)
+    }).setOrigin(0.5);
+
+    let amount: Phaser.GameObjects.Text | null = null;
+    if (reward.kind === 'currency') {
+      amount = this.add.text(0, 0, String(reward.amount), {
+        resolution: textResolution,
+        fontFamily: Theme.fontNumeric, fontSize: '34px', fontStyle: 'bold', color: hex(NEON)
+      }).setOrigin(0.5);
+    }
+
+    let art: Phaser.GameObjects.GameObject & { setPosition: (x: number, y: number) => unknown };
+    if (reward.kind === 'crate') {
+      const g = this.add.graphics();
+      drawCrate(g, ART / CRATE_DRAWN.width, reward.tier);
+      art = g;
+    } else if (reward.kind === 'splitter') {
+      const g = this.add.graphics();
+      drawSplitterIcon(g, ART);
+      art = g;
+    } else {
+      art = currencyIcon(this, reward.currency, ART);
+    }
+
+    // Laid out left to right and centred as one group: plus, the number when
+    // there is one, then the art.
+    const widths = [plus.width, ...(amount ? [amount.width] : []), ART];
+    const total = widths.reduce((sum, w) => sum + w, 0) + GAP * (widths.length - 1);
+    let cursor = -total / 2;
+    const place = (obj: { setPosition: (x: number, y: number) => unknown }, w: number) => {
+      obj.setPosition(cursor + w / 2, 0);
+      cursor += w + GAP;
+    };
+    place(plus, plus.width);
+    if (amount) place(amount, amount.width);
+    place(art, ART);
+
+    group.add([plus, ...(amount ? [amount] : []), art as Phaser.GameObjects.GameObject]);
+
+    // Pops in, holds for a beat, then floats up and away.
+    group.setScale(0.55).setAlpha(0);
+    this.tweens.add({ targets: group, scale: 1, alpha: 1, duration: 260, ease: 'Back.easeOut' });
     this.tweens.add({
-      targets: label,
-      y: from.y + 17,
+      targets: group,
+      y: group.y - 96,
       alpha: 0,
-      delay: 360,
-      duration: 340,
-      ease: 'Quad.In',
-      onComplete: () => label.destroy()
-    });
-    this.tweens.add({
-      targets: icon,
-      x: target.x,
-      y: target.y,
-      scale: 0.45,
-      alpha: 0.2,
-      delay: 220,
-      duration: 520,
-      ease: 'Cubic.InOut',
-      onComplete: () => {
-        icon.destroy();
-        this.tweens.add({
-          targets: target,
-          scale: { from: 1.3, to: 1 },
-          duration: 240,
-          ease: 'Back.Out'
-        });
-      }
+      delay: 620,
+      duration: 620,
+      ease: 'Quad.easeIn',
+      onComplete: () => group.destroy(true)
     });
   }
+
 
   /**
    * The output meter: a thin full-width rule that fills as sources are run,
@@ -5474,10 +5550,11 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       return;
     }
     const item = retrieveItem(this.inventory, index);
-    if (!item || (item.kind !== 'item' && item.kind !== 'spawner-piece' && item.kind !== 'resource-producer')) return;
+    if (!item || item.kind === 'crate') return;
     const pos = empties[Math.floor(Math.random() * empties.length)];
     if (item.kind === 'item') this.placeTile(pos, item.typeId, item.tier, true);
     else if (item.kind === 'spawner-piece') this.placeSpawnerPiece(pos, item.typeId, item.tier, true);
+    else if (item.kind === 'splitter') this.placeSplitter(pos, true);
     else this.placeResourceProducer(pos, item.producerId, item.remaining, true);
     this.refreshInventoryButton();
     this.updateLevelBadge();
@@ -5487,7 +5564,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       ? familyTierLabel(item.typeId, item.tier)
       : item.kind === 'spawner-piece'
         ? spawnerPieceLabel(item.typeId, item.tier)
-        : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();
+        : item.kind === 'splitter'
+          ? 'SPLITTER'
+          : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();
     this.refreshActionTray(`${label} RETRIEVED`);
   }
 
@@ -5632,6 +5711,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
           const image = this.add.image(cx, cy, RESOURCE_PRODUCERS[item.producerId].textureKey).setDisplaySize(size, size);
           visual = image;
           content.add(image);
+        } else if (item.kind === 'splitter') {
+          drawSplitterIcon(icon, size * 0.9);
+          icon.setPosition(cx, cy);
         } else if (item.kind === 'spawner-piece') {
           drawSpawnerPieceIcon(icon, item.typeId, item.tier, size);
           icon.setPosition(cx, cy - 2);

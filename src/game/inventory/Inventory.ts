@@ -25,7 +25,10 @@ export type StoredItem =
   | { kind: 'item'; typeId: string; tier: number }
   | { kind: 'spawner-piece'; typeId: string; tier: number }
   | { kind: 'resource-producer'; producerId: ResourceProducerId; remaining: number; tier: 1 }
-  | { kind: 'crate'; tier: string; remaining?: CratePayloadEntry[]; readyAt?: number };
+  | { kind: 'crate'; tier: string; remaining?: CratePayloadEntry[]; readyAt?: number }
+  // A Splitter carries nothing with it - it is one tool, in one state - so it
+  // is the only stored kind with no fields at all.
+  | { kind: 'splitter' };
 
 export interface InventoryState {
   slots: number;
@@ -73,11 +76,14 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
         .filter((entry): entry is StoredItem => {
           if (!entry || typeof entry !== 'object') return false;
           const e = entry as { kind?: string; typeId?: unknown; tier?: unknown };
+          if (e.kind === 'splitter') return true;
           if (e.kind === 'crate') return typeof e.tier === 'string';
           if (e.kind === 'resource-producer') return typeof (entry as { producerId?: unknown }).producerId === 'string' && Number.isFinite((entry as { remaining?: unknown }).remaining);
           return typeof e.typeId === 'string' && Number.isFinite(e.tier);
         })
-        .map((entry) => entry.kind === 'crate'
+        .map((entry) => entry.kind === 'splitter'
+          ? { kind: 'splitter' as const }
+          : entry.kind === 'crate'
           ? {
             kind: 'crate' as const, tier: entry.tier,
             remaining: Array.isArray(entry.remaining) ? (entry.remaining as CratePayloadEntry[]) : undefined,
