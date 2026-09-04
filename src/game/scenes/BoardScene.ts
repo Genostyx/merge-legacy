@@ -8286,8 +8286,25 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     const dailyStripY = dailyY - 46;
     const dailyStripW = panelW - 36;
     const dailyStripH = 92;
-    const dailyTabW = 62;
+    // DERIVED from the strip, not fixed.
+    //
+    // At a hardcoded 62 the four ordinary tabs came to 248px, and `panelW` is
+    // `min(360, viewport - 40)` - so on a narrow phone the strip is smaller
+    // than that and the fifth tab was handed a NEGATIVE width. It collapsed,
+    // and its chevron inverted.
+    //
+    // The last tab keeps the extra width it always had: at the widest panel
+    // the old numbers gave 62 against 76, so it takes 1.22 shares to the
+    // others' one and the proportions are unchanged where they already fitted.
+    const LAST_TAB_SHARE = 1.22;
+    const dailyTabW = dailyStripW / (4 + LAST_TAB_SHARE);
     const dailyLastW = dailyStripW - dailyTabW * 4;
+    // Type follows the tab. A 10px label is right at the full width and too
+    // wide for a tab that has had to shrink, which is the other half of "the
+    // days don't fit".
+    const dailyFit = Phaser.Math.Clamp(dailyTabW / 62, 0.72, 1);
+    const dailyLabelPx = Math.round(Phaser.Math.Clamp(10 * dailyFit, 8, 10));
+    const dailyValuePx = Math.round(Phaser.Math.Clamp(9 * dailyFit, 7, 9));
     const dailyStrip = this.add.graphics();
     const dailyIcons = Array.from({ length: 5 }, () => this.add.graphics());
     // Coins are the SVG mark now, so they are Images rather than something
@@ -8295,32 +8312,32 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     // Day 1 is the single Credit, which is an SVG mark and so an Image; day 2
     // is the Credit Stack, a drawn silhouette on the same graphics the crate
     // days use.
-    const dailyCoin = currencyIcon(this, 'credit', 30).setVisible(false);
+    const dailyCoin = currencyIcon(this, 'credit', 30 * dailyFit).setVisible(false);
     // Day 2's pair, built once and repositioned as the strip redraws. Each
     // mark keeps its layout offset in data, since reading it back off `x`
     // after a reposition would compound.
-    const dailyPair = buildCurrencyCluster(this, 'credit', 2, 44)
+    const dailyPair = buildCurrencyCluster(this, 'credit', 2, 44 * dailyFit)
       .flatMap(({ art, gloss }) => [art, gloss])
       .map((part) => part.setData('ox', part.x).setData('oy', part.y).setVisible(false));
     const dailyDayLabels = Array.from({ length: 5 }, (_, index) => this.add.text(0, 0,
       index === 4 ? 'DAY 5+' : `DAY ${index + 1}`, {
         resolution: textResolution,
         fontFamily: Theme.fontHeading,
-        fontSize: '10px',
+        fontSize: `${dailyLabelPx}px`,
         fontStyle: 'bold',
         color: hex(Theme.textOnDarkMuted)
       }).setOrigin(0.5));
     const dailyRewardLabels = Array.from({ length: 5 }, () => this.add.text(0, 0, '', {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric,
-      fontSize: '9px',
+      fontSize: `${dailyValuePx}px`,
       fontStyle: 'bold',
       color: hex(Theme.textOnDark)
     }).setOrigin(0.5));
     const dailyStateLabels = Array.from({ length: 5 }, () => this.add.text(0, 0, '', {
       resolution: textResolution,
       fontFamily: Theme.fontHeading,
-      fontSize: '9px',
+      fontSize: `${dailyValuePx}px`,
       fontStyle: 'bold',
       color: hex(Theme.accentGreen)
     }).setOrigin(0.5));
@@ -8441,7 +8458,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
         // ~17px beside a 26px coin. 40 puts the crate's rendered width on the
         // coin's, which is what "the same size" actually means here.
         // Sized by drawn width, as everywhere else.
-        const STRIP_CRATE = 36 / CRATE_DRAWN.width;
+        const STRIP_CRATE = (36 * dailyFit) / CRATE_DRAWN.width;
         if (index === 0) {
           dailyCoin.setVisible(reward.kind === 'credits')
             .setPosition(centerX, iconY)

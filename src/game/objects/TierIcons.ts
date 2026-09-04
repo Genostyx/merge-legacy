@@ -334,22 +334,11 @@ function drawCurrencyTier(g: Phaser.GameObjects.Graphics, typeId: string, tier: 
     const r = s * (typeId === 'currency-energy' ? 0.19 : 0.16);
     const x = px * s, y = py * s;
     if (typeId === 'currency-energy') {
-      // ONE bolt, as a single path, and the same silhouette the HUD chips use
-      // (`drawCurrencyGlyph` in CurrencyGlyph.ts). It was two overlapping
-      // triangles whose edges did not meet, which is what made it look bent -
-      // and it was a different bolt from the one on the chips, so the same
-      // currency had two shapes depending on where you saw it.
-      const u = r / 11;
+      // Back to the two-triangle bolt this family carried before the
+      // single-path rewrite.
       g.fillStyle(i === 0 ? p.light : p.base, 1);
-      g.beginPath();
-      g.moveTo(x + 2.5 * u, y - 11 * u);
-      g.lineTo(x - 7 * u, y + 1 * u);
-      g.lineTo(x - 1.5 * u, y + 1 * u);
-      g.lineTo(x - 3 * u, y + 11 * u);
-      g.lineTo(x + 7 * u, y - 1 * u);
-      g.lineTo(x + 1.5 * u, y - 1 * u);
-      g.closePath();
-      g.fillPath();
+      g.fillTriangle(x - r * 0.2, y - r, x - r, y + r * 0.15, x + r * 0.08, y + r * 0.04);
+      g.fillTriangle(x + r * 0.08, y - r * 0.04, x + r, y - r * 0.15, x + r * 0.2, y + r);
     } else if (typeId === 'currency-gem') {
       g.fillStyle(i === 0 ? p.light : p.base, 1);
       g.fillTriangle(x, y - r, x - r * 0.75, y, x, y + r);

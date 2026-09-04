@@ -405,11 +405,11 @@ describe('decagon piece drops', () => {
     cratePayload(rollCrate('gold', level, seq([0.0])))
       .filter((entry) => entry.kind === 'spawner-piece' && entry.typeId === 'decagon');
 
-  it('drops nothing before level 10', () => {
-    expect(pieces(9)).toHaveLength(0);
+  it('drops nothing before level 5', () => {
+    expect(pieces(4)).toHaveLength(0);
   });
 
-  it('drops from level 10 on', () => {
-    expect(pieces(10).length).toBeGreaterThan(0);
+  it('drops from level 5 on', () => {
+    expect(pieces(5).length).toBeGreaterThan(0);
   });
 });
