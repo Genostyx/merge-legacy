@@ -230,38 +230,63 @@ export function claimMilestone(state: RewardsState, level: number): void {
  */
 export const DECAGON_METER_MAX = 10;
 
-export type DecagonPrize =
-  | { kind: 'producer'; producerId: ResourceProducerId }
-  | { kind: 'crate'; tier: CrateTier };
+/**
+ * THE PAYOUT. Twenty items, not one.
+ *
+ * A Decagon costs five piece tiers of crate drops, ten cells standing at
+ * once and ten energy to fill - so what comes out has to read as a haul.
+ * One prize did not: the machine ate ten items and handed back a single
+ * object, which looked like a punishment for the space it had just used.
+ *
+ * The ten cells the meter frees are the budget, and twenty deliberately
+ * overruns it. Roughly half the payout lands in the vault and comes back as
+ * the board clears, which is the owner's own rule for overflow.
+ */
+export const DECAGON_PAYOUT_ITEMS = 20;
+
+export type DecagonPayoutEntry =
+  | { kind: 'crate'; tier: CrateTier }
+  | { kind: 'producer'; producerId: ResourceProducerId };
 
 /**
- * THE PRIZE TABLE. This is a gamble, not a wage.
+ * THE CRATE QUOTA. Fixed slots, not a lottery.
  *
- * Two columns matter and only one of them is value: every prize here is a
- * CONTAINER, and what it costs the player is the cells it needs to unpack -
- * a coin pouch drops 10, an energy basket 12, a coin basket 20, and crates
- * need their whole payload free to open (bronze 4-5 up to vault 16).
- *
- * The budget is the ten cells the meter just freed. The common rows sit at or
- * under it and clear themselves; the top rows deliberately overrun and spill
- * into the vault, so a jackpot is a prize you have to make room for. That is
- * the tension the feature is built on, not a bug in the table.
- *
- * The vault's 4% is set against how many PULLS a player gets, not against a
- * slot machine's odds: a Decagon is five pieces of crate drops and one or two
- * fills, so a fill is a weekly event rather than a per-minute one. At the
- * sub-1% odds a real slot uses, the jackpot would never be seen by anyone and
- * would be decoration rather than a hook.
+ * Every fill pays at least one vault crate. That is a deliberate reversal of
+ * how the table started - the vault used to be a 4% jackpot - and it is what
+ * makes a Decagon an event worth building rather than a spin worth taking.
+ * The variance moved OFF whether you get the good crate and ONTO how many of
+ * each you get.
  */
-export const DECAGON_PRIZES: { weight: number; prize: DecagonPrize }[] = [
-  { weight: 30, prize: { kind: 'producer', producerId: 'coin-pouch' } },
-  { weight: 22, prize: { kind: 'producer', producerId: 'energy-basket' } },
-  { weight: 18, prize: { kind: 'crate', tier: 'bronze' } },
-  { weight: 12, prize: { kind: 'producer', producerId: 'coin-basket' } },
-  { weight: 8, prize: { kind: 'producer', producerId: 'gem-basket' } },
-  { weight: 6, prize: { kind: 'crate', tier: 'gold' } },
-  { weight: 4, prize: { kind: 'crate', tier: 'vault' } }
+export const DECAGON_CRATE_QUOTA: { tier: CrateTier; min: number; max: number }[] = [
+  { tier: 'vault', min: 1, max: 2 },
+  { tier: 'gold', min: 1, max: 2 },
+  { tier: 'silver', min: 2, max: 2 },
+  { tier: 'bronze', min: 3, max: 5 }
 ];
+
+/**
+ * The rest of the haul. CONTAINERS, never loose coins.
+ *
+ * Single Credit and Energy items were tried first and read as scraps - the
+ * machine ate ten items and paid back in ones. A pouch or a basket is an
+ * object worth landing, and it keeps paying after it lands.
+ */
+export const DECAGON_PRODUCER_PRIZES: { weight: number; producerId: ResourceProducerId }[] = [
+  { weight: 30, producerId: 'coin-pouch' },
+  { weight: 30, producerId: 'energy-basket' },
+  { weight: 25, producerId: 'coin-basket' },
+  { weight: 15, producerId: 'gem-basket' }
+];
+
+function pickWeighted<T extends { weight: number }>(rows: readonly T[], rng: () => number): T {
+  const total = rows.reduce((sum, row) => sum + row.weight, 0);
+  let roll = rng() * total;
+  for (const row of rows) {
+    roll -= row.weight;
+    if (roll < 0) return row;
+  }
+  return rows[rows.length - 1];
+}
 
 /** True when the meter is holding a full ten and can be cashed. */
 export function decagonMeterReady(state: RewardsState): boolean {
@@ -278,16 +303,32 @@ export function feedDecagonMeter(state: RewardsState): boolean {
   return state.decagonMeter >= DECAGON_METER_MAX;
 }
 
-/** Rolls the table and empties the meter. */
-export function rollDecagonPrize(state: RewardsState, rng: () => number = Math.random): DecagonPrize {
+/**
+ * Rolls the full payout and empties the meter.
+ *
+ * BEST FIRST, deliberately. The ten cells the meter just freed are what the
+ * payout lands in and everything after them spills to the storage vault - so
+ * emitting the vault crate last would hide the best thing in the haul behind
+ * a queue. Descending order guarantees the crates are the ones the player
+ * actually watches arrive.
+ */
+export function rollDecagonPayout(
+  state: RewardsState,
+  rng: () => number = Math.random
+): DecagonPayoutEntry[] {
   state.decagonMeter = 0;
-  const total = DECAGON_PRIZES.reduce((sum, row) => sum + row.weight, 0);
-  let roll = rng() * total;
-  for (const row of DECAGON_PRIZES) {
-    roll -= row.weight;
-    if (roll < 0) return row.prize;
+  const payout: DecagonPayoutEntry[] = [];
+  for (const row of DECAGON_CRATE_QUOTA) {
+    const count = row.min + Math.floor(rng() * (row.max - row.min + 1));
+    for (let i = 0; i < count; i++) payout.push({ kind: 'crate', tier: row.tier });
   }
-  return DECAGON_PRIZES[0].prize;
+  // The quota can only ever claim 7-11 of the twenty, so there is always a
+  // basket remainder - but the guard keeps a future quota edit from silently
+  // producing a payout longer than it claims to be.
+  while (payout.length < DECAGON_PAYOUT_ITEMS) {
+    payout.push({ kind: 'producer', producerId: pickWeighted(DECAGON_PRODUCER_PRIZES, rng).producerId });
+  }
+  return payout.slice(0, DECAGON_PAYOUT_ITEMS);
 }
 
 // ---- Daily claim ----

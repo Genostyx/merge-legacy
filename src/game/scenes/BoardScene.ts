@@ -7,7 +7,7 @@ import { SpawnerPieceView, drawSpawnerPieceIcon } from '../objects/SpawnerPieceV
 import { SplitterView, drawSplitterIcon } from '../objects/SplitterView';
 import type { GridPosition } from '../types';
 import { CHAINS, getTierDef, isCurrencyChain, spawnerPieceTiers } from '../data/chains';
-import { burstParticles, shakeForTier, floatingScore, ensureParticleTexture } from '../fx/MergeFx';
+import { burstParticles, shakeForTier, floatingScore, ensureParticleTexture, shockwaveRing } from '../fx/MergeFx';
 import {
   createDefaultEconomy,
   addCoins,
@@ -76,8 +76,7 @@ import {
   drawSourceBuilding,
   drawTierIcon,
   iconPresentation,
-  sourcePalette
-} from '../objects/TierIcons';
+  sourcePalette, DECAGON_MACHINE_COLOR } from '../objects/TierIcons';
 import { RoomView3D, ROOM_SCOPES, ROOM_PIECES, roomPiecesForStage, type RoomPiece } from '../rooms/RoomView3D';
 import { CrateView } from '../objects/CrateView';
 import { ResourceProducerView } from '../objects/ResourceProducerView';
@@ -107,7 +106,7 @@ import {
   dailyRewardFor,
   dailyOfferLevel,
   DECAGON_METER_MAX,
-  rollDecagonPrize,
+  rollDecagonPayout,
   milestoneCrateFor,
   claimMeterCrate,
   finishMeterCooldown,
@@ -2303,59 +2302,120 @@ export class BoardScene extends Phaser.Scene {
       return;
     }
 
-    let removed = 0;
+    // THE MACHINE STAYS UNTIL THE HAUL IS OUT.
+    //
+    // It used to vanish the instant the meter filled, which threw the payout
+    // away from a cell with nothing on it. The Decagon is what is paying, so
+    // it has to still be there while it pays - it eats, it spins, it spits
+    // the haul out one piece at a time, and only then does it go.
+    //
+    // Found FIRST, because the ten items have to know where to fly to.
+    const machine = [...this.views.entries()].find(
+      (entry): entry is [string, SpawnerView] =>
+        entry[1] instanceof SpawnerView && entry[1].spawner.typeId === 'decagon'
+    );
     let origin = { x: this.scale.width / 2, y: this.scale.height / 2 };
-    for (let row = 0; row < ROWS && removed < DECAGON_METER_MAX; row++) {
-      for (let col = 0; col < COLS && removed < DECAGON_METER_MAX; col++) {
+    if (machine) origin = this.cellToWorld(machine[1].gridPos);
+
+    // THE MEAL. The ten are pulled INTO the machine rather than deleted where
+    // they stand - they were blinking out in a single frame, which is the one
+    // moment that explains what a Decagon does.
+    //
+    // Their grid cells and their views part company here: the cells clear
+    // immediately, so nothing can count or land on them while the flight is
+    // in the air, and the views live on unowned until they arrive.
+    let eaten = 0;
+    const CONSUME_STAGGER_MS = 55;
+    const CONSUME_FLIGHT_MS = 480;
+    for (let row = 0; row < ROWS && eaten < DECAGON_METER_MAX; row++) {
+      for (let col = 0; col < COLS && eaten < DECAGON_METER_MAX; col++) {
         const pos = { col, row };
         const cell = this.grid.get(pos);
         if (cell?.kind !== 'item' || cell.typeId !== 'decagon') continue;
         const key = this.keyOf(pos);
-        if (removed === 0) origin = this.cellToWorld(pos);
-        this.views.get(key)?.destroy();
+        const view = this.views.get(key);
         this.views.delete(key);
         this.grid.set(pos, null);
         if (this.selectedItemKey === key) this.selectedItemKey = null;
-        removed++;
+        if (view) {
+          this.tweens.add({
+            targets: view,
+            x: origin.x,
+            y: origin.y,
+            scale: 0.15,
+            angle: 200,
+            alpha: 0.85,
+            delay: eaten * CONSUME_STAGGER_MS,
+            duration: CONSUME_FLIGHT_MS,
+            // Accelerating in: it should look pulled, not placed.
+            ease: 'Quad.In',
+            onComplete: () => view.destroy()
+          });
+        }
+        eaten++;
       }
     }
 
-    // THE MACHINE GOES WITH THE PAYOUT. A Decagon exists to fill its meter
-    // once: the tenth item drops, it eats all ten, pays out, and leaves. It
-    // is not a source that runs until a reservoir empties - that version
-    // could die holding a partial set, stranding the meter with no machine
-    // to finish it.
-    for (const [key, view] of [...this.views.entries()]) {
-      if (!(view instanceof SpawnerView) || view.spawner.typeId !== 'decagon') continue;
-      const cell = view.gridPos;
-      origin = this.cellToWorld(cell);
-      this.grid.set(cell, null);
-      view.destroy();
-      this.views.delete(key);
-      break;
-    }
+    // The payout waits for the last mouthful to land.
+    const swallowMs = CONSUME_FLIGHT_MS + CONSUME_STAGGER_MS * Math.max(0, eaten - 1);
+    machine?.[1].setDepth(1);
+    this.time.delayedCall(swallowMs, () => machine?.[1].playPayoutSpin());
 
-    const prize = rollDecagonPrize(this.rewards);
-    if (prize.kind === 'crate') {
-      this.awardCrate(prize.tier, 'DECAGON', origin);
-    } else {
-      const producerId: ResourceProducerId = prize.producerId;
-      this.enqueueForcedSpawn({
-        kind: 'resource-producer',
-        producerId,
-        remaining: RESOURCE_PRODUCERS[producerId].capacity
-      });
-      this.tryReleaseVaultItem();
-    }
-    this.refreshDecagonMachines();
+    const payout = rollDecagonPayout(this.rewards);
+    const crates = payout.filter((entry) => entry.kind === 'crate').length;
     this.refreshActionTray(
-      prize.kind === 'crate'
-        ? `DECAGON METER PAID  ·  ${CRATE_LABELS[prize.tier]}`
-        : `DECAGON METER PAID  ·  ${RESOURCE_PRODUCERS[prize.producerId].label.toUpperCase()}`
+      `DECAGON METER PAID  ·  ${payout.length} ITEMS
+` +
+      `${crates} CRATES  ·  ${payout.length - crates} BASKETS`
     );
-    this.saveState();
-    this.refreshOrderBar();
-    this.checkDeadlock();
+
+    // ONE AT A TIME, on a timer. Handing all six over in the same frame put
+    // them on the board as a single silent pop; spaced out, each one is its
+    // own arrival and the spin has something to be spinning for.
+    const PAYOUT_BEAT_MS = 300;
+    let next = 0;
+    const emit = (): void => {
+      const entry = payout[next++];
+      if (!entry) {
+        // The machine leaves with the last item, not before it.
+        if (machine) {
+          const [key, view] = machine;
+          const at = this.cellToWorld(view.gridPos);
+          // The cell is held until the collapse finishes, so nothing from the
+          // vault lands on top of a machine that is still leaving.
+          view.playExit(() => {
+            shockwaveRing(this, at.x, at.y, DECAGON_MACHINE_COLOR);
+            this.grid.set(view.gridPos, null);
+            this.views.delete(key);
+            view.destroy();
+            this.refreshDecagonMachines();
+            this.tryReleaseVaultItem();
+            this.saveState();
+            this.checkDeadlock();
+          });
+        }
+        this.refreshDecagonMachines();
+        this.tryReleaseVaultItem();
+        this.saveState();
+        this.refreshOrderBar();
+        this.checkDeadlock();
+        return;
+      }
+      if (entry.kind === 'crate') {
+        this.awardCrate(entry.tier, 'DECAGON', origin);
+      } else {
+        this.enqueueForcedSpawn(
+          {
+            kind: 'resource-producer',
+            producerId: entry.producerId,
+            remaining: RESOURCE_PRODUCERS[entry.producerId].capacity
+          },
+          origin
+        );
+      }
+      this.time.delayedCall(PAYOUT_BEAT_MS, emit);
+    };
+    this.time.delayedCall(swallowMs + 260, emit);
   }
 
   placeTile(pos: GridPosition, typeId: string, tier: number, animateIn: boolean): TileView {

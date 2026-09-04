@@ -317,16 +317,25 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
       align: 'center', wordWrap: { width: w - 10 }, lineSpacing: 1
     }).setOrigin(0.5).setLetterSpacing(0.5));
 
-    const artObj = art(cx, top + 64) as Phaser.GameObjects.GameObject
+    // Cards with a subtitle give it two lines' worth of room by lifting the
+    // art; the pack cards (no subtitle) keep the art centred where it was.
+    const artObj = art(cx, top + (sub ? 58 : 64)) as Phaser.GameObjects.GameObject
       & Partial<Phaser.GameObjects.Components.Alpha>;
     if (!enabled) artObj.setAlpha?.(0.45);
     content.add(artObj);
 
     if (sub) {
-      content.add(scene.add.text(cx, top + h - SHOP_CARD_FOOTER - 12, sub, {
+      // Bottom-anchored and WRAPPED. It used to be a single centred line at a
+      // fixed y with no wrap width, so `RESTOCKING  ·  1:23:45` - wider than a
+      // third of the panel - simply ran past both edges of its own card and
+      // collided with the countdowns either side of it. Anchoring the bottom
+      // means a second line grows upward into the gap under the art instead
+      // of downward into the price chip.
+      content.add(scene.add.text(cx, top + h - SHOP_CARD_FOOTER + 2, sub, {
         resolution: textResolution,
-        fontFamily: Theme.fontMono, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
-      }).setOrigin(0.5));
+        fontFamily: Theme.fontMono, fontSize: '10px', color: hex(Theme.textOnDarkMuted),
+        align: 'center', wordWrap: { width: w - 8 }, lineSpacing: 2
+      }).setOrigin(0.5, 1));
     }
 
     const priceColor = enabled ? price.color : Theme.textOnDarkMuted;
@@ -335,6 +344,9 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
       const pill = currencyPill(scene, price.value, price.kind, {
         fontSize: 15, iconSize: 28, height: 22, padX: 9, ...currencyChipOptions(price.kind)
       }).setPosition(cx, priceY);
+      // 28 is the icon size, which overhangs the 22px pill - that overhang is
+      // the chip's real bottom edge, so it is what gets seated.
+      seatPricePill(pill, top, h, w, 28);
       if (!enabled) pill.setAlpha(0.5);
       content.add(pill);
     } else {
@@ -344,12 +356,16 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
         resolution: textResolution,
         fontFamily: Theme.fontNumeric, fontSize: '16px', fontStyle: 'bold', color: hex(Theme.textOnDark)
       }).setOrigin(0.5);
-      const bw = label.width + 26;
+      // Clamped to the card for the same reason the pills are, and seated on
+      // the same bottom inset so the money button lines up with them.
+      const bw = Math.min(w - 10, label.width + 26);
+      const btnY = top + h - 4 - 22;
+      label.setY(btnY + 11);
       const btn = scene.add.graphics();
       btn.fillStyle(priceColor, enabled ? 0.9 : 0.3);
-      btn.fillRoundedRect(cx - bw / 2, priceY - 11, bw, 22, Theme.radiusChip);
+      btn.fillRoundedRect(cx - bw / 2, btnY, bw, 22, Theme.radiusChip);
       btn.lineStyle(1, 0xffffff, 0.18);
-      btn.lineBetween(cx - bw / 2 + 3, priceY - 10, cx + bw / 2 - 3, priceY - 10);
+      btn.lineBetween(cx - bw / 2 + 3, btnY + 1, cx + bw / 2 - 3, btnY + 1);
       content.add([btn, label]);
       content.bringToTop(label);
     }
@@ -397,7 +413,7 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
     // Each tier restocks on its own clock now, so the shelf has no single
     // state to report - the line says the rule and each card says its own
     // wait.
-    content.add(scene.add.text(left, cursor + 11, 'OPENS IMMEDIATELY  ·  EACH TIER RESTOCKS ON ITS OWN', {
+    content.add(scene.add.text(left, cursor + 11, 'OPENS INSTANTLY  ·  PER-TIER RESTOCK', {
       resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '12px',
       color: hex(Theme.textOnDarkMuted)
     }).setOrigin(0, 0.5));
@@ -420,7 +436,11 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
         `${offer.tier.toUpperCase()} CRATE`,
         // The card carries its own countdown while it is restocking, so a
         // dimmed card explains itself rather than needing a tap to find out.
-        cooling > 0 ? `RESTOCKING  ·  ${formatCrateWait(cooling)}` : `RESTOCK ${formatCrateWait(offer.cooldownMs)}`,
+        cooling > 0
+          ? `RESTOCKING
+${formatCrateWait(cooling)}`
+          : `RESTOCK
+${formatCrateWait(offer.cooldownMs)}`,
         { value: price.toLocaleString(), kind: 'credit', color: CURRENCY_COLOR.credit },
         buyable,
         false,
@@ -772,6 +792,7 @@ export function buildOfferSlot(scene: BoardScene, container: Phaser.GameObjects.
     // look, not an accident.
     { fontSize: 15, iconSize: 28, height: 22, padX: 9, ...currencyChipOptions(priceKind) }
   ).setPosition(x, y + h - SHOP_CARD_FOOTER / 2);
+  seatPricePill(priceText, y, h, w, 28);
   container.add(priceText);
 
   // The whole card is the purchase target. The tap check still prevents a
@@ -862,6 +883,35 @@ export function reopenShop(scene: BoardScene, notice: { text: string; error: boo
  * minimal ground, brutalist cut edges, a little industrial hardware - and
  * it is what the flat `panelAlt` rectangle was missing.
  */
+/**
+ * Seats a price chip in a card's footer band.
+ *
+ * Two things every price button in the store needs and none of them had:
+ *
+ * 1. It is CLAMPED to its own card. `currencyPill` sizes itself to its text,
+ *    so a five-figure Credit price built a chip wider than the card holding
+ *    it - and with three cards to a row, the overflow ran straight into the
+ *    neighbouring price. Scaling down is better than truncating: the number
+ *    is the product on these cards and has to stay readable.
+ * 2. It is seated FLUSH to the card's bottom edge, measured against the
+ *    chip's real drawn height. The currency icon is deliberately taller than
+ *    the pill (the HUD's own look), so centring on the footer band left the
+ *    icon hanging past the card while the pill itself floated.
+ */
+function seatPricePill(
+  pill: Phaser.GameObjects.Container,
+  cardTop: number,
+  cardH: number,
+  cardW: number,
+  drawnH: number
+): Phaser.GameObjects.Container {
+  const INSET = 4;
+  const scale = Math.min(1, (cardW - 10) / pill.width);
+  pill.setScale(scale);
+  pill.setY(cardTop + cardH - INSET - (drawnH * scale) / 2);
+  return pill;
+}
+
 export function drawShopCard(scene: BoardScene, 
   x: number, y: number, w: number, h: number, accent: number,
   options: { footer?: number; header?: number; solidHeader?: boolean } = {}

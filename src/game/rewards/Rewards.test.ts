@@ -18,8 +18,9 @@ import {
   dailyOfferLevel,
   feedDecagonMeter,
   decagonMeterReady,
-  rollDecagonPrize,
-  DECAGON_PRIZES,
+  rollDecagonPayout,
+  DECAGON_PAYOUT_ITEMS,
+  DECAGON_CRATE_QUOTA,
   dailyAvailable,
   dayIndexFor,
   milestoneCrateFor,
@@ -383,22 +384,45 @@ describe('decagon meter', () => {
     expect(carried.decagonMeter).toBe(2);
   });
 
-  it('empties the meter when it rolls, and only ever pays a real prize', () => {
+  it('empties the meter when it rolls, and pays a full twenty items', () => {
     const state = createDefaultRewardsState();
     for (let i = 0; i < 10; i++) feedDecagonMeter(state);
-    const prize = rollDecagonPrize(state, () => 0.999);
+    const payout = rollDecagonPayout(state, () => 0.999);
     expect(state.decagonMeter).toBe(0);
-    expect(prize.kind === 'crate' || prize.kind === 'producer').toBe(true);
+    expect(payout).toHaveLength(DECAGON_PAYOUT_ITEMS);
   });
 
-  it('weights the table so the jackpot is rare but reachable', () => {
-    // Checked against the table rather than by sampling: a sampled assertion
-    // on a 4% event is a flaky test wearing a statistics costume.
-    const total = DECAGON_PRIZES.reduce((sum, row) => sum + row.weight, 0);
-    const vault = DECAGON_PRIZES.find((row) => row.prize.kind === 'crate' && row.prize.tier === 'vault');
-    const vaultPercent = vault ? (vault.weight / total) * 100 : 0;
-    expect(vaultPercent).toBeGreaterThan(2);
-    expect(vaultPercent).toBeLessThan(8);
+  it('always pays at least one vault crate, whatever the rolls', () => {
+    // Both extremes of every quota range, since the guarantee is the whole
+    // point of the table and a mid-roll sample would not prove it.
+    for (const rng of [() => 0, () => 0.999]) {
+      const state = createDefaultRewardsState();
+      const payout = rollDecagonPayout(state, rng);
+      const crates = payout.filter((entry) => entry.kind === 'crate');
+      const vaults = crates.filter((entry) => entry.kind === 'crate' && entry.tier === 'vault');
+      expect(vaults.length).toBeGreaterThanOrEqual(1);
+      expect(payout).toHaveLength(DECAGON_PAYOUT_ITEMS);
+      // Crates never crowd out the baskets entirely.
+      expect(crates.length).toBeLessThan(DECAGON_PAYOUT_ITEMS);
+    }
+  });
+
+  it('emits the crates best-first so they land on the freed cells', () => {
+    const state = createDefaultRewardsState();
+    const payout = rollDecagonPayout(state, () => 0.5);
+    expect(payout[0]).toEqual({ kind: 'crate', tier: 'vault' });
+    const lastCrate = payout.findIndex((entry) => entry.kind === 'producer');
+    expect(payout.slice(lastCrate).every((entry) => entry.kind === 'producer')).toBe(true);
+  });
+
+  it('keeps the quota inside its declared ranges', () => {
+    const state = createDefaultRewardsState();
+    const payout = rollDecagonPayout(state, () => 0.999);
+    for (const row of DECAGON_CRATE_QUOTA) {
+      const n = payout.filter((entry) => entry.kind === 'crate' && entry.tier === row.tier).length;
+      expect(n).toBeGreaterThanOrEqual(row.min);
+      expect(n).toBeLessThanOrEqual(row.max);
+    }
   });
 });
 

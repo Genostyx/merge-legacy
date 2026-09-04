@@ -3324,7 +3324,29 @@ function drawGlassSourceLevelIsometric(
 const SOURCE_PALETTE_TIER = 2;
 
 /** Flat, tier-independent palette for a source building. */
+/**
+ * The Decagon machine's own colour, deliberately NOT its family colour.
+ *
+ * The chain's violet (0xb0a0ea) is a light lavender - right for the small
+ * token, far too friendly for the thing that eats ten of them.
+ *
+ * The FLOOR is what matters here, not the base. A first attempt used a void
+ * indigo (0x2b1b47) read at tier 9, on the theory that a wide tonal spread
+ * reads as awe. It does - but tier 9 drives the shadow end to a tenth of the
+ * base, which put the turned-away faces at luminance 10 against a board of
+ * 26. The solid's dark side was DARKER THAN THE BOARD and the shape
+ * disappeared into it.
+ *
+ * So: a brighter, more saturated void violet read at tier 5. The darkest
+ * face now sits around luminance 44 - comfortably above the board - while
+ * the lit faces still reach a near-white violet, so the cube keeps its range
+ * without any part of it falling through the background.
+ */
+export const DECAGON_MACHINE_COLOR = 0x6b4fd0;
+const DECAGON_MACHINE_TIER = 7;
+
 export function sourcePalette(typeId: string): Palette {
+  if (typeId === 'decagon') return materialLighting(DECAGON_MACHINE_COLOR, DECAGON_MACHINE_TIER);
   // Falls back to tier 1 before falling back to grey: the Decagon's chain is
   // ONE tier long, so asking it for a mid-chain colour returns nothing and
   // its machine came out the panel's dead grey rather than its own violet.
@@ -3339,69 +3361,150 @@ export function sourcePalette(typeId: string): Palette {
  * card or chassis behind it; the structure is the complete board object.
  */
 /**
+ * THE SNUB CUBE, baked from SnubCube.stl (Wolfram export, 44 triangles).
+ *
+ * This is what the Decagon machine actually is. Turned to the one view where
+ * its silhouette has exactly ten corners - a decagon - which is where the
+ * family's name comes from. That view direction is not a symmetry axis and
+ * was found by search: the four-fold axes give an octagon and the three-fold
+ * an irregular twelve, so nothing simpler produces the shape the name
+ * promises.
+ *
+ * The vertices are stored ALREADY ROTATED into that view and scaled to a
+ * silhouette radius of 1, so drawing is a plain x/y projection with no trig -
+ * the orientation is a property of the object, not a runtime parameter.
+ *
+ * The STL's 44 triangles are merged back into 38 faces here (32 triangles +
+ * 6 squares). Left as raw triangles, each square shaded as two mismatched
+ * halves and the solid read as a crumpled ball rather than a cut one.
+ */
+const SNUB_CUBE_VERTS: [number, number, number][] = [
+  [-0.5136, 0.7963, 0.3208],
+  [-0.1600, 0.9344, -0.3196],
+  [-0.9522, 0.3056, -0.0272],
+  [0.7334, 0.1258, -0.6687],
+  [0.5642, 0.7615, -0.3202],
+  [0.9700, 0.2431, 0.0274],
+  [-0.0862, 0.5075, 0.8577],
+  [0.2202, 0.9217, 0.3204],
+  [0.8654, -0.4519, -0.2180],
+  [0.3718, -0.5168, -0.7716],
+  [0.3051, -0.9389, -0.1619],
+  [-0.3653, -0.9172, 0.1611],
+  [-0.2973, -0.7698, -0.5654],
+  [0.2467, -0.7880, 0.5648],
+  [0.6261, 0.4033, 0.6679],
+  [0.8071, -0.3010, 0.5087],
+  [0.2328, -0.1573, 0.9601],
+  [0.1190, 0.5016, -0.8573],
+  [-0.2425, -0.1410, -0.9602],
+  [-0.8929, -0.3950, 0.2177],
+  [-0.4046, -0.4923, 0.7712],
+  [-0.7237, 0.1725, 0.6688],
+  [-0.8249, -0.2476, -0.5089],
+  [-0.5985, 0.4436, -0.6676],
+];
+const SNUB_CUBE_FACES: number[][] = [
+  [0, 1, 23, 2],
+  [3, 4, 5],
+  [0, 6, 7],
+  [3, 8, 9],
+  [10, 11, 12],
+  [11, 10, 13],
+  [7, 6, 14],
+  [15, 5, 14],
+  [16, 15, 14],
+  [1, 0, 7],
+  [4, 1, 7],
+  [3, 17, 4],
+  [17, 1, 4],
+  [8, 3, 5],
+  [15, 8, 5],
+  [17, 3, 9, 18],
+  [19, 20, 21],
+  [6, 16, 14],
+  [5, 4, 7, 14],
+  [12, 18, 9],
+  [9, 8, 10],
+  [12, 9, 10],
+  [8, 15, 13, 10],
+  [0, 2, 21],
+  [12, 11, 19, 22],
+  [22, 19, 2],
+  [2, 19, 21],
+  [1, 17, 23],
+  [22, 2, 23],
+  [20, 16, 6, 21],
+  [6, 0, 21],
+  [22, 18, 12],
+  [18, 22, 23],
+  [17, 18, 23],
+  [15, 16, 13],
+  [13, 16, 20],
+  [19, 11, 20],
+  [11, 13, 20],
+];
+
+/**
+ * Draws the snub cube flat-shaded, one tone per face.
+ *
+ * Culling is by the face's own outward normal rather than by projected
+ * winding: merging the STL's triangles into squares did not preserve a
+ * consistent winding, and for a convex solid centred on the origin the
+ * centroid direction IS the outward normal, which makes the test both
+ * correct and cheap.
+ */
+function drawSnubCube(g: Phaser.GameObjects.Graphics, radius: number, cy: number, p: Palette, edge: number): void {
+  const LX = -0.5, LY = -0.68, LZ = 0.54;
+  for (const face of SNUB_CUBE_FACES) {
+    let nx = 0, ny = 0, nz = 0;
+    for (const i of face) {
+      nx += SNUB_CUBE_VERTS[i][0];
+      ny += SNUB_CUBE_VERTS[i][1];
+      nz += SNUB_CUBE_VERTS[i][2];
+    }
+    nx /= face.length; ny /= face.length; nz /= face.length;
+    // Facing away from the camera, which looks down +z.
+    if (nz <= 0) continue;
+    const len = Math.hypot(nx, ny, nz) || 1;
+    // Screen y runs down, so the normal's y is flipped to match the points.
+    const lit = Math.max(0, (nx / len) * LX + (-ny / len) * LY + (nz / len) * LZ);
+
+    const points = face.map((i) => new Phaser.Geom.Point(
+      SNUB_CUBE_VERTS[i][0] * radius,
+      cy - SNUB_CUBE_VERTS[i][1] * radius
+    ));
+    g.fillStyle(toneForNormal(p, Math.min(1, lit)), 1);
+    g.fillPoints(points, true);
+    // Edges are drawn LIGHTER than the faces, not darker. A dark outline on a
+    // dark solid is invisible, and with 38 small faces the thing read as a
+    // plain violet ball - the facet boundaries are the only thing that says
+    // it is cut rather than round.
+    g.lineStyle(Math.max(1, radius * 0.022), edge, 0.5);
+    g.strokePoints(points, true);
+  }
+}
+
+/**
  * THE DECAGON MACHINE. Every other source is a BUILDING - a mill, a stone
  * works, a glass house, a well - because every other source is permanent
  * infrastructure. This one is a machine on a stand: a ten-sided drum in a
  * cradle, with a chute at the bottom. It is temporary, and it should read as
  * something set down on the board rather than built into it.
  *
- * The drum carries the same ten-sided silhouette as the item it produces, so
- * the connection between the machine and the token needs no label.
+ * The solid in the cradle is a real snub cube, turned to the one view whose
+ * silhouette has ten corners - which is where the family's name comes from
+ * and why the machine needs no label to explain itself.
  */
 function drawDecagonMachine(g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean): void {
-  const SIDES = 10;
-  const R = r * 1.15;
-  const cy = -r * 0.15;
-  const start = -Math.PI / 2 + Math.PI / SIDES;
-  const ring = (radius: number): Phaser.Geom.Point[] => {
-    const pts: Phaser.Geom.Point[] = [];
-    for (let i = 0; i < SIDES; i++) {
-      const a = start + (i / SIDES) * Math.PI * 2;
-      pts.push(new Phaser.Geom.Point(Math.cos(a) * radius, cy + Math.sin(a) * radius));
-    }
-    return pts;
-  };
-
-  // Cradle: two legs and a base plate, drawn first so the drum sits in front.
-  g.fillStyle(p.dark, 1);
-  g.fillRect(-R * 0.86, cy + R * 0.5, R * 0.24, R * 0.9);
-  g.fillRect(R * 0.62, cy + R * 0.5, R * 0.24, R * 0.9);
-  g.fillGradientStyle(p.light, p.light, p.dark, p.dark, 1);
-  g.fillRect(-R * 1.02, cy + R * 1.3, R * 2.04, R * 0.22);
-  g.lineStyle(Math.max(1, r * 0.04), p.dark, 0.9);
-  g.strokeRect(-R * 1.02, cy + R * 1.3, R * 2.04, R * 0.22);
-
-  // The drum.
-  const outer = ring(R);
-  const inner = ring(R * 0.6);
-  g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
-  g.fillPoints(outer, true);
-  for (let i = 0; i < SIDES; i++) {
-    const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
-    const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
-    g.fillStyle(toneForNormal(p, lit), 1);
-    g.fillPoints([outer[i], outer[(i + 1) % SIDES], inner[(i + 1) % SIDES], inner[i]], true);
-  }
-  g.lineStyle(Math.max(1.2, r * 0.05), p.dark, 0.95);
-  g.strokePoints(outer, true);
-
-  // Hub, lit when there are drops left in it.
-  g.fillStyle(ready ? p.highlight : p.shadow, 1);
-  g.fillCircle(0, cy, R * 0.28);
-  g.lineStyle(Math.max(1, r * 0.04), p.dark, 0.9);
-  g.strokeCircle(0, cy, R * 0.28);
-
-  // Chute: where the tokens come out.
-  g.fillStyle(p.shadow, 1);
-  g.beginPath();
-  g.moveTo(-R * 0.34, cy + R * 0.95);
-  g.lineTo(R * 0.34, cy + R * 0.95);
-  g.lineTo(R * 0.2, cy + R * 1.3);
-  g.lineTo(-R * 0.2, cy + R * 1.3);
-  g.closePath();
-  g.fillPath();
-  g.lineStyle(Math.max(1, r * 0.035), p.dark, 0.9);
-  g.strokePath();
+  // JUST THE SOLID. The cradle, base plate, hub lamp and output chute are
+  // gone: the snub cube is the machine, and the ten pips SpawnerView draws
+  // around it are the only other thing on the cell. Everything that used to
+  // sit under it was scaffolding explaining a shape that now explains itself.
+  //
+  // Centred and grown into the room the cradle used to take, while staying
+  // clear of the pip ring at 0.54 of the cell.
+  drawSnubCube(g, r * 2.0, 0, p, ready ? p.highlight : p.light);
 }
 
 export function drawSourceBuilding(
@@ -3442,6 +3545,10 @@ export function drawSourceBuilding(
   }
 
   // One restrained readiness lamp keeps the techno accent functional.
+  // The Decagon is exempt: it is meant to be the solid and its ten pips and
+  // nothing else, and an amber lamp parked at its lower right was the one
+  // thing left on the cell that was not either of those.
+  if (typeId === 'decagon') return;
   g.fillStyle(ready ? (typeId === 'water' ? 0xe5e8e5 : Theme.accentAmber) : p.dark, ready ? 1 : 0.7);
   g.fillCircle(r * 0.83, r * 0.84, Math.max(1.5, r * 0.1));
 }

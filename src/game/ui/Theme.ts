@@ -33,7 +33,11 @@ export const Theme = {
   borderOnLight: 0xc6beb3,
 
   textOnDark: 0xf1eee9,
-  textOnDarkMuted: 0x9f9589,
+  // Was a grey (0x9f9589). Owner's call: secondary text reads white like
+  // everything else, so the token now matches textOnDark. Kept as its own
+  // name because ~40 call sites use it to mean "secondary", and collapsing
+  // them loses the record of which text that is.
+  textOnDarkMuted: 0xf1eee9,
   textOnLight: 0x2f2923,
   textOnLightMuted: 0x746b63,
 

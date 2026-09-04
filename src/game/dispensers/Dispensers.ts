@@ -1,3 +1,5 @@
+import { CHAINS } from '../data/chains';
+
 export interface Dispenser {
   id: string;
   typeId: string;
@@ -253,7 +255,18 @@ export function collectDispenser(
 ): { typeId: string; tier: number } | null {
   if (!isReady(d, now)) return null;
   const bonus = rollOutputBonus(roll);
-  const chainCap = d.typeId === 'water' ? 12 : 9;
+  // The cap is the CHAIN'S OWN LENGTH, not a literal.
+  //
+  // This was `water ? 12 : 9`, which is right for every family that happens
+  // to have nine tiers and wrong for the Decagon, whose chain is one tier
+  // long: the output bonus pushed roughly a quarter of its drops out at tier
+  // 2 or 3, items with no tier definition at all. The meter counts tier-1
+  // Decagons, so those drops sat on the board without ever counting, and the
+  // machine ran well past ten before it could cash.
+  //
+  // Falls back to 9 for a typeId with no chain so the pure-rules tests can
+  // still drive this with invented families.
+  const chainCap = CHAINS.find((c) => c.typeId === d.typeId)?.tiers.length ?? 9;
   const produced = { typeId: d.typeId, tier: Math.min(chainCap, d.tier + bonus) };
   const wasFull = d.charges >= capacityForTier(d.typeId, d.tier);
   d.charges -= 1;

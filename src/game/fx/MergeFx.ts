@@ -115,3 +115,107 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
   g.generateTexture('__WHITE', 4, 4);
   g.destroy();
 }
+
+/**
+ * The Decagon's exit shockwave. Deliberately NOT burstParticles.
+ *
+ * That ring is tuned for merges - it tops out around 32px and stays thin on
+ * purpose, because it fires constantly and must not fatigue. This fires once
+ * in the life of a machine that took five piece tiers and ten items to
+ * build, so it is allowed to take the whole screen.
+ *
+ * And it is a GAS CLOUD, not a stroked circle. A one-pixel outline reads as a
+ * UI element; what this wants to look like is the expanding shell of an
+ * explosion, so it is built as a thick band with volume:
+ *
+ *  - the band is drawn as a quad strip, one quad per angular segment, which
+ *    lets every segment carry its own tone and opacity. That per-segment
+ *    variation is what makes it look like gas rather than paint.
+ *  - its radius is perturbed by three sine harmonics at random phases, so
+ *    the shell is lumpy and no two bursts are the same shape.
+ *  - three passes stack up: a wide dim halo, the dense body, and a hot inner
+ *    rim, which is the ordinary way a luminous shell is built up from flat
+ *    fills.
+ *  - the band widens as it expands and thins in opacity, the way a real
+ *    shell dissipates.
+ */
+function mixColor(a: number, b: number, t: number): number {
+  const ch = (shift: number) => {
+    const x = (a >> shift) & 0xff;
+    const y = (b >> shift) & 0xff;
+    return Math.round(x + (y - x) * t) & 0xff;
+  };
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+export function shockwaveRing(scene: Phaser.Scene, x: number, y: number, color: number): void {
+  const reach = Math.max(scene.scale.width, scene.scale.height) * 0.95;
+  const SEGMENTS = 72;
+  // Fixed per burst, so the shell holds its shape as it grows instead of
+  // boiling - it is one cloud expanding, not a new cloud every frame.
+  const phase = [Math.random() * 7, Math.random() * 7, Math.random() * 7];
+  const lump = (a: number): number =>
+    1
+    + 0.075 * Math.sin(a * 3 + phase[0])
+    + 0.05 * Math.sin(a * 5 + phase[1])
+    + 0.03 * Math.sin(a * 7 + phase[2]);
+  // One fixed mottle value per segment, again so it travels with the gas.
+  const mottle = Array.from({ length: SEGMENTS }, () => 0.55 + Math.random() * 0.45);
+
+  const deep = mixColor(color, 0x140a2e, 0.55);
+  const hot = mixColor(color, 0xffffff, 0.75);
+
+  const g = scene.add.graphics().setDepth(3001);
+  scene.tweens.addCounter({
+    from: 0,
+    to: 1,
+    duration: 1500,
+    ease: 'Cubic.Out',
+    onUpdate: (tween) => {
+      const t = tween.getValue() ?? 0;
+      const R = 12 + t * reach;
+      // Widens as it goes: a shell that keeps its thickness looks like a
+      // hoop being scaled up rather than gas coming apart.
+      const width = R * (0.16 + t * 0.22);
+      const fade = 1 - t;
+
+      g.clear();
+      const band = (inner: number, outer: number, tone: number, alpha: number): void => {
+        for (let i = 0; i < SEGMENTS; i++) {
+          const a0 = (i / SEGMENTS) * Math.PI * 2;
+          const a1 = ((i + 1) / SEGMENTS) * Math.PI * 2;
+          const l0 = lump(a0);
+          const l1 = lump(a1);
+          const o0 = outer * l0, o1 = outer * l1;
+          const i0 = inner * l0, i1 = inner * l1;
+          g.fillStyle(tone, alpha * mottle[i]);
+          g.fillPoints([
+            new Phaser.Geom.Point(x + Math.cos(a0) * o0, y + Math.sin(a0) * o0),
+            new Phaser.Geom.Point(x + Math.cos(a1) * o1, y + Math.sin(a1) * o1),
+            new Phaser.Geom.Point(x + Math.cos(a1) * i1, y + Math.sin(a1) * i1),
+            new Phaser.Geom.Point(x + Math.cos(a0) * i0, y + Math.sin(a0) * i0)
+          ], true);
+        }
+      };
+
+      band(R - width * 1.5, R + width * 1.1, deep, 0.22 * fade);
+      band(R - width * 0.75, R + width * 0.5, color, 0.42 * fade);
+      band(R - width * 0.28, R + width * 0.1, hot, 0.5 * fade * fade);
+    },
+    onComplete: () => g.destroy()
+  });
+
+  // Speckle thrown out with the shell, so the leading edge has grit in it.
+  ensureParticleTexture(scene);
+  const particles = scene.add.particles(x, y, '__WHITE', {
+    lifespan: 1200,
+    speed: { min: reach * 0.5, max: reach * 1.15 },
+    scale: { start: 0.22, end: 0 },
+    quantity: 26,
+    blendMode: Phaser.BlendModes.NORMAL,
+    tint: [color, hot, deep],
+    emitting: false
+  }).setDepth(3002);
+  particles.explode(26);
+  scene.time.delayedCall(1500, () => particles.destroy());
+}

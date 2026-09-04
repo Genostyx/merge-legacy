@@ -19,6 +19,15 @@ export class SpawnerView extends Phaser.GameObjects.Container {
   private timerPie: Phaser.GameObjects.Graphics;
   private ring: Phaser.GameObjects.Graphics;
   private ringTween?: Phaser.Tweens.Tween;
+  /**
+   * The Decagon's ten pips, on their OWN Graphics so they can be spun.
+   * They used to be drawn into `core` alongside the building and the frame,
+   * which cannot rotate without taking the machine with it.
+   */
+  private meterRing!: Phaser.GameObjects.Graphics;
+  private spinTween?: Phaser.Tweens.Tween;
+  private payingOut = false;
+  private exiting = false;
   private lastReady: boolean | null = null;
   /**
    * How many Decagon items are standing on the board, 0-10. Drawn as ten pips
@@ -58,9 +67,10 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     this.core = scene.add.graphics();
     this.timerPie = scene.add.graphics();
     this.ring = scene.add.graphics().setVisible(false);
+    this.meterRing = scene.add.graphics();
 
     if (this.sprite) this.add(this.sprite);
-    this.add([this.core, this.timerPie, this.ring]);
+    this.add([this.core, this.meterRing, this.timerPie, this.ring]);
     this.setSize(cellSize, cellSize);
     this.refresh();
     scene.add.existing(this);
@@ -68,6 +78,7 @@ export class SpawnerView extends Phaser.GameObjects.Container {
 
   /** Sets the Decagon meter reading. No-op for every other source. */
   setDecagonHeld(held: number): void {
+    if (this.exiting) return;
     if (this.spawner.typeId !== 'decagon' || held === this.decagonHeld) return;
     this.decagonHeld = held;
     this.refresh();
@@ -83,20 +94,147 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     const R = size * 0.54;
     const pipR = Math.max(1.6, size * 0.035);
     const start = -Math.PI / 2;
+    const g = this.meterRing;
+    g.clear();
+    if (this.exiting) return;
+    // Paying out: every pip lit, and a faint ring drawn under them at the
+    // same radius. Spun fast the pips smear into that ring instead of
+    // reading as ten separate dots chasing each other.
+    if (this.payingOut) {
+      g.lineStyle(pipR * 1.6, palette.highlight, 0.35);
+      g.strokeCircle(0, 0, R);
+    }
     for (let i = 0; i < 10; i++) {
       const a = start + (i / 10) * Math.PI * 2;
       const x = Math.cos(a) * R;
       const y = Math.sin(a) * R;
-      const filled = i < this.decagonHeld;
-      this.core.fillStyle(Theme.bg, 0.85);
-      this.core.fillCircle(x, y, pipR + 1.2);
-      this.core.fillStyle(filled ? palette.highlight : Theme.borderOnDark, filled ? 1 : 0.55);
-      this.core.fillCircle(x, y, pipR);
+      const filled = this.payingOut || i < this.decagonHeld;
+      g.fillStyle(Theme.bg, 0.85);
+      g.fillCircle(x, y, pipR + 1.2);
+      g.fillStyle(filled ? palette.highlight : Theme.borderOnDark, filled ? 1 : 0.55);
+      g.fillCircle(x, y, this.payingOut ? pipR * 1.35 : pipR);
       if (filled) {
-        this.core.lineStyle(1, palette.light, 0.8);
-        this.core.strokeCircle(x, y, pipR + 1.2);
+        g.lineStyle(1, palette.light, 0.8);
+        g.strokeCircle(x, y, pipR + 1.2);
       }
     }
+  }
+
+  /**
+   * The payout spin. The machine has just eaten ten items and is about to
+   * hand back a haul one piece at a time, and that wants a beat of its own -
+   * so the meter ring accelerates into a blur and the machine shakes with it.
+   *
+   * Rotation lives on `meterRing`, never on the container: spinning the whole
+   * source would spin the building too.
+   */
+  playPayoutSpin(): void {
+    if (this.spawner.typeId !== 'decagon') return;
+    this.payingOut = true;
+    this.refresh();
+    this.spinTween?.stop();
+    this.meterRing.setRotation(0);
+    // One full turn every 140ms. Fast enough that the ten pips smear into
+    // the ring drawn under them rather than reading as ten dots chasing
+    // each other around the machine.
+    this.spinTween = this.scene.tweens.add({
+      targets: this.meterRing,
+      rotation: Math.PI * 2,
+      duration: 140,
+      repeat: -1,
+      ease: 'Linear'
+    });
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: 1.07,
+      scaleY: 1.07,
+      duration: 130,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.InOut'
+    });
+  }
+
+  /**
+   * THE MACHINE SPENDING ITSELF.
+   *
+   * A Decagon exists to fill its meter once, and until now it simply blinked
+   * out of existence the frame the last reward left - which threw away the
+   * one moment the whole feature builds to.
+   *
+   * So it goes the way it was always meant to: the ten pips it has been
+   * holding break formation and fly outward, and the solid pulls in on
+   * itself. The pips are re-created as loose objects at their CURRENT spun
+   * positions and parented to the scene rather than to this container, so
+   * they scatter on their own while the machine collapses behind them -
+   * children would have been dragged inward by the collapse instead.
+   */
+  playExit(onDone: () => void): void {
+    this.exiting = true;
+    this.spinTween?.stop();
+    this.spinTween = undefined;
+    this.scene.tweens.killTweensOf(this);
+    this.disableInteractive();
+
+    const size = this.cellSize * 0.88 - 2;
+    const R = size * 0.54;
+    const pipR = Math.max(1.6, size * 0.035);
+    const palette = sourcePalette(this.spawner.typeId);
+    const spun = this.meterRing.rotation;
+    this.meterRing.clear();
+
+    // They leave the SCREEN, not the cell. The first version sent them about
+    // one cell out over 430ms while fading the whole way, which finished
+    // before it registered as anything - the throw has to be long enough to
+    // read as ten things escaping.
+    const far = Math.max(this.scene.scale.width, this.scene.scale.height);
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i / 10) * Math.PI * 2 + spun;
+      const pip = this.scene.add.graphics().setDepth(3000);
+      pip.fillStyle(palette.highlight, 1);
+      pip.fillCircle(0, 0, pipR * 1.8);
+      pip.setPosition(this.x + Math.cos(a) * R, this.y + Math.sin(a) * R);
+      this.scene.tweens.add({
+        targets: pip,
+        x: this.x + Math.cos(a) * far,
+        y: this.y + Math.sin(a) * far,
+        duration: 1150,
+        ease: 'Cubic.Out',
+        onComplete: () => pip.destroy()
+      });
+      // Held at full opacity for most of the flight and dropped at the end -
+      // a linear fade makes them ghosts a third of the way out.
+      this.scene.tweens.add({
+        targets: pip,
+        alpha: 0,
+        duration: 1150,
+        ease: 'Quint.In'
+      });
+    }
+
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: 0,
+      scaleY: 0,
+      angle: 220,
+      // Held a beat so the pips are clear of it before it starts to go, then
+      // slow enough to actually watch the collapse.
+      delay: 180,
+      duration: 700,
+      ease: 'Back.In',
+      onComplete: onDone
+    });
+  }
+
+  /** Ends the payout spin and puts the meter back to an ordinary reading. */
+  stopPayoutSpin(): void {
+    this.payingOut = false;
+    this.spinTween?.stop();
+    this.spinTween = undefined;
+    this.scene.tweens.killTweensOf(this);
+    this.meterRing.setRotation(0);
+    this.setScale(1);
+    this.refresh();
   }
 
   refresh(now: number = Date.now()): void {
@@ -125,6 +263,7 @@ export class SpawnerView extends Phaser.GameObjects.Container {
       this.core.setAlpha(1);
     }
     if (this.spawner.typeId === 'decagon') this.drawDecagonMeter(size, palette);
+    else this.meterRing.clear();
 
     const frameHalf = (this.cellSize - 3) / 2;
     const readyColor = this.spawner.typeId === 'water' ? Theme.currencyEnergy : Theme.accentAmber;
@@ -140,6 +279,13 @@ export class SpawnerView extends Phaser.GameObjects.Container {
 
   /** Redraw only the countdown wedge, allowing smooth per-frame animation. */
   refreshTimerPie(now: number = Date.now()): void {
+    // The Decagon has no corner pie. It sits on the cell outline at the
+    // top-right, and on a machine that is meant to be nothing but the solid
+    // and its ten pips it read as a stray orange dot stuck to the frame.
+    if (this.spawner.typeId === 'decagon') {
+      this.timerPie.clear();
+      return;
+    }
     // One cycle only: the pie drains toward the next generated item, then
     // resets for the following tick. A full reservoir has no active timer.
       const size = this.cellSize * 0.96 - 6;
