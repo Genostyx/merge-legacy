@@ -645,7 +645,26 @@ export class BoardScene extends Phaser.Scene {
   /** True while the full-screen room owns the display. */
   private roomPanelOpen = false;
   /** Epoch ms before which no further supply crate may be bought. */
+  /**
+   * Restock deadline PER CRATE TIER, not one shared across the shelf.
+   *
+   * A single timer made a 550-Credit bronze lock the 2,800-Credit gold for
+   * twenty-five minutes: the cheapest purchase blocked the most expensive one,
+   * and the shelf's whole credit sink was capped at one crate per cooldown
+   * however deep the player was. Each tier now carries its own wait, so the
+   * bound stays on how fast any ONE tier can be repeated - which is what
+   * bounds the piece rate - rather than on the shelf as a whole.
+   *
+   * `supplyCooldownUntil` is kept as the legacy field so an existing save's
+   * running cooldown is not silently cleared on load.
+   */
   private supplyCooldownUntil = 0;
+  private supplyCooldownByTier: Record<string, number> = {};
+
+  /** When this tier may next be bought. */
+  private supplyTierCooldown(tier: string): number {
+    return Math.max(this.supplyCooldownByTier[tier] ?? 0, 0);
+  }
   private projectOverlay: Phaser.GameObjects.Container | null = null;
   private projectButtonBg!: Phaser.GameObjects.Graphics;
   private projectButtonIcon!: Phaser.GameObjects.Graphics;
@@ -5303,9 +5322,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       this.refreshActionTray(`NOT ENOUGH CREDITS  ·  ${CRATE_LABELS[offer.tier]}`);
       return false;
     }
-    if (!supplyCrateReady(this.supplyCooldownUntil, Date.now())) {
+    if (!supplyCrateReady(this.supplyTierCooldown(offer.tier), Date.now())) {
       this.refreshActionTray(
-        `SUPPLY DEPOT RESTOCKING\nNEXT CRATE IN ${formatCrateWait(supplyCooldownRemaining(this.supplyCooldownUntil, Date.now()))}`
+        `${CRATE_LABELS[offer.tier]} RESTOCKING\nNEXT IN ${formatCrateWait(supplyCooldownRemaining(this.supplyTierCooldown(offer.tier), Date.now()))}`
       );
       return false;
     }
@@ -5324,7 +5343,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     // player saw nothing for their credits.
     // No readyAt: a bought crate is openable the moment it lands. The wait
     // lives on the SHOP now, not on the player's board.
-    this.supplyCooldownUntil = Date.now() + offer.cooldownMs;
+    this.supplyCooldownByTier[offer.tier] = Date.now() + offer.cooldownMs;
     const view = this.placeCrate(pos, offer.tier, payload);
     const target = this.cellToWorld(pos);
     const origin = from ?? this.vaultPosition();
@@ -6744,24 +6763,22 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
      * be one scroll, not two places to look.
      */
     const supplyRow = (): void => {
-      const cooling = supplyCooldownRemaining(this.supplyCooldownUntil, Date.now());
-      const atLimit = cooling > 0;
-
-      // The state of the whole shelf, on the same line the rotating shelves
-      // put their refresh clock - so the two read as the same kind of
-      // statement about the same kind of row.
-      content.add(this.add.text(left, cursor + 11, atLimit
-        ? `RESTOCKING  ·  NEXT IN ${formatCrateWait(cooling)}`
-        : 'OPENS IMMEDIATELY  ·  ONE PER RESTOCK', {
+      // Each tier restocks on its own clock now, so the shelf has no single
+      // state to report - the line says the rule and each card says its own
+      // wait.
+      content.add(this.add.text(left, cursor + 11, 'OPENS IMMEDIATELY  ·  EACH TIER RESTOCKS ON ITS OWN', {
         resolution: textResolution, fontFamily: Theme.fontMono, fontSize: '12px',
-        color: hex(atLimit ? Theme.accentAmber : Theme.textOnDarkMuted)
+        color: hex(Theme.textOnDarkMuted)
       }).setOrigin(0, 0.5));
       cursor += 30;
 
       shelfRow(SUPPLY_CRATES.length, (cx, w, i) => {
         const offer = SUPPLY_CRATES[i];
         const price = supplyCratePrice(offer, playerLevel(this.orderState));
-        const buyable = this.economy.coins >= price && !atLimit;
+        const cooling = supplyCooldownRemaining(this.supplyTierCooldown(offer.tier), Date.now());
+        const buyable = this.economy.coins >= price
+          && cooling === 0
+          && this.firstFreeCellInReadingOrder() != null;
         shelfCard(
           cx, w, Theme.currencyCredit,
           (x, y) => {
@@ -6770,7 +6787,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
             return art.setPosition(x, y);
           },
           `${offer.tier.toUpperCase()} CRATE`,
-          `RESTOCK ${formatCrateWait(offer.cooldownMs)}`,
+          // The card carries its own countdown while it is restocking, so a
+          // dimmed card explains itself rather than needing a tap to find out.
+          cooling > 0 ? `RESTOCKING  ·  ${formatCrateWait(cooling)}` : `RESTOCK ${formatCrateWait(offer.cooldownMs)}`,
           { value: price.toLocaleString(), kind: 'credit', color: CURRENCY_COLOR.credit },
           buyable,
           false,
@@ -6787,9 +6806,9 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
               this.reopenShop({ text: `NOT ENOUGH CREDITS  ·  NEEDS ${price.toLocaleString()}`, error: true });
               return;
             }
-            if (!supplyCrateReady(this.supplyCooldownUntil, now)) {
+            if (!supplyCrateReady(this.supplyTierCooldown(offer.tier), now)) {
               this.reopenShop({
-                text: `RESTOCKING  ·  NEXT CRATE IN ${formatCrateWait(supplyCooldownRemaining(this.supplyCooldownUntil, now))}`,
+                text: `${CRATE_LABELS[offer.tier]} RESTOCKING  ·  ${formatCrateWait(supplyCooldownRemaining(this.supplyTierCooldown(offer.tier), now))}`,
                 error: true
               });
               return;
@@ -7591,6 +7610,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
           projectStage?: number;
           builtPieces?: string[];
           supplyCooldownUntil?: number;
+          supplyCooldownByTier?: Record<string, number>;
         };
         this.grid.loadFrom(parsed.grid);
         const savedCells = this.grid.serialize();
@@ -7617,6 +7637,21 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
             );
         this.supplyCooldownUntil = typeof parsed.supplyCooldownUntil === 'number'
           ? parsed.supplyCooldownUntil : 0;
+        // A save from before per-tier timers carries one shared deadline.
+        // Rather than drop it - which would hand back every crate at once -
+        // or apply it to all three, it is honoured on the tier it most likely
+        // came from: the shortest one it could still be running for.
+        this.supplyCooldownByTier = {};
+        if (parsed.supplyCooldownByTier && typeof parsed.supplyCooldownByTier === 'object') {
+          for (const [tier, until] of Object.entries(parsed.supplyCooldownByTier)) {
+            if (typeof until === 'number' && Number.isFinite(until)) this.supplyCooldownByTier[tier] = until;
+          }
+        } else if (this.supplyCooldownUntil > Date.now()) {
+          const remaining = this.supplyCooldownUntil - Date.now();
+          const from = [...SUPPLY_CRATES].sort((a, b) => a.cooldownMs - b.cooldownMs)
+            .find((offer) => offer.cooldownMs >= remaining) ?? SUPPLY_CRATES[SUPPLY_CRATES.length - 1];
+          this.supplyCooldownByTier[from.tier] = this.supplyCooldownUntil;
+        }
         this.rewards = normalizeRewardsState(parsed.rewards);
         const legacyCollection = parsed.collection == null;
         this.collection = normalizeCollectionState(parsed.collection);
@@ -7810,6 +7845,7 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       ,builtPieces: [...this.builtPieces]
       // Absolute, so the restock keeps running while the game is closed.
       ,supplyCooldownUntil: this.supplyCooldownUntil
+      ,supplyCooldownByTier: this.supplyCooldownByTier
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
   }
