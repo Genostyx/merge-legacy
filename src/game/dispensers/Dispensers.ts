@@ -107,8 +107,27 @@ const SOURCE_CAPACITY: Record<string, number> = {
   glass: 18
 };
 
+/**
+ * The Decagon's drop interval. Deliberately NOT appended to
+ * FAMILY_RECHARGE_ORDER: that array is index-driven, so appending would both
+ * hand the Decagon a 30s beat and put every future family one rung further
+ * out. 5s matches wood - the Decagon is temporary and should be emptied
+ * inside a session, not left running for an hour.
+ */
+export const DECAGON_RECHARGE_MS = 5_000;
+
+/**
+ * A Decagon's reservoir. It is a BACKSTOP, not the thing that ends the
+ * machine: a Decagon lives until its meter pays out, which takes ten items
+ * standing on the board at once. The reservoir sits well above ten so that
+ * selling a token, or a drop landing where a crate payload wanted to go,
+ * cannot strand a machine unable to finish its own meter.
+ */
+export const DECAGON_DROPS = 30;
+
 export function cooldownForTier(typeId: string, tier: number): number {
   if (typeId === 'water') return 1_000;
+  if (typeId === 'decagon') return DECAGON_RECHARGE_MS;
   return rechargeMsForFamily(typeId);
 }
 
@@ -118,7 +137,19 @@ export function dropsPerChargeForTier(_typeId: string, _tier: number): number {
 
 export function capacityForTier(typeId: string, tier: number): number {
   if (typeId === 'water') return Math.max(1, Math.min(MAX_DISPENSER_TIER, tier)) * 10;
+  // A Decagon's capacity IS its lifetime: it never refills, so the reservoir
+  // and the total it will ever produce are the same number.
+  if (typeId === 'decagon') return DECAGON_DROPS;
   return SOURCE_CAPACITY[typeId] ?? SOURCE_CAPACITY.wood;
+}
+
+/**
+ * Whether this dispenser is spent for good once empty. Every other source
+ * recharges forever; a Decagon is consumed by using it, which is what makes
+ * owning one an event rather than an upgrade.
+ */
+export function isTemporaryDispenser(typeId: string): boolean {
+  return typeId === 'decagon';
 }
 
 export function makeDispenser(typeId: string, tier: number, now: number = Date.now(), startingCharges?: number): Dispenser {

@@ -20,6 +20,13 @@ export class SpawnerView extends Phaser.GameObjects.Container {
   private ring: Phaser.GameObjects.Graphics;
   private ringTween?: Phaser.Tweens.Tween;
   private lastReady: boolean | null = null;
+  /**
+   * How many Decagon items are standing on the board, 0-10. Drawn as ten pips
+   * around the machine rather than as a HUD bar: the meter belongs to the
+   * thing that fills it, and the count is only meaningful while looking at
+   * the board it is counting.
+   */
+  private decagonHeld = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, cellSize: number, data: SpawnerCellData, gridPos: GridPosition) {
     super(scene, x, y);
@@ -59,6 +66,39 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     scene.add.existing(this);
   }
 
+  /** Sets the Decagon meter reading. No-op for every other source. */
+  setDecagonHeld(held: number): void {
+    if (this.spawner.typeId !== 'decagon' || held === this.decagonHeld) return;
+    this.decagonHeld = held;
+    this.refresh();
+  }
+
+  /**
+   * Ten pips in a ring around the machine, one per Decagon needed. Filled
+   * pips are the ones standing on the board right now - and because the
+   * count is read from the board rather than banked, a pip going dark when
+   * you sell one is the honest picture of what just happened.
+   */
+  private drawDecagonMeter(size: number, palette: ReturnType<typeof materialLighting>): void {
+    const R = size * 0.54;
+    const pipR = Math.max(1.6, size * 0.035);
+    const start = -Math.PI / 2;
+    for (let i = 0; i < 10; i++) {
+      const a = start + (i / 10) * Math.PI * 2;
+      const x = Math.cos(a) * R;
+      const y = Math.sin(a) * R;
+      const filled = i < this.decagonHeld;
+      this.core.fillStyle(Theme.bg, 0.85);
+      this.core.fillCircle(x, y, pipR + 1.2);
+      this.core.fillStyle(filled ? palette.highlight : Theme.borderOnDark, filled ? 1 : 0.55);
+      this.core.fillCircle(x, y, pipR);
+      if (filled) {
+        this.core.lineStyle(1, palette.light, 0.8);
+        this.core.strokeCircle(x, y, pipR + 1.2);
+      }
+    }
+  }
+
   refresh(now: number = Date.now()): void {
     syncDispenser(this.spawner, now);
     const size = this.cellSize * 0.88 - 2;
@@ -84,6 +124,8 @@ export class SpawnerView extends Phaser.GameObjects.Container {
       drawSourceBuilding(this.core, this.spawner.typeId, this.spawner.tier, buildingR, palette, ready);
       this.core.setAlpha(1);
     }
+    if (this.spawner.typeId === 'decagon') this.drawDecagonMeter(size, palette);
+
     const frameHalf = (this.cellSize - 3) / 2;
     const readyColor = this.spawner.typeId === 'water' ? Theme.currencyEnergy : Theme.accentAmber;
     this.core.lineStyle(1, ready ? readyColor : Theme.borderOnDark, ready ? 1 : 0.75);

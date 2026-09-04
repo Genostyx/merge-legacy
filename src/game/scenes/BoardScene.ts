@@ -6,7 +6,7 @@ import { SpawnerView } from '../objects/SpawnerView';
 import { SpawnerPieceView, drawSpawnerPieceIcon } from '../objects/SpawnerPieceView';
 import { SplitterView, drawSplitterIcon } from '../objects/SplitterView';
 import type { GridPosition } from '../types';
-import { CHAINS, getTierDef, isCurrencyChain } from '../data/chains';
+import { CHAINS, getTierDef, isCurrencyChain, spawnerPieceTiers } from '../data/chains';
 import { burstParticles, shakeForTier, floatingScore, ensureParticleTexture } from '../fx/MergeFx';
 import {
   createDefaultEconomy,
@@ -124,6 +124,8 @@ import {
   claimMilestone,
   dailyRewardFor,
   dailyOfferLevel,
+  DECAGON_METER_MAX,
+  rollDecagonPrize,
   milestoneCrateFor,
   claimMeterCrate,
   finishMeterCooldown,
@@ -320,6 +322,7 @@ const FAMILY_NAMES: Record<string, string> = {
   mineral: 'STONE',
   glass: 'GLASS',
   water: 'WATER',
+  decagon: 'DECAGON',
   'currency-credit': 'CREDITS',
   'currency-energy': 'ENERGY',
   'currency-gem': 'GEMS'
@@ -339,7 +342,11 @@ const SPAWNER_PIECE_NAMES: Record<string, string[]> = {
   glass: ['Glass Panel', 'Joined Panels', 'Glass Framework', 'Roofed Glass Frame'],
   // The well set from docs/TODO_DETAILS.md, replacing the pipe names these
   // pieces no longer look like.
-  water: ['Ring Section', 'Support Frame', 'Roof Section', 'Winch Assembly']
+  water: ['Ring Section', 'Support Frame', 'Roof Section', 'Winch Assembly'],
+  // Five, not four. The Decagon is assembled rather than built: a facet, a
+  // pair of them, the frame they sit in, the core that drives it, and the
+  // housing that closes it up.
+  decagon: ['Facet', 'Facet Pair', 'Decagon Frame', 'Decagon Core', 'Decagon Housing']
 };
 
 function spawnerPieceLabel(typeId: string, tier: number): string {
@@ -2646,6 +2653,11 @@ export class BoardScene extends Phaser.Scene {
   }
 
   private refreshOrderBar(): void {
+    // The Decagon pips ride along here because this is in practice the
+    // "the board changed" refresh - it already runs after a merge, a sale, a
+    // store, a spawn and a payout, which is exactly the set of things that
+    // can change how many Decagons are standing on the board.
+    this.refreshDecagonMachines();
     // Level-ups open new slots, so the bar is rebuilt whenever the queue
     // length moves rather than being assumed fixed.
     const rebuilt = this.orderCards.length !== this.orderState.activeOrderIndices.length;
@@ -3416,21 +3428,24 @@ ${familyTierLabel(typeId, tier)}`
       this.enqueueForcedSpawn({ kind: 'splitter' });
       this.refreshActionTray('STAGE COMPLETE  ·  SPLITTER DELIVERED');
     } else if (stage === 3) {
+      // Bronze, not silver. The room costs 9,700 Credits and 240 energy -
+      // about 210 Gems of input - and a bronze/silver/gold ladder paid ~25
+      // crate slots against it, roughly double, before counting the Splitter
+      // and the permanent slot. One crate opening the project and one closing
+      // it is the shape; three made the middle repetitive as well as rich,
+      // when the point of this ladder was that each rung is a different KIND
+      // of thing.
+      this.awardCrate('bronze', 'STAGE COMPLETE', from);
+    } else if (stage >= 4) {
       // A permanent inventory slot. Not spent, not consumed - felt in every
       // session after it, which is what a facility should be paying in.
       if (this.inventory.slots < INVENTORY_MAX_SLOTS) {
         this.inventory.slots += 1;
         this.refreshActionTray(`STAGE COMPLETE  ·  INVENTORY SLOT  ${this.inventory.slots}`);
       } else {
-        // Nothing left to unlock, so it pays in the currency that buys slots.
         addGems(this.economy, 25);
         this.playProjectCurrencyReward('gem', 25, from);
       }
-    } else if (stage >= 4) {
-      // The vault. It is never sold and never rolled - the room is the only
-      // place it comes from, which is what makes finishing the room mean
-      // something beyond the room itself.
-      this.awardCrate('vault', 'ROOM COMPLETE', from);
     }
     this.projectFooterRefresh?.();
   }
@@ -3447,8 +3462,15 @@ ${familyTierLabel(typeId, tier)}`
       addEnergy(this.energy, 40);
       this.playProjectCurrencyReward('energy', 40, from);
     } else if (stage >= 4) {
-      addGems(this.economy, 10);
-      this.playProjectCurrencyReward('gem', 10, from);
+      // The last piece of the last stage is the moment the ROOM IS FINISHED.
+      // GOLD, not the vault: the whole living room costs 9,700 Credits and
+      // eight Wood items - under five orders' income at the plateau - and it
+      // is gated at level 3, so it is the onboarding room. The vault is the
+      // crate the shop never sells and nothing else rolls; spending it here
+      // would mean the best crate in the game is handed to a level-8 player
+      // for the cheapest project in it, and there would be nothing left to
+      // pay a room that costs fifteen times as much.
+      this.awardCrate('gold', 'ROOM COMPLETE', from);
     }
     this.projectFooterRefresh?.();
   }
@@ -3911,9 +3933,9 @@ ${familyTierLabel(typeId, tier)}`
       // Mirrors `grantFurnishReward` - this list is the FURNITURE, so it
       // shows what finishing the furniture pays, not what the hand-in pays.
       if (this.projectStage >= 4) {
-        footer.add(currencyPill(this, '10', 'gem', {
-          ...currencyChipOptions('gem'), fontSize: 11, iconSize: 16, height: 22
-        }).setPosition(w / 2 + 26, lineY));
+        const finish = this.add.graphics().setPosition(w / 2 + 16, lineY);
+        drawCrate(finish, 26 / CRATE_DRAWN.width, 'gold');
+        footer.add(finish);
       } else {
         footer.add(currencyPill(this, this.projectStage === 3 ? '40' : '25', 'energy', {
           ...currencyChipOptions('energy'), fontSize: 11, iconSize: 16, height: 22
@@ -4023,10 +4045,10 @@ ${familyTierLabel(typeId, tier)}`
         const rewardIcon = this.add.graphics().setPosition(w / 2 + 16, rewardY);
         if (opening === 2) {
           drawSplitterIcon(rewardIcon, 26);
-        } else if (opening === 3) {
+        } else if (opening >= 4) {
           drawBriefcase(rewardIcon, 30, Theme.currencyGem);
         } else {
-          drawCrate(rewardIcon, 26 / CRATE_DRAWN.width, opening === 1 ? 'bronze' : 'vault');
+          drawCrate(rewardIcon, 26 / CRATE_DRAWN.width, 'bronze');
         }
         footer.add(rewardIcon);
       }
@@ -7191,12 +7213,116 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
     this.modalOpen = false;
   }
 
+  /**
+   * THE DECAGON METER.
+   *
+   * Reads the board rather than a running total, because the rule is that ten
+   * have to be STANDING THERE at once: sell one, store one, or let a crate
+   * payload take the cell it wanted, and the count genuinely goes down. A
+   * banked counter would quietly turn this into "feed it ten over time",
+   * which is a different and much easier feature.
+   *
+   * The stored `decagonMeter` is only the display's memory of that count, so
+   * partial progress survives a Decagon running dry between sessions.
+   */
+  private decagonOnBoard(): number {
+    return this.grid.countAtTier(1, 'decagon');
+  }
+
+  /**
+   * Pushes the meter reading onto every Decagon machine on the board. Called
+   * whenever the count can have changed - a drop landing, a sale, a store, a
+   * payout - because the pips read the board and the board changes underneath
+   * them constantly.
+   */
+  private refreshDecagonMachines(): void {
+    const held = Math.min(DECAGON_METER_MAX, this.decagonOnBoard());
+    this.rewards.decagonMeter = held;
+    for (const view of this.views.values()) {
+      if (view instanceof SpawnerView && view.spawner.typeId === 'decagon') view.setDecagonHeld(held);
+    }
+  }
+
+  /**
+   * Cashes the meter when the tenth Decagon lands: consumes all ten, rolls
+   * the prize table, and hands the prize over through the ordinary reward
+   * path - so it lands on the board if there is room and waits in the vault
+   * if there is not. Ten cells have just come free, which covers the common
+   * prizes outright and leaves the big ones spilling on purpose.
+   */
+  private tryCashDecagonMeter(): void {
+    const held = this.decagonOnBoard();
+    this.rewards.decagonMeter = Math.min(DECAGON_METER_MAX, held);
+    if (held < DECAGON_METER_MAX) {
+      this.refreshDecagonMachines();
+      this.refreshActionTray(`DECAGON METER  ·  ${held}/${DECAGON_METER_MAX} ON THE BOARD`);
+      return;
+    }
+
+    let removed = 0;
+    let origin = { x: this.scale.width / 2, y: this.scale.height / 2 };
+    for (let row = 0; row < ROWS && removed < DECAGON_METER_MAX; row++) {
+      for (let col = 0; col < COLS && removed < DECAGON_METER_MAX; col++) {
+        const pos = { col, row };
+        const cell = this.grid.get(pos);
+        if (cell?.kind !== 'item' || cell.typeId !== 'decagon') continue;
+        const key = this.keyOf(pos);
+        if (removed === 0) origin = this.cellToWorld(pos);
+        this.views.get(key)?.destroy();
+        this.views.delete(key);
+        this.grid.set(pos, null);
+        if (this.selectedItemKey === key) this.selectedItemKey = null;
+        removed++;
+      }
+    }
+
+    // THE MACHINE GOES WITH THE PAYOUT. A Decagon exists to fill its meter
+    // once: the tenth item drops, it eats all ten, pays out, and leaves. It
+    // is not a source that runs until a reservoir empties - that version
+    // could die holding a partial set, stranding the meter with no machine
+    // to finish it.
+    for (const [key, view] of [...this.views.entries()]) {
+      if (!(view instanceof SpawnerView) || view.spawner.typeId !== 'decagon') continue;
+      const cell = view.gridPos;
+      origin = this.cellToWorld(cell);
+      this.grid.set(cell, null);
+      view.destroy();
+      this.views.delete(key);
+      break;
+    }
+
+    const prize = rollDecagonPrize(this.rewards);
+    if (prize.kind === 'crate') {
+      this.awardCrate(prize.tier, 'DECAGON', origin);
+    } else {
+      const producerId: ResourceProducerId = prize.producerId;
+      this.enqueueForcedSpawn({
+        kind: 'resource-producer',
+        producerId,
+        remaining: RESOURCE_PRODUCERS[producerId].capacity
+      });
+      this.tryReleaseVaultItem();
+    }
+    this.refreshDecagonMachines();
+    this.refreshActionTray(
+      prize.kind === 'crate'
+        ? `DECAGON METER PAID  ·  ${CRATE_LABELS[prize.tier]}`
+        : `DECAGON METER PAID  ·  ${RESOURCE_PRODUCERS[prize.producerId].label.toUpperCase()}`
+    );
+    this.saveState();
+    this.refreshOrderBar();
+    this.checkDeadlock();
+  }
+
   private placeTile(pos: GridPosition, typeId: string, tier: number, animateIn: boolean): TileView {
     const world = this.cellToWorld(pos);
     const view = new TileView(this, world.x, world.y, this.cellSize, typeId, tier, pos);
     this.grid.set(pos, { kind: 'item', typeId, tier });
     this.views.set(this.keyOf(pos), view);
     if (!isCurrencyChain(typeId) && discoverItem(this.collection, typeId, tier)) this.updateLevelBadge();
+    // A Decagon landing is the only thing that can complete the meter, and it
+    // is checked after the tile exists so the tenth one is counted.
+    if (typeId === 'decagon') this.time.delayedCall(0, () => this.tryCashDecagonMeter());
     if (animateIn) {
       view.playMergeIn();
       // Delayed past the settle-in tween so the hint reads as a second,
@@ -9077,10 +9203,13 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
 
       const color = getTierDef(view.typeId, Math.min(view.tier + 1, 9))?.color ?? Theme.accentAmber;
       burstParticles(this, worldTarget.x, worldTarget.y, color, Math.min(view.tier + 1, 5));
-      const message = view.tier >= 4
+      // The Decagon takes five piece tiers, not four, so the tier that
+      // promotes into a source is a per-family number rather than a constant.
+      const topPiece = spawnerPieceTiers(view.typeId);
+      const message = view.tier >= topPiece
         ? `${sourceTierLabel(view.typeId, 1)} BUILT\nTAP IT TO PRODUCE ${familyTierLabel(view.typeId, 1)}`
         : `${spawnerPieceLabel(view.typeId, view.tier + 1)} BUILT`;
-      if (view.tier >= 4) {
+      if (view.tier >= topPiece) {
         this.placeSpawner(targetCell, view.typeId, 1, true);
       } else {
         this.placeSpawnerPiece(targetCell, view.typeId, view.tier + 1, true);
@@ -9280,9 +9409,14 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
       return !a.locked && a.typeId === b.typeId && a.tier === b.tier && getTierDef(a.typeId, a.tier + 1) != null;
     }
     if (a instanceof SpawnerPieceView && b instanceof SpawnerPieceView) {
-      return a.typeId === b.typeId && a.tier === b.tier && a.tier >= 1 && a.tier <= 4;
+      return a.typeId === b.typeId && a.tier === b.tier && a.tier >= 1 && a.tier <= spawnerPieceTiers(a.typeId);
     }
     if (a instanceof SpawnerView && b instanceof SpawnerView) {
+      // Decagons never merge. The family has ONE item tier, so a tier-2
+      // Decagon machine would produce a tier-2 Decagon item that does not
+      // exist - and merging two temporary machines into one would destroy
+      // half the drops the player collected the pieces for.
+      if (a.spawner.typeId === 'decagon' || b.spawner.typeId === 'decagon') return false;
       if (a.spawner.typeId !== b.spawner.typeId || a.spawner.tier !== b.spawner.tier || a.spawner.tier >= MAX_DISPENSER_TIER) return false;
       // Merging two tier-1 spawners removes both and replaces them with one
       // tier-2+ spawner. If that would leave zero tier-1 spawners of this
@@ -9307,6 +9441,56 @@ ${freeSlots(this.inventory)} INVENTORY SLOTS FREE`
   private spawnFromSpawner(view: SpawnerView): void {
     this.selectedItemKey = null;
     this.rushTargetKey = this.keyOf(view.gridPos);
+
+    // THE DECAGON. Costs energy per tap, like every source except Water.
+    //
+    // Ten taps is ten energy, which looks symbolic against a hundred-point
+    // bar - but to a player sitting at zero it is twenty minutes of regen,
+    // and that is exactly the player a gate should bite. Leaving it free
+    // would also have taken away Water's identity, which is being THE
+    // no-energy dispenser.
+    //
+    // The machine does not end when its reservoir empties - it ends when
+    // the meter pays out. See tryCashDecagonMeter.
+    if (view.spawner.typeId === 'decagon') {
+      const now = Date.now();
+      syncDispenser(view.spawner, now);
+      const empties = this.grid.emptyCells();
+      if (empties.length === 0) {
+        this.refreshActionTray('BOARD FULL\nTHE DECAGON NEEDS ROOM TO DROP');
+        return;
+      }
+      // Checked before collecting, the same rule the other sources follow:
+      // a dry machine or a full board must never burn energy.
+      if (!canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) {
+        this.updateEnergyText();
+        this.refreshActionTray(
+          `OUT OF ENERGY\nNEXT IN ${formatCountdown(msUntilNextEnergy(this.energy))}  ·  TAP THE ENERGY BAR TO REFILL`
+        );
+        return;
+      }
+      const produced = collectDispenser(view.spawner, now);
+      if (!produced) {
+        view.refresh(now);
+        this.refreshActionTray();
+        return;
+      }
+      spendEnergy(this.energy, ENERGY_COST_PER_COLLECT);
+      const nearest = this.nearestEmptyCells(view.gridPos, empties);
+      this.placeTile(nearest[Math.floor(Math.random() * nearest.length)], produced.typeId, produced.tier, true);
+      view.playSpawnPulse();
+      view.refresh(now);
+      // Deliberately NOT feeding the crate meter as well: a Decagon tap
+      // already pays into the Decagon meter, and counting it twice would
+      // make this the best way to farm ordinary crates too.
+      this.updateEnergyText();
+      this.refreshActionTray();
+      this.saveState();
+      this.refreshOrderBar();
+      this.checkDeadlock();
+      return;
+    }
+
     if (view.spawner.typeId === 'water') {
       const now = Date.now();
       syncDispenser(view.spawner, now);

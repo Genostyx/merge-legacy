@@ -16,6 +16,10 @@ import {
   createDefaultRewardsState,
   dailyRewardFor,
   dailyOfferLevel,
+  feedDecagonMeter,
+  decagonMeterReady,
+  rollDecagonPrize,
+  DECAGON_PRIZES,
   dailyAvailable,
   dayIndexFor,
   milestoneCrateFor,
@@ -243,12 +247,19 @@ describe('daily claim', () => {
 describe('crate loot', () => {
   const alwaysHigh = seq([0.99]);
   const alwaysLow = seq([0.0]);
+  /**
+   * Decagon pieces ride an EXTRA roll appended after the slots are filled, so
+   * they are not part of any approved slot count. These tests pin the slot
+   * shape, so they measure it without them.
+   */
+  const slots = (payload: ReturnType<typeof cratePayload>) =>
+    payload.filter((entry) => !(entry.kind === 'spawner-piece' && entry.typeId === 'decagon'));
 
   it('uses the approved chest slot counts', () => {
-    expect(cratePayload(rollCrate('bronze', 1, seq([0])))).toHaveLength(4);
-    expect(cratePayload(rollCrate('bronze', 1, seq([0.99])))).toHaveLength(5);
-    expect(cratePayload(rollCrate('silver', 1, alwaysHigh))).toHaveLength(8);
-    expect(cratePayload(rollCrate('gold', 1, alwaysHigh))).toHaveLength(12);
+    expect(slots(cratePayload(rollCrate('bronze', 1, seq([0]))))).toHaveLength(4);
+    expect(slots(cratePayload(rollCrate('bronze', 1, seq([0.99]))))).toHaveLength(5);
+    expect(slots(cratePayload(rollCrate('silver', 1, alwaysHigh)))).toHaveLength(8);
+    expect(slots(cratePayload(rollCrate('gold', 1, alwaysHigh)))).toHaveLength(12);
   });
 
   it('keeps obtained families and adds only the next unowned family', () => {
@@ -286,12 +297,13 @@ describe('crate loot', () => {
       0.86, 0.6, 0,
       0.96, 0.99
     ])));
-    expect(payload.filter((entry) => entry.kind === 'spawner-piece')).toHaveLength(7);
-    expect(payload.filter((entry) => entry.kind !== 'spawner-piece')).toHaveLength(5);
+    const family = slots(payload);
+    expect(family.filter((entry) => entry.kind === 'spawner-piece')).toHaveLength(7);
+    expect(family.filter((entry) => entry.kind !== 'spawner-piece')).toHaveLength(5);
   });
 
   it('uses normal rewards rather than empty slots when no spawner piece rolls', () => {
-    const payload = cratePayload(rollCrate('silver', 1, alwaysHigh));
+    const payload = slots(cratePayload(rollCrate('silver', 1, alwaysHigh)));
     expect(payload).toHaveLength(8);
     expect(payload.every((entry) => entry.kind !== 'spawner-piece')).toBe(true);
   });
@@ -322,9 +334,11 @@ describe('crate loot', () => {
         expect(item.tier).toBeLessThanOrEqual(9);
       }
       for (const piece of loot.spawnerPieces) {
-        expect(['wood', 'water', 'mineral']).toContain(piece.typeId);
+        // Decagon pieces ride an additional roll, so they can appear in any
+        // crate alongside the family pieces.
+        expect(['wood', 'water', 'mineral', 'decagon']).toContain(piece.typeId);
         expect(piece.tier).toBeGreaterThanOrEqual(1);
-        expect(piece.tier).toBeLessThanOrEqual(4);
+        expect(piece.tier).toBeLessThanOrEqual(piece.typeId === 'decagon' ? 5 : 4);
       }
     }
   });
@@ -346,5 +360,42 @@ describe('save handling', () => {
 
   it('clamps a meter that somehow exceeds the cap', () => {
     expect(normalizeRewardsState({ meterCollects: 9999 }).meterCollects).toBe(METER_MAX);
+  });
+});
+
+describe('decagon meter', () => {
+  it('fills at ten and reports the fill on the tenth item', () => {
+    const state = createDefaultRewardsState();
+    for (let i = 0; i < 9; i++) {
+      expect(feedDecagonMeter(state)).toBe(false);
+    }
+    expect(feedDecagonMeter(state)).toBe(true);
+    expect(decagonMeterReady(state)).toBe(true);
+  });
+
+  it('keeps partial progress, because a Decagon is temporary and the meter is not', () => {
+    const state = createDefaultRewardsState();
+    feedDecagonMeter(state);
+    feedDecagonMeter(state);
+    const carried = normalizeRewardsState(JSON.parse(JSON.stringify(state)));
+    expect(carried.decagonMeter).toBe(2);
+  });
+
+  it('empties the meter when it rolls, and only ever pays a real prize', () => {
+    const state = createDefaultRewardsState();
+    for (let i = 0; i < 10; i++) feedDecagonMeter(state);
+    const prize = rollDecagonPrize(state, () => 0.999);
+    expect(state.decagonMeter).toBe(0);
+    expect(prize.kind === 'crate' || prize.kind === 'producer').toBe(true);
+  });
+
+  it('weights the table so the jackpot is rare but reachable', () => {
+    // Checked against the table rather than by sampling: a sampled assertion
+    // on a 4% event is a flaky test wearing a statistics costume.
+    const total = DECAGON_PRIZES.reduce((sum, row) => sum + row.weight, 0);
+    const vault = DECAGON_PRIZES.find((row) => row.prize.kind === 'crate' && row.prize.tier === 'vault');
+    const vaultPercent = vault ? (vault.weight / total) * 100 : 0;
+    expect(vaultPercent).toBeGreaterThan(2);
+    expect(vaultPercent).toBeLessThan(8);
   });
 });

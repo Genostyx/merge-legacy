@@ -1,4 +1,4 @@
-import { CHAINS, getTierDef, isCurrencyChain } from '../data/chains';
+import { CHAINS, getTierDef, isCurrencyChain, isUtilityChain } from '../data/chains';
 import { EXPECTED_UNITS_PER_COLLECT } from '../dispensers/Dispensers';
 
 export type OrderType = 'deliver-items' | 'dispenser-collects';
@@ -32,7 +32,7 @@ export interface OrderDef {
  * came to be missing from generated orders for as long as it was.
  */
 // Water is intentionally a non-order utility family even after its source is owned.
-const ORDER_FAMILIES: string[] = CHAINS.map((chain) => chain.typeId).filter((typeId) => typeId !== 'water' && !isCurrencyChain(typeId));
+const ORDER_FAMILIES: string[] = CHAINS.map((chain) => chain.typeId).filter((typeId) => !isUtilityChain(typeId) && !isCurrencyChain(typeId));
 
 const item = (typeId: string, tier: number, count = 1): OrderRequirement => ({ typeId, tier, count });
 

@@ -1,12 +1,119 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { getTierDef } from '../data/chains';
-import { Theme, materialLighting } from '../ui/Theme';
+import { Theme, materialLighting, toneForNormal } from '../ui/Theme';
+import type { MaterialLighting } from '../ui/Theme';
 
 /**
  * A source-construction piece. It is intentionally separate from TileView:
  * Wood Piece 01 must merge with Wood Piece 01, not with Scrap Wood.
  */
+/**
+ * The Decagon's five pieces, and they are ASSEMBLY steps rather than
+ * materials: a single facet, a pair of them hinged, the ten-sided frame they
+ * seat into, the core that drives it, and the housing that closes it up. Read
+ * left to right the set should look like something being built, which is what
+ * makes the fifth merge feel like a machine rather than a bigger lump.
+ *
+ * Deliberately angular and hollow where the family pieces are solid: this is
+ * a mechanism, not a block of stone.
+ */
+function drawDecagonPiece(g: Phaser.GameObjects.Graphics, tier: number, s: number, p: MaterialLighting): void {
+  const SIDES = 10;
+  const start = -Math.PI / 2 + Math.PI / SIDES;
+  const ringPoints = (radius: number): Phaser.Geom.Point[] => {
+    const pts: Phaser.Geom.Point[] = [];
+    for (let i = 0; i < SIDES; i++) {
+      const a = start + (i / SIDES) * Math.PI * 2;
+      pts.push(new Phaser.Geom.Point(Math.cos(a) * radius, Math.sin(a) * radius));
+    }
+    return pts;
+  };
+
+  // One facet: the flat trapezoid that ten of would make the rim.
+  const facet = (cx: number, cy: number, w: number, h: number, lit: number): void => {
+    const pts = [
+      new Phaser.Geom.Point(cx - w / 2, cy + h / 2),
+      new Phaser.Geom.Point(cx - w * 0.34, cy - h / 2),
+      new Phaser.Geom.Point(cx + w * 0.34, cy - h / 2),
+      new Phaser.Geom.Point(cx + w / 2, cy + h / 2)
+    ];
+    g.fillStyle(toneForNormal(p, lit), 1);
+    g.fillPoints(pts, true);
+    g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.9);
+    g.strokePoints(pts, true);
+    g.lineStyle(Math.max(1, s * 0.016), p.highlight, 0.5);
+    g.lineBetween(cx - w * 0.3, cy - h / 2 + 1.5, cx + w * 0.3, cy - h / 2 + 1.5);
+  };
+
+  if (tier === 1) {
+    facet(0, 0, s * 0.5, s * 0.34, 0.85);
+    return;
+  }
+
+  if (tier === 2) {
+    // Two facets, hinged at an angle - the first thing that reads as joined.
+    facet(-s * 0.14, s * 0.04, s * 0.42, s * 0.3, 0.9);
+    facet(s * 0.16, -s * 0.06, s * 0.42, s * 0.3, 0.55);
+    return;
+  }
+
+  if (tier === 3) {
+    // The frame: the full ten-sided outline, empty in the middle.
+    const outer = ringPoints(s * 0.42);
+    const inner = ringPoints(s * 0.3);
+    for (let i = 0; i < SIDES; i++) {
+      const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
+      const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
+      g.fillStyle(toneForNormal(p, lit), 1);
+      g.fillPoints([outer[i], outer[(i + 1) % SIDES], inner[(i + 1) % SIDES], inner[i]], true);
+    }
+    g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.9);
+    g.strokePoints(outer, true);
+    g.strokePoints(inner, true);
+    return;
+  }
+
+  if (tier === 4) {
+    // The core: the frame with a driven hub seated in it.
+    const outer = ringPoints(s * 0.42);
+    g.fillStyle(p.base, 0.5);
+    g.fillPoints(outer, true);
+    g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.9);
+    g.strokePoints(outer, true);
+    g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
+    g.fillCircle(0, 0, s * 0.2);
+    g.lineStyle(Math.max(1, s * 0.018), p.dark, 0.9);
+    g.strokeCircle(0, 0, s * 0.2);
+    // Spokes out to the rim, so the hub reads as driving the ring.
+    g.lineStyle(Math.max(1, s * 0.022), p.light, 0.8);
+    for (let i = 0; i < 5; i++) {
+      const a = start + (i / 5) * Math.PI * 2;
+      g.lineBetween(Math.cos(a) * s * 0.2, Math.sin(a) * s * 0.2, Math.cos(a) * s * 0.4, Math.sin(a) * s * 0.4);
+    }
+    return;
+  }
+
+  // Tier 5, the housing: the whole assembly closed up, one merge from a
+  // working machine.
+  const outer = ringPoints(s * 0.46);
+  const inner = ringPoints(s * 0.34);
+  g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
+  g.fillPoints(outer, true);
+  for (let i = 0; i < SIDES; i++) {
+    const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
+    const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
+    g.fillStyle(toneForNormal(p, lit), 1);
+    g.fillPoints([outer[i], outer[(i + 1) % SIDES], inner[(i + 1) % SIDES], inner[i]], true);
+  }
+  g.fillStyle(p.dark, 1);
+  g.fillCircle(0, 0, s * 0.16);
+  g.fillStyle(p.highlight, 0.85);
+  g.fillCircle(0, -s * 0.03, s * 0.09);
+  g.lineStyle(Math.max(1.2, s * 0.022), p.dark, 0.9);
+  g.strokePoints(outer, true);
+}
+
 export function drawSpawnerPieceIcon(
   g: Phaser.GameObjects.Graphics,
   typeId: string,
@@ -15,7 +122,9 @@ export function drawSpawnerPieceIcon(
 ): void {
   const base = getTierDef(typeId, Math.min(tier + 1, 9))?.color ?? Theme.panelAlt;
   const p = materialLighting(base, Math.min(tier + 1, 9));
-  const t = Phaser.Math.Clamp(tier, 1, 4);
+  // The Decagon is assembled from FIVE pieces rather than four, so the clamp
+  // has to know the family it is clamping for.
+  const t = Phaser.Math.Clamp(tier, 1, typeId === 'decagon' ? 5 : 4);
   // 0.66 of an 0.88 box - about 0.58 of the cell. At 0.48 it came out at 0.42,
   // the smallest thing on the board after the currency tiles, even though a
   // source piece is a step on the way to the largest.
@@ -23,6 +132,11 @@ export function drawSpawnerPieceIcon(
 
   if (typeId === 'water') {
     drawWaterSpawnerPiece(g, t, s, p);
+    return;
+  }
+
+  if (typeId === 'decagon') {
+    drawDecagonPiece(g, t, s, p);
     return;
   }
 

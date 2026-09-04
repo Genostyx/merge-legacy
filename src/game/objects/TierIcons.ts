@@ -119,6 +119,8 @@ function drawIconShape(g: Phaser.GameObjects.Graphics, typeId: string, tier: num
   let materialAlpha = 1;
   if (typeId.startsWith('currency-')) {
     drawCurrencyTier(g, typeId, tier, s, palette);
+  } else if (typeId === 'decagon') {
+    drawDecagon(g, s, palette);
   } else if (typeId === 'water') {
     drawWaterTier(g, tier, s, palette);
     materialAlpha = 0.88;
@@ -970,6 +972,65 @@ export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: strin
   // ---- outline last, so no fill sits on top of it.
   g.lineStyle(Math.max(1.2, s * 0.018), p.dark, 0.95);
   g.strokeRect(x, y, w, h);
+}
+
+/**
+ * THE DECAGON. A ten-sided machined token - the one item in the game that
+ * cannot merge, so its silhouette has to say "this is not a tier of
+ * anything". Every family's art is organic or structural; this is a cut
+ * regular polygon with a bevelled rim and a bored centre, which reads as a
+ * counter or a token rather than a material.
+ *
+ * Ten sides, drawn as ten, because a player holding ten of them to fill a
+ * ten-item meter should be able to count the sides and see the joke.
+ */
+export function drawDecagon(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const R = s * 0.34;
+  const SIDES = 10;
+  // Flat side up, so the token sits rather than points.
+  const start = -Math.PI / 2 + Math.PI / SIDES;
+  const ring = (radius: number): Phaser.Geom.Point[] => {
+    const pts: Phaser.Geom.Point[] = [];
+    for (let i = 0; i < SIDES; i++) {
+      const a = start + (i / SIDES) * Math.PI * 2;
+      pts.push(new Phaser.Geom.Point(Math.cos(a) * radius, Math.sin(a) * radius));
+    }
+    return pts;
+  };
+
+  const outer = ring(R);
+  const inner = ring(R * 0.62);
+
+  // Body, with the light falling from upper left across the face.
+  g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
+  g.fillPoints(outer, true);
+
+  // Bevelled rim: each of the ten edges gets its own facet, lit by how far
+  // its normal has turned away from the key. This is what stops a regular
+  // polygon reading as a flat sticker.
+  for (let i = 0; i < SIDES; i++) {
+    const a = outer[i];
+    const b = outer[(i + 1) % SIDES];
+    const ia = inner[i];
+    const ib = inner[(i + 1) % SIDES];
+    const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
+    // 1 facing the light (upper left), 0 facing away.
+    const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
+    g.fillStyle(toneForNormal(p, lit), 1);
+    g.fillPoints([a, b, ib, ia], true);
+  }
+
+  // Bored centre - a countersunk hole, dark at the bottom with a lit far wall.
+  g.fillStyle(p.dark, 1);
+  g.fillCircle(0, 0, R * 0.3);
+  g.lineStyle(Math.max(1, s * 0.014), p.highlight, 0.5);
+  g.beginPath();
+  g.arc(0, 0, R * 0.3, Math.PI * 0.15, Math.PI * 0.85);
+  g.strokePath();
+
+  // Outline last so nothing sits on top of it.
+  g.lineStyle(Math.max(1.2, s * 0.016), p.dark, 0.9);
+  g.strokePoints(outer, true);
 }
 
 /**
@@ -3254,7 +3315,12 @@ const SOURCE_PALETTE_TIER = 2;
 
 /** Flat, tier-independent palette for a source building. */
 export function sourcePalette(typeId: string): Palette {
-  const familyColor = getTierDef(typeId, SOURCE_PALETTE_TIER)?.color ?? Theme.panelAlt;
+  // Falls back to tier 1 before falling back to grey: the Decagon's chain is
+  // ONE tier long, so asking it for a mid-chain colour returns nothing and
+  // its machine came out the panel's dead grey rather than its own violet.
+  const familyColor = getTierDef(typeId, SOURCE_PALETTE_TIER)?.color
+    ?? getTierDef(typeId, 1)?.color
+    ?? Theme.panelAlt;
   return materialLighting(familyColor, SOURCE_PALETTE_TIER);
 }
 
@@ -3262,12 +3328,80 @@ export function sourcePalette(typeId: string): Palette {
  * Draws a family-specific material building. There is deliberately no cell
  * card or chassis behind it; the structure is the complete board object.
  */
+/**
+ * THE DECAGON MACHINE. Every other source is a BUILDING - a mill, a stone
+ * works, a glass house, a well - because every other source is permanent
+ * infrastructure. This one is a machine on a stand: a ten-sided drum in a
+ * cradle, with a chute at the bottom. It is temporary, and it should read as
+ * something set down on the board rather than built into it.
+ *
+ * The drum carries the same ten-sided silhouette as the item it produces, so
+ * the connection between the machine and the token needs no label.
+ */
+function drawDecagonMachine(g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean): void {
+  const SIDES = 10;
+  const R = r * 1.15;
+  const cy = -r * 0.15;
+  const start = -Math.PI / 2 + Math.PI / SIDES;
+  const ring = (radius: number): Phaser.Geom.Point[] => {
+    const pts: Phaser.Geom.Point[] = [];
+    for (let i = 0; i < SIDES; i++) {
+      const a = start + (i / SIDES) * Math.PI * 2;
+      pts.push(new Phaser.Geom.Point(Math.cos(a) * radius, cy + Math.sin(a) * radius));
+    }
+    return pts;
+  };
+
+  // Cradle: two legs and a base plate, drawn first so the drum sits in front.
+  g.fillStyle(p.dark, 1);
+  g.fillRect(-R * 0.86, cy + R * 0.5, R * 0.24, R * 0.9);
+  g.fillRect(R * 0.62, cy + R * 0.5, R * 0.24, R * 0.9);
+  g.fillGradientStyle(p.light, p.light, p.dark, p.dark, 1);
+  g.fillRect(-R * 1.02, cy + R * 1.3, R * 2.04, R * 0.22);
+  g.lineStyle(Math.max(1, r * 0.04), p.dark, 0.9);
+  g.strokeRect(-R * 1.02, cy + R * 1.3, R * 2.04, R * 0.22);
+
+  // The drum.
+  const outer = ring(R);
+  const inner = ring(R * 0.6);
+  g.fillGradientStyle(p.highlight, p.light, p.shadow, p.dark, 1);
+  g.fillPoints(outer, true);
+  for (let i = 0; i < SIDES; i++) {
+    const mid = start + ((i + 0.5) / SIDES) * Math.PI * 2;
+    const lit = (Math.cos(mid - Math.PI * 1.25) + 1) / 2;
+    g.fillStyle(toneForNormal(p, lit), 1);
+    g.fillPoints([outer[i], outer[(i + 1) % SIDES], inner[(i + 1) % SIDES], inner[i]], true);
+  }
+  g.lineStyle(Math.max(1.2, r * 0.05), p.dark, 0.95);
+  g.strokePoints(outer, true);
+
+  // Hub, lit when there are drops left in it.
+  g.fillStyle(ready ? p.highlight : p.shadow, 1);
+  g.fillCircle(0, cy, R * 0.28);
+  g.lineStyle(Math.max(1, r * 0.04), p.dark, 0.9);
+  g.strokeCircle(0, cy, R * 0.28);
+
+  // Chute: where the tokens come out.
+  g.fillStyle(p.shadow, 1);
+  g.beginPath();
+  g.moveTo(-R * 0.34, cy + R * 0.95);
+  g.lineTo(R * 0.34, cy + R * 0.95);
+  g.lineTo(R * 0.2, cy + R * 1.3);
+  g.lineTo(-R * 0.2, cy + R * 1.3);
+  g.closePath();
+  g.fillPath();
+  g.lineStyle(Math.max(1, r * 0.035), p.dark, 0.9);
+  g.strokePath();
+}
+
 export function drawSourceBuilding(
   g: Phaser.GameObjects.Graphics, typeId: string, tier: number, r: number, p: Palette, ready: boolean
 ): void {
   const level = Phaser.Math.Clamp(Math.round(tier), 1, 5);
 
-  if (typeId === 'water') {
+  if (typeId === 'decagon') {
+    drawDecagonMachine(g, r, p, ready);
+  } else if (typeId === 'water') {
     drawWaterSourceIsometric(g, r, p, ready, level);
   } else if (typeId === 'mineral') {
     if (level === 1) {

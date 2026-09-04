@@ -115,6 +115,24 @@ export const WATER_CHAIN: ChainDef = {
   ]
 };
 
+/**
+ * The Decagon. ONE TIER, and that is the whole point: its items cannot merge
+ * with anything, so they are not a ladder to climb but a stake to hold. Ten of
+ * them sitting on the board at once fills the Decagon meter, which consumes
+ * them and pays out.
+ *
+ * Everything else in the game asks for merges and gives board space back as a
+ * reward. This asks for board space and gives it back only when you cash in -
+ * so it is the one family whose cost is measured in cells rather than in
+ * energy, credits or time.
+ */
+export const DECAGON_CHAIN: ChainDef = {
+  typeId: 'decagon',
+  tiers: [
+    { tier: 1, key: 'decagon', label: 'Decagon', color: 0x8f7ad6 }
+  ]
+};
+
 export const CREDIT_CHAIN: ChainDef = {
   typeId: 'currency-credit',
   tiers: [
@@ -155,9 +173,33 @@ export function isCurrencyChain(typeId: string): boolean {
 }
 
 export const CHAINS: ChainDef[] = [
-  WOOD_CHAIN, STONE_CHAIN, GLASS_CHAIN, WATER_CHAIN,
+  WOOD_CHAIN, STONE_CHAIN, GLASS_CHAIN, WATER_CHAIN, DECAGON_CHAIN,
   CREDIT_CHAIN, ENERGY_CURRENCY_CHAIN, GEM_CURRENCY_CHAIN
 ];
+
+/**
+ * Families that are UTILITIES rather than merge ladders: they never appear in
+ * orders and never turn up as crate loot, because neither system has anything
+ * to price them against. Water is a production utility; Decagon is a stake.
+ *
+ * Kept here rather than as a `typeId !== 'water'` test repeated in Orders and
+ * Rewards - which is exactly how glass once went missing from generated
+ * orders for as long as it did.
+ */
+/**
+ * How many piece tiers merge up into a source. Four everywhere - the pieces
+ * are 1-2-3-4 and the fourth merge builds the source - except the Decagon,
+ * which takes FIVE, so it costs sixteen tier-1 pieces rather than eight.
+ * That doubled cost is what keeps a temporary dispenser an event.
+ */
+export function spawnerPieceTiers(typeId: string): number {
+  return typeId === 'decagon' ? 5 : 4;
+}
+
+export const UTILITY_CHAIN_IDS = ['water', 'decagon'] as const;
+export function isUtilityChain(typeId: string): boolean {
+  return (UTILITY_CHAIN_IDS as readonly string[]).includes(typeId);
+}
 
 export function getChain(typeId: string): ChainDef {
   const chain = CHAINS.find((c) => c.typeId === typeId);

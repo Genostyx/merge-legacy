@@ -1,4 +1,4 @@
-import { CHAINS, isCurrencyChain } from '../data/chains';
+import { CHAINS, isCurrencyChain, isUtilityChain } from '../data/chains';
 import type { CratePayloadEntry } from '../Grid';
 import { RESOURCE_PRODUCERS } from './ResourceRewards';
 import type { ResourceProducerId } from './ResourceRewards';
@@ -74,6 +74,13 @@ export interface RewardsState {
   meterCooldownDurationMs: number;
   /** Highest player level whose milestone crate has been taken. */
   claimedMilestoneLevel: number;
+  /**
+   * Decagon items banked toward the meter. Progress PERSISTS between
+   * Decagons: a dispenser is temporary, so a meter that died with it would
+   * make a half-fed meter a punishment for running out rather than progress
+   * toward the next one.
+   */
+  decagonMeter: number;
   /** Local-day index of the last daily claim, or -1 if never. */
   lastDailyDay: number;
   dailyStreak: number;
@@ -93,7 +100,7 @@ export interface RewardsState {
 export function createDefaultRewardsState(): RewardsState {
   return {
     meterCollects: 0, meterCooldownEndsAt: 0, meterCooldownDurationMs: 0,
-    claimedMilestoneLevel: 1, lastDailyDay: -1, dailyStreak: 0,
+    claimedMilestoneLevel: 1, decagonMeter: 0, lastDailyDay: -1, dailyStreak: 0,
     dailyOfferDay: -1, dailyOfferLevel: 0
   };
 }
@@ -108,6 +115,7 @@ export function normalizeRewardsState(raw: Partial<RewardsState> | undefined): R
     meterCooldownEndsAt: int(raw.meterCooldownEndsAt, 0),
     meterCooldownDurationMs: int(raw.meterCooldownDurationMs, raw.meterCooldownEndsAt ? METER_COOLDOWN_MS : 0),
     claimedMilestoneLevel: Math.max(1, int(raw.claimedMilestoneLevel, 1)),
+    decagonMeter: Math.min(DECAGON_METER_MAX, int(raw.decagonMeter, 0)),
     // -1 is meaningful (never claimed), so it cannot go through the >= 0 clamp.
     lastDailyDay: Number.isFinite(raw.lastDailyDay) ? Math.floor(raw.lastDailyDay as number) : -1,
     dailyStreak: int(raw.dailyStreak, 0),
@@ -208,6 +216,78 @@ export function pendingMilestones(state: RewardsState, level: number): { level: 
 /** Marks one milestone level as taken. Never moves backwards. */
 export function claimMilestone(state: RewardsState, level: number): void {
   state.claimedMilestoneLevel = Math.max(state.claimedMilestoneLevel, level);
+}
+
+// ---- Decagon meter ----
+
+/**
+ * Decagon items that must be ON THE BOARD at once to cash the meter.
+ *
+ * They cannot be merged, stored or fed in one at a time - the ten have to be
+ * standing there together, which with the dispenser is eleven of the board's
+ * forty-nine base cells. Board space IS the cost of this feature; there is no
+ * energy, credit or time price anywhere in it.
+ */
+export const DECAGON_METER_MAX = 10;
+
+export type DecagonPrize =
+  | { kind: 'producer'; producerId: ResourceProducerId }
+  | { kind: 'crate'; tier: CrateTier };
+
+/**
+ * THE PRIZE TABLE. This is a gamble, not a wage.
+ *
+ * Two columns matter and only one of them is value: every prize here is a
+ * CONTAINER, and what it costs the player is the cells it needs to unpack -
+ * a coin pouch drops 10, an energy basket 12, a coin basket 20, and crates
+ * need their whole payload free to open (bronze 4-5 up to vault 16).
+ *
+ * The budget is the ten cells the meter just freed. The common rows sit at or
+ * under it and clear themselves; the top rows deliberately overrun and spill
+ * into the vault, so a jackpot is a prize you have to make room for. That is
+ * the tension the feature is built on, not a bug in the table.
+ *
+ * The vault's 4% is set against how many PULLS a player gets, not against a
+ * slot machine's odds: a Decagon is five pieces of crate drops and one or two
+ * fills, so a fill is a weekly event rather than a per-minute one. At the
+ * sub-1% odds a real slot uses, the jackpot would never be seen by anyone and
+ * would be decoration rather than a hook.
+ */
+export const DECAGON_PRIZES: { weight: number; prize: DecagonPrize }[] = [
+  { weight: 30, prize: { kind: 'producer', producerId: 'coin-pouch' } },
+  { weight: 22, prize: { kind: 'producer', producerId: 'energy-basket' } },
+  { weight: 18, prize: { kind: 'crate', tier: 'bronze' } },
+  { weight: 12, prize: { kind: 'producer', producerId: 'coin-basket' } },
+  { weight: 8, prize: { kind: 'producer', producerId: 'gem-basket' } },
+  { weight: 6, prize: { kind: 'crate', tier: 'gold' } },
+  { weight: 4, prize: { kind: 'crate', tier: 'vault' } }
+];
+
+/** True when the meter is holding a full ten and can be cashed. */
+export function decagonMeterReady(state: RewardsState): boolean {
+  return state.decagonMeter >= DECAGON_METER_MAX;
+}
+
+/**
+ * Banks one Decagon item. Returns true when that item filled the meter, which
+ * is the caller's cue to consume the ten on the board and roll.
+ */
+export function feedDecagonMeter(state: RewardsState): boolean {
+  if (state.decagonMeter >= DECAGON_METER_MAX) return true;
+  state.decagonMeter++;
+  return state.decagonMeter >= DECAGON_METER_MAX;
+}
+
+/** Rolls the table and empties the meter. */
+export function rollDecagonPrize(state: RewardsState, rng: () => number = Math.random): DecagonPrize {
+  state.decagonMeter = 0;
+  const total = DECAGON_PRIZES.reduce((sum, row) => sum + row.weight, 0);
+  let roll = rng() * total;
+  for (const row of DECAGON_PRIZES) {
+    roll -= row.weight;
+    if (roll < 0) return row.prize;
+  }
+  return DECAGON_PRIZES[0].prize;
 }
 
 // ---- Daily claim ----
@@ -329,8 +409,12 @@ const CRATE_ITEM_TIER_DROP: Record<CrateTier, number> = {
   shipping: 0
 };
 
-const LOOT_FAMILIES: string[] = CHAINS.map((chain) => chain.typeId).filter((typeId) => typeId !== 'water' && !isCurrencyChain(typeId));
-const SPAWNER_PIECE_FAMILIES: string[] = CHAINS.map((chain) => chain.typeId).filter((typeId) => !isCurrencyChain(typeId));
+// Utilities are excluded from both pools. Water has no order value to price
+// against; a Decagon item cannot merge at all, so a crate rolling one would be
+// handing out a dead cell. Decagon PIECES still come from crates - on their
+// own roll, not this one.
+const LOOT_FAMILIES: string[] = CHAINS.map((chain) => chain.typeId).filter((typeId) => !isUtilityChain(typeId) && !isCurrencyChain(typeId));
+const SPAWNER_PIECE_FAMILIES: string[] = CHAINS.map((chain) => chain.typeId).filter((typeId) => typeId !== 'decagon' && !isCurrencyChain(typeId));
 
 /** Exported so PieceEconomy can compute the piece rate from the real table. */
 export const CHEST_SLOT_COUNTS: Partial<Record<CrateTier, [number, number]>> = {
@@ -443,6 +527,30 @@ function rollNormalChestEntry(
   return { kind: 'item', typeId, tier: bottom + Math.floor(tierRoll * (top - bottom + 1)) };
 }
 
+/**
+ * Chance per crate slot of a DECAGON piece, rolled SEPARATELY from the family
+ * piece odds so wood, stone and glass source-building is not slowed to pay
+ * for it. A Decagon needs five piece tiers - sixteen tier-1 equivalents - so
+ * at ~43 crate slots a day these rates put one Decagon somewhere around a
+ * week apart. That is the number to move first if it turns out to be too
+ * common or too rare in play.
+ */
+const DECAGON_PIECE_CHANCE: Partial<Record<CrateTier, number>> = {
+  bronze: 0.05,
+  silver: 0.05,
+  gold: 0.05,
+  vault: 0.05,
+  shipping: 0.08
+};
+
+/** Decagon pieces arrive low: the merging is the cost, not the finding. */
+function rollDecagonPieceTier(rng: () => number): number {
+  const roll = rng();
+  if (roll < 0.7) return 1;
+  if (roll < 0.93) return 2;
+  return 3;
+}
+
 function rollChestPayload(tier: CrateTier, level: number, rng: () => number, unlockedFamilies?: readonly string[]): CratePayloadEntry[] | null {
   const countRange = CHEST_SLOT_COUNTS[tier];
   if (!countRange) return null;
@@ -467,6 +575,21 @@ function rollChestPayload(tier: CrateTier, level: number, rng: () => number, unl
   for (let i = 0; i < producerIds.length && i < replaceable.length; i++) {
     const producerId = producerIds[i];
     out[replaceable[i]] = { kind: 'resource-producer', producerId, remaining: RESOURCE_PRODUCERS[producerId].capacity };
+  }
+
+  // Decagon pieces are APPENDED, not substituted, and rolled last.
+  //
+  // Rolling them inside the slot loop would have taken a slot from the
+  // ordinary loot, which quietly cuts the family piece rate by the same 5% -
+  // the exact dilution this roll is supposed to avoid. Appending costs the
+  // player an extra cell instead, which is the currency this whole family is
+  // priced in anyway. Rolling last also leaves every existing crate's random
+  // sequence untouched, so the approved piece-rate numbers still hold.
+  const decagonChance = DECAGON_PIECE_CHANCE[tier] ?? 0;
+  for (let i = 0; i < count; i++) {
+    if (rng() < decagonChance) {
+      out.push({ kind: 'spawner-piece', typeId: 'decagon', tier: rollDecagonPieceTier(rng) });
+    }
   }
   return out;
 }
