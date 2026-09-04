@@ -692,14 +692,17 @@ export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: strin
     // deeply fluted end to end, corner castings at all four corners, and a
     // pair of doors with locking bars at one end. None of that vocabulary is
     // shared with a crate, so the two can never be confused again.
-    // Proportioned for the ISOMETRIC read. At 0.84 long and 0.13 deep the
-    // container was almost a flat panel: the two receding planes were thin
-    // slivers, so it looked like a drawing of a container rather than one
-    // standing in the world. Shorter and much deeper puts real area on the
-    // top and end planes, which is where the three-quarter view lives.
-    const w = s * 0.66;
-    const h = s * 0.32;
-    const d = s * 0.26;
+    // A RECTANGULAR PRISM, in a container's own proportions.
+    //
+    // This has been wrong in both directions. At 0.84 long by 0.13 deep the
+    // receding planes were slivers and it read as a flat panel; correcting
+    // that took it to 0.66 by 0.32 by 0.26, which is barely 2:1:1 - a box.
+    // A real ISO container is nearer 5:1:1, so this runs 3.3:1:1: long enough
+    // to be unmistakably a container, with the depth still carrying the
+    // three-quarter view.
+    const w = s * 0.72;
+    const h = s * 0.22;
+    const d = s * 0.22;
     const x = -(w + d) / 2;
     const y = (d - h) / 2;
     const front = materialLighting(CRATE_COLORS.shipping, 5);
@@ -777,7 +780,9 @@ export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: strin
     }
 
     // Corner castings: the heavy blocks a container is lifted and stacked by.
-    const cast = s * 0.05;
+    // Sized off the HEIGHT rather than the icon, so shortening the body does
+    // not leave the castings eating a quarter of the end wall.
+    const cast = h * 0.2;
     g.fillStyle(front.dark, 1);
     for (const cxp of [x, x + w - cast]) {
       for (const cyp of [y, y + h - cast]) g.fillRect(cxp, cyp, cast, cast);
