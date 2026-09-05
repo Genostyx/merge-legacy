@@ -5,7 +5,7 @@ import type { SpawnerCellData } from '../Grid';
 import { getTierDef } from '../data/chains';
 import { cooldownForTier, isReady, msRemaining, syncDispenser } from '../dispensers/Dispensers';
 import { Theme, materialLighting } from '../ui/Theme';
-import { drawSourceBuilding, sourcePalette } from './TierIcons';
+import { SOURCE_DRAWN_TARGET, drawSourceBuilding, sourceBuildingRadius, sourcePalette } from './TierIcons';
 
 /** A production source that occupies, moves, and merges on the main board. */
 export class SpawnerView extends Phaser.GameObjects.Container {
@@ -14,6 +14,8 @@ export class SpawnerView extends Phaser.GameObjects.Container {
   state: TileState = 'idle';
   cellSize: number;
 
+  /** The cell's readiness outline. Its own object so it can sit UNDER the art. */
+  private frame: Phaser.GameObjects.Graphics;
   private core: Phaser.GameObjects.Graphics;
   private sprite: Phaser.GameObjects.Image | null;
   private timerPie: Phaser.GameObjects.Graphics;
@@ -53,7 +55,7 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     // 69% and 91% of their square, so an equal display size drew stone 03 far
     // smaller than glass 02 for no reason a player could see. `rasterScale`
     // stays on top of it as the per-asset framing nudge it always was.
-    const imageSize = boxForDrawnArt(textureKey, cellSize * 0.86) * rasterScale;
+    const imageSize = boxForDrawnArt(textureKey, cellSize * SOURCE_DRAWN_TARGET) * rasterScale;
     // Every family now uses its raster when one exists. Wood was excluded
     // while it had no art of its own; tier 5 still has none, so it falls
     // through to the vector building - which is what the fallback is for.
@@ -64,13 +66,19 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     if (this.sprite) {
       this.sprite.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     }
+    this.frame = scene.add.graphics();
     this.core = scene.add.graphics();
     this.timerPie = scene.add.graphics();
     this.ring = scene.add.graphics().setVisible(false);
     this.meterRing = scene.add.graphics();
 
+    // OUTLINES FIRST, so everything after them draws on top. A source now
+    // overflows its cell (SOURCE_DRAWN_TARGET is above 1), so a readiness
+    // frame or a merge-ready ring drawn last cut a line straight across the
+    // building.
+    this.add([this.frame, this.ring]);
     if (this.sprite) this.add(this.sprite);
-    this.add([this.core, this.meterRing, this.timerPie, this.ring]);
+    this.add([this.core, this.meterRing, this.timerPie]);
     this.setSize(cellSize, cellSize);
     this.refresh();
     scene.add.existing(this);
@@ -256,7 +264,10 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     } else {
       this.sprite?.setVisible(false);
     }
-    const buildingR = size * (this.spawner.typeId === 'water' ? 0.33 : 0.24);
+    // MEASURED, not a per-family guess. `r` is a radius each family's shapes
+    // interpret differently, so a flat multiplier drew them at wildly
+    // different sizes - see sourceBuildingRadius.
+    const buildingR = sourceBuildingRadius(this.spawner.typeId, this.spawner.tier, this.cellSize);
     if (!hasRaster) {
       this.core.setAlpha(ready ? 1 : 0.72);
       drawSourceBuilding(this.core, this.spawner.typeId, this.spawner.tier, buildingR, palette, ready);
@@ -267,11 +278,14 @@ export class SpawnerView extends Phaser.GameObjects.Container {
 
     const frameHalf = (this.cellSize - 3) / 2;
     const readyColor = this.spawner.typeId === 'water' ? Theme.currencyEnergy : Theme.accentAmber;
-    this.core.lineStyle(1, ready ? readyColor : Theme.borderOnDark, ready ? 1 : 0.75);
-    this.core.strokeRoundedRect(
+    // Drawn into its own object at the bottom of the container rather than
+    // into `core` after the building, which put the line over the art.
+    this.frame.clear();
+    this.frame.lineStyle(1, ready ? readyColor : Theme.borderOnDark, ready ? 1 : 0.75);
+    this.frame.strokeRoundedRect(
       -frameHalf, -frameHalf,
       frameHalf * 2, frameHalf * 2,
-      buildingR * 0.2
+      Math.max(2, this.cellSize * 0.05)
     );
 
     this.refreshTimerPie(now);

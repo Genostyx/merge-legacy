@@ -3507,6 +3507,65 @@ function drawDecagonMachine(g: Phaser.GameObjects.Graphics, r: number, p: Palett
   drawSnubCube(g, r * 2.0, 0, p, ready ? p.highlight : p.light);
 }
 
+/**
+ * The drawn size every source building comes out at, as a fraction of the
+ * cell. ONE number for both the traced assets and the vector fallbacks - a
+ * family that has an asset and one that does not must not be different sizes.
+ *
+ * Above 1, deliberately: a source is a BUILDING and should look too big for
+ * the cell holding it, crowding its edges the way the items never do (they
+ * top out around 0.77). At the old 0.86 a source sat politely inside its cell
+ * with air on every side, which read as small rather than as substantial.
+ */
+export const SOURCE_DRAWN_TARGET = 1.05;
+
+const sourceMetricCache = new Map<string, number>();
+
+/**
+ * The drawn extent `drawSourceBuilding` produces at radius 1, measured by
+ * replaying the real draw call - the same trick `iconFootprint` uses, and for
+ * the same reason: `r` is a radius the shapes are free to interpret, so what
+ * a family actually covers cannot be read off the number passed in.
+ *
+ * It varied wildly. At the old flat `r = size * 0.24` the vector fallbacks
+ * came out at 0.79 of a cell for Wood 5, 0.61 for Glass 5 and 0.41-0.57 for
+ * Water, against 0.86 for every rastered source. So upgrading Glass from 4 to
+ * 5 made the building SHRINK by 30%, and a Water source was smaller than the
+ * Water items standing next to it.
+ */
+function sourceMetricAtUnitRadius(typeId: string, tier: number): number {
+  const key = `${typeId}:${tier}`;
+  const cached = sourceMetricCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const MEASURE_AT = 100;
+  const recorder = new GraphicsRecorder();
+  drawSourceBuilding(
+    recorder as unknown as Phaser.GameObjects.Graphics,
+    typeId, tier, MEASURE_AT, sourcePalette(typeId), true
+  );
+  const metric = recorder.hasGeometry
+    ? Math.sqrt((recorder.maxX - recorder.minX) * (recorder.maxY - recorder.minY)) / MEASURE_AT
+    : 0;
+  sourceMetricCache.set(key, metric);
+  return metric;
+}
+
+/**
+ * The radius to hand `drawSourceBuilding` so it draws at the same size as a
+ * rastered source in the same cell.
+ *
+ * The Decagon is exempt on purpose: its size was set by eye against its own
+ * ring of ten meter pips, which sit at 0.54 of the cell and would be crowded
+ * by a solid grown to the shared target.
+ */
+export function sourceBuildingRadius(typeId: string, tier: number, cellSize: number): number {
+  if (typeId === 'decagon') return (cellSize * 0.88 - 2) * 0.24;
+  const metric = sourceMetricAtUnitRadius(typeId, tier);
+  if (metric <= 0) return (cellSize * 0.88 - 2) * 0.24;
+  return (SOURCE_DRAWN_TARGET * cellSize) / metric;
+}
+
 export function drawSourceBuilding(
   g: Phaser.GameObjects.Graphics, typeId: string, tier: number, r: number, p: Palette, ready: boolean
 ): void {

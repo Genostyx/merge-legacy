@@ -117,7 +117,10 @@ export class TileView extends Phaser.GameObjects.Container {
     this.bg = scene.add.graphics();
     this.icon = scene.add.graphics();
 
-    this.add([this.bg, this.icon, this.selectedRing, this.mergeReadyRing]);
+    // RINGS GO UNDER THE ART. They are a halo around the item, not something
+    // painted across it - on top, a ring cut over the silhouette of anything
+    // that fills its cell and made the item look sliced.
+    this.add([this.bg, this.selectedRing, this.mergeReadyRing, this.icon]);
     this.setSize(cellSize, cellSize);
     this.draw();
     this.startIdleBob();

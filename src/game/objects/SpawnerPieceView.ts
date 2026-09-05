@@ -379,7 +379,9 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
     this.shadow = scene.add.graphics();
     this.art = scene.add.graphics();
     this.ring = scene.add.graphics().setVisible(false);
-    this.add([this.shadow, this.art, this.ring]);
+    // Ring UNDER the art, same rule as every other board object: it is a halo
+    // around the piece, not a line painted across it.
+    this.add([this.shadow, this.ring, this.art]);
     this.setSize(cellSize, cellSize);
     this.draw();
 
