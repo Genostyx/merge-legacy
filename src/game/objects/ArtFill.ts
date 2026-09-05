@@ -48,3 +48,54 @@ export const ART_FILL_RATIO: Record<string, number> = {
 export function boxForDrawnArt(textureKey: string, drawn: number): number {
   return drawn / (ART_FILL_RATIO[textureKey] ?? 1);
 }
+
+/**
+ * Each source asset's drawn WIDTH and HEIGHT, as fractions of its square.
+ *
+ * `ART_FILL_RATIO` above is `sqrt(w * h)` - one number, which cannot say how
+ * a shape is proportioned. That is enough to size art but not to stop it
+ * spilling: normalising on area means the flatter a shape is, the wider it
+ * must grow to hit the target, so Stone 02 reached 1.29 of a cell and Glass
+ * 03 1.23. These two numbers are what let the width be clamped.
+ *
+ * Measured by rasterising each SVG at 256px and scanning the alpha bounds.
+ */
+export const ART_EXTENT: Record<string, { w: number; h: number }> = {
+  'source-glass-1': { w: 0.789, h: 0.781 },
+  'source-glass-2': { w: 0.813, h: 0.746 },
+  'source-glass-3': { w: 0.855, h: 0.754 },
+  'source-glass-4': { w: 0.984, h: 0.816 },
+  'source-mineral-1': { w: 0.602, h: 0.672 },
+  'source-mineral-2': { w: 0.758, h: 0.770 },
+  'source-mineral-3': { w: 0.641, h: 0.770 },
+  'source-mineral-4': { w: 0.738, h: 0.801 },
+  'source-mineral-5': { w: 0.914, h: 0.711 },
+  'source-wood-1': { w: 0.863, h: 0.785 },
+  'source-wood-2': { w: 0.664, h: 0.781 },
+  'source-wood-3': { w: 0.656, h: 0.863 },
+  'source-wood-4': { w: 0.695, h: 0.742 },
+};
+
+/** Ceilings on how far a source may spill out of its cell. Mirrors TierIcons. */
+const MAX_W = 1.15;
+const MAX_H = 1.12;
+
+/**
+ * Display size for a source's texture: the drawn-art normalisation above,
+ * then clamped so neither axis exceeds the ceilings. Clamps DOWN only, so a
+ * shape already inside them keeps the size it asked for.
+ *
+ * `cellSize` is passed rather than derived from `drawn` so this does not have
+ * to know what target the caller used.
+ */
+export function sourceBoxForCell(textureKey: string, drawn: number, cellSize: number): number {
+  const box = boxForDrawnArt(textureKey, drawn);
+  const extent = ART_EXTENT[textureKey];
+  if (!extent) return box;
+  const fit = Math.min(
+    1,
+    (MAX_W * cellSize) / (box * extent.w),
+    (MAX_H * cellSize) / (box * extent.h)
+  );
+  return box * fit;
+}

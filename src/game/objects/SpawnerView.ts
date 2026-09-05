@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { boxForDrawnArt } from './ArtFill';
+import { sourceBoxForCell } from './ArtFill';
 import type { GridPosition, TileState } from '../types';
 import type { SpawnerCellData } from '../Grid';
 import { getTierDef } from '../data/chains';
@@ -58,7 +58,7 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     // 69% and 91% of their square, so an equal display size drew stone 03 far
     // smaller than glass 02 for no reason a player could see. `rasterScale`
     // stays on top of it as the per-asset framing nudge it always was.
-    const imageSize = boxForDrawnArt(textureKey, cellSize * SOURCE_DRAWN_TARGET) * rasterScale;
+    const imageSize = sourceBoxForCell(textureKey, cellSize * SOURCE_DRAWN_TARGET, cellSize) * rasterScale;
     // Every family now uses its raster when one exists. Wood was excluded
     // while it had no art of its own; tier 5 still has none, so it falls
     // through to the vector building - which is what the fallback is for.
