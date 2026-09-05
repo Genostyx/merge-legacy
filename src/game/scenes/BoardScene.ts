@@ -68,23 +68,31 @@ import {
 import type { ShopState, ShopRowKey } from '../shop/Shop';
 
 /**
- * WHAT A HYDRO CORE PAYS. A weighted roll, not a flat figure.
+ * WHAT A HYDRO CORE PAYS. All three currencies, every time.
  *
- * The common outcome keeps the 40,000 Credits it always was, so the change
- * never reads as a nerf to the usual result. The two rare rows pay MORE than
- * that in effect, which is the only thing that makes a roll worth having over
- * a fixed number - a gamble whose rare outcomes are merely different is noise.
+ * Not one of three - the split is the SHARE OF THE HAUL, so a collect always
+ * hands over Credits, Energy and Gems together, weighted 80/15/5 by what
+ * they are worth. Picking one and paying only that would make 19 collects in
+ * 20 look identical to the old flat figure and the twentieth look like a
+ * different feature.
  *
- * Priced off the Energy refill, the one place the game already exchanges Gems
- * for Energy: 20 Gems buys a 100 bar. So 200 Energy is about 40 Gems of
- * value, and the 5% row pays 60. `addEnergy` does not cap, so a full bar
- * wastes none of it.
+ * Each row is a fixed RANGE, rolled independently, so no two collects read
+ * the same. Fixed on purpose: not scaled by level, so the Hydro Core is worth
+ * the same at level 12 as at level 60 and cannot be farmed harder by waiting.
+ *
+ * Sizes are anchored on the one exchange the game already makes - 20 Gems
+ * buys a 100 Energy bar - and on the 40,000 Credits this used to pay flat,
+ * which the Credits row still sits around.
  */
-const FINAL_WATER_REWARDS: { weight: number; kind: 'coins' | 'energy' | 'gems'; amount: number }[] = [
-  { weight: 80, kind: 'coins', amount: 40_000 },
-  { weight: 15, kind: 'energy', amount: 200 },
-  { weight: 5, kind: 'gems', amount: 60 }
-];
+const FINAL_WATER_REWARD_RANGES = {
+  coins: { min: 30_000, max: 40_000 },
+  energy: { min: 40, max: 60 },
+  gems: { min: 2, max: 5 }
+} as const;
+
+function rollRange(range: { min: number; max: number }): number {
+  return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
+}
 import {
   drawBriefcase,
   drawCrate,
@@ -1864,35 +1872,28 @@ export class BoardScene extends Phaser.Scene {
     this.grid.set(view.gridPos, null);
     this.views.delete(key);
     if (this.selectedItemKey === key) this.selectedItemKey = null;
-    const total = FINAL_WATER_REWARDS.reduce((sum, row) => sum + row.weight, 0);
-    let roll = Math.random() * total;
-    let reward = FINAL_WATER_REWARDS[0];
-    for (const row of FINAL_WATER_REWARDS) {
-      roll -= row.weight;
-      if (roll < 0) { reward = row; break; }
-    }
-
-    let tone: number = Theme.currencyCredit;
-    let suffix = 'CR';
-    let label = 'CREDITS';
-    if (reward.kind === 'coins') {
-      addCoins(this.economy, reward.amount);
-    } else if (reward.kind === 'energy') {
-      addEnergy(this.energy, reward.amount);
-      tone = Theme.currencyEnergy; suffix = 'E'; label = 'ENERGY';
-    } else {
-      addGems(this.economy, reward.amount);
-      tone = Theme.currencyGem; suffix = 'GM'; label = 'GEMS';
-    }
+    const coins = rollRange(FINAL_WATER_REWARD_RANGES.coins);
+    const energy = rollRange(FINAL_WATER_REWARD_RANGES.energy);
+    const gems = rollRange(FINAL_WATER_REWARD_RANGES.gems);
+    addCoins(this.economy, coins);
+    addEnergy(this.energy, energy);
+    addGems(this.economy, gems);
     this.updateCurrencyText();
     this.updateEnergyText();
     this.saveState();
     this.refreshOrderBar();
-    this.refreshActionTray(`HYDRO CORE COLLECTED  ·  +${reward.amount.toLocaleString()} ${label}`);
+    this.refreshActionTray(
+      `HYDRO CORE COLLECTED
++${coins.toLocaleString()} CR  ·  +${energy} E  ·  +${gems} GM`
+    );
 
-    burstParticles(this, world.x, world.y, tone, 12);
+    burstParticles(this, world.x, world.y, Theme.currencyCredit, 12);
     this.time.delayedCall(90, () => burstParticles(this, world.x, world.y - 8, 0xb4edf7, 12));
-    floatingScore(this, world.x, world.y - 8, reward.amount, suffix);
+    // Staggered and stacked, so three figures arriving at once stay legible
+    // instead of printing on top of each other.
+    floatingScore(this, world.x, world.y - 8, coins, 'CR');
+    this.time.delayedCall(130, () => floatingScore(this, world.x, world.y - 26, energy, 'E'));
+    this.time.delayedCall(260, () => floatingScore(this, world.x, world.y - 44, gems, 'GM'));
     view.setDepth(500);
     this.tweens.add({
       targets: view,
