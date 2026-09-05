@@ -104,7 +104,7 @@ import {
 import { RoomView3D, ROOM_SCOPES, ROOM_PIECES, roomPiecesForStage, type RoomPiece } from '../rooms/RoomView3D';
 import { CrateView } from '../objects/CrateView';
 import { ResourceProducerView } from '../objects/ResourceProducerView';
-import { RESOURCE_PRODUCERS, currencyPayout, expectedProducerCoinValue, rollResourceTier } from '../rewards/ResourceRewards';
+import { RESOURCE_PRODUCERS, currencyPayout, expectedProducerCoinValue, rollResourceTier, splitCurrencyIntoItems } from '../rewards/ResourceRewards';
 import type { ResourceProducerId } from '../rewards/ResourceRewards';
 import {
   INVENTORY_GRID,
@@ -1875,25 +1875,37 @@ export class BoardScene extends Phaser.Scene {
     const coins = rollRange(FINAL_WATER_REWARD_RANGES.coins);
     const energy = rollRange(FINAL_WATER_REWARD_RANGES.energy);
     const gems = rollRange(FINAL_WATER_REWARD_RANGES.gems);
+    // CREDITS go to the wallet; ENERGY and GEMS go to the BOARD as items, so
+    // the haul is something the player has to make room for and collect
+    // rather than a number that ticks up off-screen.
     addCoins(this.economy, coins);
-    addEnergy(this.energy, energy);
-    addGems(this.economy, gems);
+    const spawned: { typeId: string; tier: number }[] = [
+      ...splitCurrencyIntoItems('currency-energy', energy).map((tier) => ({ typeId: 'currency-energy', tier })),
+      ...splitCurrencyIntoItems('currency-gem', gems).map((tier) => ({ typeId: 'currency-gem', tier }))
+    ];
+    spawned.forEach((entry, index) => {
+      // Staggered, so they arrive as a stream out of the core instead of all
+      // landing in the same frame.
+      this.time.delayedCall(120 * index, () => {
+        this.enqueueForcedSpawn({ kind: 'item', typeId: entry.typeId, tier: entry.tier }, world);
+      });
+    });
     this.updateCurrencyText();
-    this.updateEnergyText();
     this.saveState();
     this.refreshOrderBar();
     this.refreshActionTray(
-      `HYDRO CORE COLLECTED
-+${coins.toLocaleString()} CR  ·  +${energy} E  ·  +${gems} GM`
+      `HYDRO CORE COLLECTED  ·  +${coins.toLocaleString()} CR
+${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     );
 
     burstParticles(this, world.x, world.y, Theme.currencyCredit, 12);
     this.time.delayedCall(90, () => burstParticles(this, world.x, world.y - 8, 0xb4edf7, 12));
     // Staggered and stacked, so three figures arriving at once stay legible
     // instead of printing on top of each other.
+    // Only the Credits float: the Energy and Gems are visible as the items
+    // flying out, and a figure for them as well would double-count the same
+    // reward on screen.
     floatingScore(this, world.x, world.y - 8, coins, 'CR');
-    this.time.delayedCall(130, () => floatingScore(this, world.x, world.y - 26, energy, 'E'));
-    this.time.delayedCall(260, () => floatingScore(this, world.x, world.y - 44, gems, 'GM'));
     view.setDepth(500);
     this.tweens.add({
       targets: view,

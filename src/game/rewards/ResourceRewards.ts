@@ -67,3 +67,45 @@ export function expectedProducerCoinValue(
     : 1;
   return units * rate;
 }
+
+/**
+ * Breaks a currency amount into board items whose payouts add up to it.
+ *
+ * A Hydro Core pays its Energy and Gems ONTO THE BOARD rather than into the
+ * wallet, so the reward has to become tiles - and 50 Energy as fifty tier-1
+ * sparks would bury the board. This picks the biggest tier that still fits
+ * most of the time, and a random affordable one otherwise, so the split
+ * varies without ever running long.
+ *
+ * `maxItems` is a hard stop on board cost: once it is reached the remainder
+ * is dropped rather than spilling more tiles. Slight under-payment is the
+ * right failure here - the alternative is a reward that floods the board it
+ * is supposed to be a prize for.
+ */
+export function splitCurrencyIntoItems(
+  typeId: string,
+  amount: number,
+  maxItems = 6,
+  rng: () => number = Math.random
+): number[] {
+  const payouts = RESOURCE_PAYOUTS[typeId];
+  if (!payouts || amount <= 0) return [];
+  const out: number[] = [];
+  let left = Math.floor(amount);
+
+  while (left > 0 && out.length < maxItems) {
+    // Tiers are 1-based; find every one the remainder can still afford.
+    const affordable = payouts
+      .map((value, index) => ({ tier: index + 1, value }))
+      .filter((row) => row.value <= left);
+    if (affordable.length === 0) break;
+
+    const biggest = affordable[affordable.length - 1];
+    // Mostly the biggest, so the count stays low; sometimes a smaller one, so
+    // two payouts of the same size do not produce identical piles.
+    const pick = rng() < 0.6 ? biggest : affordable[Math.floor(rng() * affordable.length)];
+    out.push(pick.tier);
+    left -= pick.value;
+  }
+  return out;
+}
