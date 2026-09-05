@@ -67,7 +67,24 @@ import {
 } from '../shop/Shop';
 import type { ShopState, ShopRowKey } from '../shop/Shop';
 
-const FINAL_WATER_PAYOUT = 40_000;
+/**
+ * WHAT A HYDRO CORE PAYS. A weighted roll, not a flat figure.
+ *
+ * The common outcome keeps the 40,000 Credits it always was, so the change
+ * never reads as a nerf to the usual result. The two rare rows pay MORE than
+ * that in effect, which is the only thing that makes a roll worth having over
+ * a fixed number - a gamble whose rare outcomes are merely different is noise.
+ *
+ * Priced off the Energy refill, the one place the game already exchanges Gems
+ * for Energy: 20 Gems buys a 100 bar. So 200 Energy is about 40 Gems of
+ * value, and the 5% row pays 60. `addEnergy` does not cap, so a full bar
+ * wastes none of it.
+ */
+const FINAL_WATER_REWARDS: { weight: number; kind: 'coins' | 'energy' | 'gems'; amount: number }[] = [
+  { weight: 80, kind: 'coins', amount: 40_000 },
+  { weight: 15, kind: 'energy', amount: 200 },
+  { weight: 5, kind: 'gems', amount: 60 }
+];
 import {
   drawBriefcase,
   drawCrate,
@@ -1847,15 +1864,35 @@ export class BoardScene extends Phaser.Scene {
     this.grid.set(view.gridPos, null);
     this.views.delete(key);
     if (this.selectedItemKey === key) this.selectedItemKey = null;
-    addCoins(this.economy, FINAL_WATER_PAYOUT);
+    const total = FINAL_WATER_REWARDS.reduce((sum, row) => sum + row.weight, 0);
+    let roll = Math.random() * total;
+    let reward = FINAL_WATER_REWARDS[0];
+    for (const row of FINAL_WATER_REWARDS) {
+      roll -= row.weight;
+      if (roll < 0) { reward = row; break; }
+    }
+
+    let tone: number = Theme.currencyCredit;
+    let suffix = 'CR';
+    let label = 'CREDITS';
+    if (reward.kind === 'coins') {
+      addCoins(this.economy, reward.amount);
+    } else if (reward.kind === 'energy') {
+      addEnergy(this.energy, reward.amount);
+      tone = Theme.currencyEnergy; suffix = 'E'; label = 'ENERGY';
+    } else {
+      addGems(this.economy, reward.amount);
+      tone = Theme.currencyGem; suffix = 'GM'; label = 'GEMS';
+    }
     this.updateCurrencyText();
+    this.updateEnergyText();
     this.saveState();
     this.refreshOrderBar();
-    this.refreshActionTray('HYDRO CORE COLLECTED  ·  +40,000 CREDITS');
+    this.refreshActionTray(`HYDRO CORE COLLECTED  ·  +${reward.amount.toLocaleString()} ${label}`);
 
-    burstParticles(this, world.x, world.y, Theme.currencyCredit, 12);
+    burstParticles(this, world.x, world.y, tone, 12);
     this.time.delayedCall(90, () => burstParticles(this, world.x, world.y - 8, 0xb4edf7, 12));
-    floatingScore(this, world.x, world.y - 8, FINAL_WATER_PAYOUT, 'CR');
+    floatingScore(this, world.x, world.y - 8, reward.amount, suffix);
     view.setDepth(500);
     this.tweens.add({
       targets: view,
@@ -2041,7 +2078,7 @@ export class BoardScene extends Phaser.Scene {
         return;
       } else if (selected.typeId === 'water' && isMaxLevel) {
         this.actionText.setText(
-          `${def?.label?.toUpperCase() ?? 'HYDRO CORE'}  ·  COLLECT +${FINAL_WATER_PAYOUT.toLocaleString()} CREDITS\n` +
+          `${def?.label?.toUpperCase() ?? 'HYDRO CORE'}  ·  COLLECT FOR A REWARD\n` +
           'THIS ITEM IS MAX LEVEL  ·  DOUBLE-TAP TO COLLECT'
         );
         this.sellButton.setVisible(false);
