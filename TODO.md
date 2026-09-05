@@ -85,6 +85,17 @@
 
 ## Economy and board systems
 
+- [ ] **Add a Gem-priced suitcase that occupies a board cell**
+  - Owner's idea, 2026-09-04. Pay Gems to place a suitcase; it costs a cell
+    while it is there.
+  - **Details to come from the owner before any of this is built** - what it
+    holds, what the Gems buy, whether the cell cost is permanent or for a
+    duration. Do not design it in the meantime.
+  - Worth flagging early: a suitcase is close in name to the BRIEFCASE
+    inventory that already exists, and the owner has drawn a hard line
+    between player-managed inventory and the automatic storage vault. Whatever
+    this turns out to be, it must not blur those two.
+
 - [ ] **Add targeted low-tier item purchases for Credits**
   - Let players choose a specific item rather than rely only on rotating random offers.
   - Price from the existing work-value curve with a buying margin above sell value.
@@ -219,6 +230,43 @@
   - Award 1 Gem for each newly discovered Water tier.
   - Make its output useful to the Scrap machine or a future crafting system.
   - Balance it through board-space pressure.
+
+## Bugs
+
+- [ ] **MOBILE: the project panel grey-screens the whole game**
+  - Reported on phones, worst on iPhone/Safari. Opening the project panel
+    blanks the game to grey and it cannot be dismissed; after a couple of
+    minutes it comes back on the merge board by itself.
+  - **Leading cause: a SECOND WebGL context.** Phaser runs `type:
+    Phaser.WEBGL`, and `RoomView3D` creates its own `THREE.WebGLRenderer`
+    (`antialias: true`) on a separate canvas layered behind it. iOS Safari
+    caps live WebGL contexts and reclaims aggressively on a memory-tight
+    device; when it reclaims, it kills a context, and a dead Phaser context
+    draws nothing - a grey screen.
+  - **Nothing anywhere handles `webglcontextlost`.** Grep is empty. That is
+    what makes it unrecoverable rather than a flicker: the context never
+    comes back on its own, and "it fixes itself after a couple of minutes"
+    is Safari reloading the tab after reclaiming memory, not the game
+    recovering. The self-healing delay is the strongest evidence for this
+    diagnosis - a JS exception or a stalled load would not behave that way.
+  - Ruled out: the model. `living-room.glb` is 163KB, far too small to stall
+    a phone for minutes.
+  - Disposal is already correct - `dispose()` frees geometries and materials
+    and calls `forceContextLoss()`, and both the open and close paths call
+    it - so this is not a leak of contexts across repeated opens. One extra
+    context at a time is enough on a constrained device.
+  - Fixes to try, cheapest first:
+    1. Handle `webglcontextlost` on Phaser's canvas: `preventDefault()` and
+       reload. Turns a permanent grey screen into a blink. Worth doing
+       regardless of the cause, since it also covers a backgrounded tab.
+    2. Drop `antialias` on the 3D renderer for mobile, and cap its drawing
+       buffer via `setPixelRatio(Math.min(devicePixelRatio, 2))`.
+    3. If it still bites: render the room to the EXISTING Phaser context, or
+       fall back to the pre-rendered stage PNGs on mobile. `drawLivingRoom`
+       is still there as the no-texture fallback.
+  - Cannot be reproduced or verified from this machine - it needs a real
+    iPhone. Confirm the diagnosis by watching for a `webglcontextlost` event
+    before writing fix 2 or 3.
 
 ## Time and anti-cheat
 
