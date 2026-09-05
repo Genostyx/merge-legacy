@@ -36,6 +36,62 @@ if (import.meta.env?.DEV) {
   (window as unknown as { game: Phaser.Game }).game = game;
 }
 
+/**
+ * Recovers from a lost WebGL context instead of leaving a grey screen.
+ *
+ * Reported on phones and worst on iPhone/Safari: opening the project panel
+ * blanked the game to grey with no way out, and it only came back a couple of
+ * minutes later - which is Safari reloading the tab after reclaiming memory,
+ * not the game recovering.
+ *
+ * The panel layers a SECOND WebGL context (RoomView3D's three.js renderer)
+ * behind Phaser's, and iOS Safari caps live contexts and reclaims hard on a
+ * tight device. When it reclaims it kills a context, and a dead Phaser
+ * context draws nothing at all.
+ *
+ * `webglcontextlost` is CANCELABLE, and the default action is what makes the
+ * loss permanent. Calling `preventDefault()` is what allows a restore to
+ * happen; without it the browser will never fire `webglcontextrestored`. So:
+ * cancel the default, and if the context does come back, reload - Phaser
+ * cannot rebuild its textures and buffers by itself, and a reload is
+ * instant and lossless here because saves live in localStorage.
+ *
+ * The reload is guarded to once per session. A device that is genuinely out
+ * of memory can drop the context again immediately, and a reload loop would
+ * be worse than the grey screen it replaces.
+ *
+ * This is a safety net for ANY cause of context loss - a backgrounded tab, a
+ * GPU driver reset - not only the project panel, so it stays even if the
+ * second context is removed later.
+ */
+function recoverFromContextLoss(canvas: HTMLCanvasElement): void {
+  const RELOADED_KEY = 'merge-game-context-reloaded';
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault();
+    console.warn('[webgl] context lost');
+    if (sessionStorage.getItem(RELOADED_KEY)) return;
+    // Give the browser a moment to restore it on its own before reloading;
+    // a restore that arrives first cancels this.
+    setTimeout(() => {
+      if (sessionStorage.getItem(RELOADED_KEY)) return;
+      sessionStorage.setItem(RELOADED_KEY, '1');
+      location.reload();
+    }, 1200);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    console.warn('[webgl] context restored');
+    if (sessionStorage.getItem(RELOADED_KEY)) return;
+    sessionStorage.setItem(RELOADED_KEY, '1');
+    location.reload();
+  });
+}
+
+// The canvas does not exist until Phaser has booted its renderer.
+game.events.once(Phaser.Core.Events.READY, () => {
+  const canvas = game.canvas;
+  if (canvas) recoverFromContextLoss(canvas);
+});
+
 declare const __BUILD_ID__: string;
 
 /**
