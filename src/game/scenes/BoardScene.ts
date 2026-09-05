@@ -1113,8 +1113,10 @@ export class BoardScene extends Phaser.Scene {
     const g = this.add.graphics();
 
     // Translucent glass body - lets the room show through faintly instead
-    // of hiding it behind an opaque panel.
-    g.fillStyle(0x181613, 0.9);
+    // of hiding it behind an opaque panel. Darkened on both axes: a deeper
+    // tone AND more of it, so the backdrop reads as further behind the glass
+    // and the item art has more contrast to sit against.
+    g.fillStyle(0x0f0d0b, 0.95);
     g.fillRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
 
     // Diagonal reflection streak, the single clearest "this is glass" cue.
