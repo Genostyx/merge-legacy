@@ -3519,7 +3519,27 @@ function drawDecagonMachine(g: Phaser.GameObjects.Graphics, r: number, p: Palett
  */
 export const SOURCE_DRAWN_TARGET = 1.05;
 
-const sourceMetricCache = new Map<string, number>();
+/**
+ * Hard ceilings on how far a source may spill out of its cell, as fractions
+ * of one cell. The metric target alone is not enough, because it normalises
+ * on `sqrt(w * h)` - so the FLATTER a shape is, the wider it has to grow to
+ * reach the same metric. Water source 01 is the extreme case: at an aspect
+ * ratio of 1.87 it came out 1.44 cells wide chasing a 1.05 metric, spilling
+ * a fifth of itself into each neighbour.
+ *
+ * `iconPresentation` has carried exactly these clamps for board items all
+ * along, for exactly this reason. The source path was missing them.
+ */
+const MAX_SOURCE_WIDTH = 1.15;
+/**
+ * The one width every Water source draws at - Source 05's, so the family's
+ * top tier is the one that keeps its size and the rest line up under it.
+ */
+const WATER_DRAWN_WIDTH = 1.02;
+const MAX_SOURCE_HEIGHT = 1.12;
+
+interface SourceExtent { metric: number; width: number; height: number; }
+const sourceMetricCache = new Map<string, SourceExtent>();
 
 /**
  * The drawn extent `drawSourceBuilding` produces at radius 1, measured by
@@ -3533,7 +3553,7 @@ const sourceMetricCache = new Map<string, number>();
  * 5 made the building SHRINK by 30%, and a Water source was smaller than the
  * Water items standing next to it.
  */
-function sourceMetricAtUnitRadius(typeId: string, tier: number): number {
+function sourceExtentAtUnitRadius(typeId: string, tier: number): SourceExtent {
   const key = `${typeId}:${tier}`;
   const cached = sourceMetricCache.get(key);
   if (cached !== undefined) return cached;
@@ -3544,11 +3564,11 @@ function sourceMetricAtUnitRadius(typeId: string, tier: number): number {
     recorder as unknown as Phaser.GameObjects.Graphics,
     typeId, tier, MEASURE_AT, sourcePalette(typeId), true
   );
-  const metric = recorder.hasGeometry
-    ? Math.sqrt((recorder.maxX - recorder.minX) * (recorder.maxY - recorder.minY)) / MEASURE_AT
-    : 0;
-  sourceMetricCache.set(key, metric);
-  return metric;
+  const width = recorder.hasGeometry ? (recorder.maxX - recorder.minX) / MEASURE_AT : 0;
+  const height = recorder.hasGeometry ? (recorder.maxY - recorder.minY) / MEASURE_AT : 0;
+  const extent: SourceExtent = { metric: Math.sqrt(width * height), width, height };
+  sourceMetricCache.set(key, extent);
+  return extent;
 }
 
 /**
@@ -3561,9 +3581,24 @@ function sourceMetricAtUnitRadius(typeId: string, tier: number): number {
  */
 export function sourceBuildingRadius(typeId: string, tier: number, cellSize: number): number {
   if (typeId === 'decagon') return (cellSize * 0.88 - 2) * 0.24;
-  const metric = sourceMetricAtUnitRadius(typeId, tier);
+  const { metric, width, height } = sourceExtentAtUnitRadius(typeId, tier);
   if (metric <= 0) return (cellSize * 0.88 - 2) * 0.24;
-  return (SOURCE_DRAWN_TARGET * cellSize) / metric;
+
+  // WATER IS SIZED BY WIDTH, not by the shared area metric.
+  //
+  // Its five tiers are the same structure seen from the same angle, so they
+  // read as one object growing - and that only holds if their footprints line
+  // up. The area metric broke it: source 01 is a flat well and 03-05 are
+  // roofed, so matching them on `sqrt(w * h)` made the flat one far wider
+  // than the rest to make up for its missing height.
+  let r = typeId === 'water'
+    ? WATER_DRAWN_WIDTH / width
+    : SOURCE_DRAWN_TARGET / metric;
+  // Clamped down, never up: a shape that is already inside the ceilings keeps
+  // the size the metric asked for.
+  if (width * r > MAX_SOURCE_WIDTH) r = MAX_SOURCE_WIDTH / width;
+  if (height * r > MAX_SOURCE_HEIGHT) r = MAX_SOURCE_HEIGHT / height;
+  return r * cellSize;
 }
 
 export function drawSourceBuilding(

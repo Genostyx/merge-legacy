@@ -76,6 +76,7 @@ export function loadOrSeed(scene: BoardScene): void {
       const parsed = JSON.parse(raw) as {
         boardVersion?: number;
         xpCurve?: number;
+        hasTappedSource?: boolean;
         grid: (GridCellData | null)[][];
         economy?: EconomyState;
         energy?: EnergyState;
@@ -104,6 +105,11 @@ export function loadOrSeed(scene: BoardScene): void {
           : []
       );
       scene.applyBoardExpansionLocks(savedCells);
+      // DEFAULTS TRUE, and that default is the whole point: an existing save
+      // has a player who long ago worked out that sources are tappable, and
+      // the first-tap hint appearing on their board after an update would be
+      // noise. Only the seed path below starts it false.
+      scene.hasTappedSource = parsed.hasTappedSource ?? true;
       scene.dispenserCollectCount = parsed.dispenserCollectCount ?? 0;
       scene.projectStage = Phaser.Math.Clamp(Math.floor(parsed.projectStage ?? 0), 0, PROJECT_STAGES.length);
       // Saves written before the room was itemized have no piece list: back
@@ -311,6 +317,8 @@ export function loadOrSeed(scene: BoardScene): void {
   // existed as data with no views: invisible, and un-mergeable. The load
   // path above already clears for the same reason; only the seed path did
   // not, which is why one merge (and the save it writes) hid the bug.
+  // A genuinely new game is the ONLY thing that gets the first-tap hint.
+  scene.hasTappedSource = false;
   scene.grid.clear();
   scene.boardExpansionUnlocked.clear();
   scene.applyBoardExpansionLocks();
@@ -332,6 +340,7 @@ export function saveState(scene: BoardScene): void {
   const payload = {
     boardVersion: 10,
     xpCurve: XP_CURVE_VERSION,
+    hasTappedSource: scene.hasTappedSource,
     grid: scene.grid.serialize(),
     economy: scene.economy,
     energy: scene.energy,

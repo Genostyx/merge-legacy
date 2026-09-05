@@ -30,6 +30,9 @@ export class SpawnerView extends Phaser.GameObjects.Container {
   private spinTween?: Phaser.Tweens.Tween;
   private payingOut = false;
   private exiting = false;
+  private attractTween?: Phaser.Tweens.Tween;
+  private attractRipple?: Phaser.GameObjects.Graphics;
+  private attractRippleTween?: Phaser.Tweens.Tween;
   private lastReady: boolean | null = null;
   /**
    * How many Decagon items are standing on the board, 0-10. Drawn as ten pips
@@ -82,6 +85,61 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     this.setSize(cellSize, cellSize);
     this.refresh();
     scene.add.existing(this);
+  }
+
+  /**
+   * THE FIRST-TAP HINT.
+   *
+   * A new player is shown a board with one source on it and no idea that the
+   * source is the thing to press. The tray says so, at the bottom of the
+   * screen, in text - which is both easy to miss and the opposite of this
+   * project's show-don't-tell rule.
+   *
+   * So the source asks to be pressed instead: it breathes, and a ring pushes
+   * out of its cell on a loop. Both stop for good the moment any source is
+   * tapped, and the ring is parented BEHIND the art like every other outline
+   * in the game.
+   */
+  playAttract(): void {
+    if (this.attractTween || this.exiting) return;
+
+    this.attractTween = this.scene.tweens.add({
+      targets: this,
+      scaleX: 1.05,
+      scaleY: 1.05,
+      duration: 820,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.InOut'
+    });
+
+    const ripple = this.scene.add.graphics();
+    ripple.lineStyle(2, Theme.accentAmber, 0.75);
+    ripple.strokeCircle(0, 0, this.cellSize * 0.38);
+    this.addAt(ripple, 0);
+    this.attractRipple = ripple;
+    this.attractRippleTween = this.scene.tweens.add({
+      targets: ripple,
+      scale: { from: 0.55, to: 1.3 },
+      alpha: { from: 0.85, to: 0 },
+      duration: 1400,
+      repeat: -1,
+      // A beat of nothing between pulses, so it reads as a knock rather than
+      // as a permanently animated decoration.
+      repeatDelay: 700,
+      ease: 'Cubic.Out'
+    });
+  }
+
+  /** Ends the hint for good. Safe to call when it was never started. */
+  stopAttract(): void {
+    this.attractTween?.stop();
+    this.attractTween = undefined;
+    this.attractRippleTween?.stop();
+    this.attractRippleTween = undefined;
+    this.attractRipple?.destroy();
+    this.attractRipple = undefined;
+    if (!this.exiting) this.setScale(1);
   }
 
   /** Sets the Decagon meter reading. No-op for every other source. */

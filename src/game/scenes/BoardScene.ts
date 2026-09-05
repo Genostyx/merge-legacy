@@ -219,6 +219,7 @@ import {
   stashSave,
   toggleFullscreen,
 } from './board/config';
+import { openFamilyPanel } from './board/familyPanel';
 import {
   onPointerUp as onPointerUpExt,
   onPointerDown as onPointerDownExt,
@@ -537,6 +538,14 @@ export class BoardScene extends Phaser.Scene {
   vaultCountDot!: Phaser.GameObjects.Graphics;
   vaultCount!: Phaser.GameObjects.Text;
   vaultZone?: Phaser.GameObjects.Zone;
+  /** False only until the player taps a source for the first time. */
+  hasTappedSource = true;
+  familyOverlay: Phaser.GameObjects.Container | null = null;
+  private infoButtonBg!: Phaser.GameObjects.Graphics;
+  private infoButtonText!: Phaser.GameObjects.Text;
+  private infoButtonZone!: Phaser.GameObjects.Zone;
+  /** Width of the sell/refill chip when it is showing, 0 when it is not. */
+  private sellChipWidth = 0;
   vaultDeliveryPending = false;
   vaultInboundPending = 0;
 
@@ -816,6 +825,7 @@ export class BoardScene extends Phaser.Scene {
     this.buildActionTray();
 
     this.loadOrSeed();
+    this.refreshSourceAttract();
     this.buildBoardExpansionLocks();
     this.refreshForcedSpawnVault();
     this.tryDeliverMeterGold();
@@ -1915,9 +1925,86 @@ export class BoardScene extends Phaser.Scene {
       else if (this.rushTargetKey) this.rushSource();
     });
 
+    // The `i`. Positioned by layoutInfoButton, which runs after every tray
+    // refresh so it can sit clear of whichever chip is currently showing.
+    this.infoButtonBg = this.add.graphics().setVisible(false);
+    this.infoButtonText = this.add.text(0, 0, 'i', {
+      resolution: textResolution,
+      fontFamily: Theme.fontHeading, fontSize: '13px', fontStyle: 'bold',
+      color: hex(Theme.textOnDark)
+    }).setOrigin(0.5).setVisible(false);
+    this.infoButtonZone = this.add.zone(0, 0, 10, 10)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.infoButtonZone.on('pointerup', () => {
+      const family = this.familyForSelection();
+      if (family) openFamilyPanel(this, family);
+    });
+  }
+
+  /**
+   * The family whose ladder the `i` would open, or null when the tray is
+   * showing something with no family at all - a crate, a splitter, a pouch,
+   * or nothing selected.
+   *
+   * Currency chains are excluded on purpose: Credits and Energy are payouts
+   * rather than a collection to complete.
+   */
+  private familyForSelection(): string | null {
+    const selected = this.selectedItemKey ? this.views.get(this.selectedItemKey) : null;
+    if (selected instanceof TileView && !isCurrencyChain(selected.typeId)) return selected.typeId;
+    if (selected instanceof SpawnerPieceView) return selected.typeId;
+    if (selected instanceof SpawnerView) return selected.spawner.typeId;
+    const rushed = this.rushTargetKey ? this.views.get(this.rushTargetKey) : null;
+    if (rushed instanceof SpawnerView) return rushed.spawner.typeId;
+    return null;
+  }
+
+  /**
+   * Places the `i` immediately left of whatever the tray's right-hand chip is
+   * doing, and gives the descriptive copy the remaining width.
+   *
+   * It cannot be a fixed position: SELL, REFILL and no-chip-at-all are three
+   * different widths, so a static `i` would either overlap the chip or leave
+   * a hole where one used to be.
+   */
+  private layoutInfoButton(): void {
+    if (!this.infoButtonBg) return;
+    const family = this.familyForSelection();
+    if (!family) {
+      this.infoButtonBg.setVisible(false);
+      this.infoButtonText.setVisible(false);
+      this.infoButtonZone.setVisible(false);
+      return;
+    }
+    const R = 12;
+    const GAP = 8;
+    const chip = this.sellButtonBg?.visible ? this.sellChipWidth + GAP : 0;
+    const cx = this.sellButtonRightX - chip - R;
+    const cy = this.sellButtonCenterY;
+
+    this.infoButtonBg.clear();
+    this.infoButtonBg.fillStyle(Theme.bg, 0.85);
+    this.infoButtonBg.fillCircle(cx, cy, R);
+    this.infoButtonBg.lineStyle(Theme.borderWidth, Theme.textOnDarkMuted, 0.7);
+    this.infoButtonBg.strokeCircle(cx, cy, R);
+    this.infoButtonBg.setVisible(true);
+    this.infoButtonText.setPosition(cx, cy).setVisible(true);
+    this.infoButtonZone.setPosition(cx, cy).setSize(R * 2 + 8, R * 2 + 8).setVisible(true);
+    (this.infoButtonZone.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(0, 0, R * 2 + 8, R * 2 + 8);
+
+    // The copy stops short of the `i`, not of the chip beyond it.
+    this.actionText?.setWordWrapWidth(Math.max(80, cx - R - 8 - this.actionText.x), true);
   }
 
   refreshActionTray(message?: string): void {
+    // A wrapper, because the body below returns from a dozen branches and the
+    // `i` has to be placed after every one of them.
+    this.refreshActionTrayBody(message);
+    this.layoutInfoButton();
+  }
+
+  private refreshActionTrayBody(message?: string): void {
     this.refreshBoardExpansionLocks();
     this.clearOrderRewardTexts();
     this.actionText
@@ -2121,6 +2208,7 @@ export class BoardScene extends Phaser.Scene {
       .setPosition(midX + amountLine / 2 - GLYPH / 2, cy + LINE)
       .setVisible(true);
 
+    this.sellChipWidth = w;
     this.sellButtonZone.setPosition(midX, cy).setSize(w, h).setVisible(true);
     (this.sellButtonZone.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(0, 0, w, h);
   }
@@ -2463,6 +2551,27 @@ export class BoardScene extends Phaser.Scene {
     this.time.delayedCall(swallowMs + 260, emit);
   }
 
+  /**
+   * Starts the first-tap hint on every source, or stops it everywhere.
+   *
+   * Called after the board is built, and again whenever a source is added,
+   * so a source delivered as a reward to a player who still has not tapped
+   * one also asks to be pressed.
+   */
+  refreshSourceAttract(): void {
+    for (const view of this.views.values()) {
+      if (!(view instanceof SpawnerView)) continue;
+      if (this.hasTappedSource) view.stopAttract();
+      else view.playAttract();
+    }
+  }
+
+  private stopSourceAttract(): void {
+    for (const view of this.views.values()) {
+      if (view instanceof SpawnerView) view.stopAttract();
+    }
+  }
+
   placeTile(pos: GridPosition, typeId: string, tier: number, animateIn: boolean): TileView {
     const world = this.cellToWorld(pos);
     const view = new TileView(this, world.x, world.y, this.cellSize, typeId, tier, pos);
@@ -2527,6 +2636,9 @@ export class BoardScene extends Phaser.Scene {
     this.grid.set(pos, data);
     this.views.set(this.keyOf(pos), view);
     if (animateIn) view.playSpawnPulse();
+    // A source handed to a player who still has not tapped one asks to be
+    // pressed too, not only the one the board started with.
+    if (!this.hasTappedSource) view.playAttract();
     return view;
   }
 
@@ -2575,6 +2687,13 @@ export class BoardScene extends Phaser.Scene {
   spawnFromSpawner(view: SpawnerView): void {
     this.selectedItemKey = null;
     this.rushTargetKey = this.keyOf(view.gridPos);
+    // The hint has done its job the moment a source is pressed, whether or
+    // not this particular press produces anything.
+    if (!this.hasTappedSource) {
+      this.hasTappedSource = true;
+      this.stopSourceAttract();
+      this.saveState();
+    }
 
     // THE DECAGON. Costs energy per tap, like every source except Water.
     //
