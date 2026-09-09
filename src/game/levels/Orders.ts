@@ -376,6 +376,13 @@ export interface OrderState {
   facilitiesAwarded: string[];
   shippingRewardPending: boolean;
   activeOrderShipping: boolean[];
+  /**
+   * The facility each open slot will pay, by slot. Held in STATE for the same
+   * reason activeOrderShipping is: orders are regenerated from their index
+   * every time they are read, so a reward set on the generated object is
+   * thrown away the moment anything asks for that order again.
+   */
+  activeOrderFacility: (string | null)[];
 }
 
 export interface ActiveOrder {
@@ -411,7 +418,8 @@ export function createDefaultOrderState(dispenserCollects = 0): OrderState {
     completedSinceShipping: 0,
     facilitiesAwarded: [],
     shippingRewardPending: false,
-    activeOrderShipping: [false, false, false]
+    activeOrderShipping: [false, false, false],
+    activeOrderFacility: [null, null, null]
   };
 }
 
@@ -459,6 +467,10 @@ export function normalizeOrderState(
   });
 
   const activeOrderShipping = activeOrderIndices.map((_, slot) => raw.activeOrderShipping?.[slot] === true);
+  const activeOrderFacility = activeOrderIndices.map((_, slot) => {
+    const id = raw.activeOrderFacility?.[slot];
+    return id === 'shredder' || id === 'reclaimer' ? id : null;
+  });
   const state: OrderState = {
     activeOrderIndices, activeOrderLevels, activeOrderFamilies, nextOrderIndex, collectBaselines, totalXp,
     completedSinceShipping: Math.max(0, Math.floor(raw.completedSinceShipping ?? 0)),
@@ -466,7 +478,8 @@ export function normalizeOrderState(
       ? raw.facilitiesAwarded.filter((id): id is string => id === 'shredder' || id === 'reclaimer')
       : [],
     shippingRewardPending: raw.shippingRewardPending === true,
-    activeOrderShipping
+    activeOrderShipping,
+    activeOrderFacility
   };
   syncOrderSlots(state, dispenserCollects, eligibleFamilies);
   return state;
@@ -489,6 +502,7 @@ export function syncOrderSlots(state: OrderState, dispenserCollects: number, eli
     state.activeOrderLevels.push(level);
     state.activeOrderFamilies.push([...eligibleFamilies]);
     state.activeOrderShipping.push(false);
+    state.activeOrderFacility.push(null);
     const order = generateOrder(index, level, eligibleFamilies);
     if (order.type === 'dispenser-collects') state.collectBaselines[order.id] = dispenserCollects;
     changed = true;
@@ -501,7 +515,8 @@ export function activeOrders(state: OrderState): ActiveOrder[] {
     index,
     order: {
       ...generateOrder(index, state.activeOrderLevels[slot] ?? playerLevel(state), state.activeOrderFamilies[slot] ?? ['wood']),
-      rewardShippingContainer: state.activeOrderShipping[slot] || undefined
+      rewardShippingContainer: state.activeOrderShipping[slot] || undefined,
+      rewardFacility: (state.activeOrderFacility[slot] as 'shredder' | 'reclaimer' | null) ?? undefined
     }
   }));
 }
@@ -758,10 +773,15 @@ export function advanceOrder(
   if (boardIsClear && replacement.type === 'deliver-items' && work >= typicalOrderWork(level)) {
     const next = (['shredder', 'reclaimer'] as const)
       .find((id) => !state.facilitiesAwarded.includes(id));
+    // Cleared first, so a slot that carried a facility last time cannot pay
+    // it a second time when that slot is refilled.
+    state.activeOrderFacility[slot] = null;
     if (next && !awardShipping) {
-      replacement.rewardFacility = next;
+      state.activeOrderFacility[slot] = next;
       state.facilitiesAwarded.push(next);
     }
+  } else {
+    state.activeOrderFacility[slot] = null;
   }
   state.activeOrderShipping[slot] = awardShipping;
   if (awardShipping) {

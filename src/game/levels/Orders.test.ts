@@ -528,3 +528,21 @@ describe('facility rewards', () => {
     expect(state.facilitiesAwarded).toHaveLength(2);
   });
 });
+
+describe('facility reward survives regeneration', () => {
+  it('is still on the order when it is read back', () => {
+    // The bug this pins: orders are regenerated from their index every time
+    // they are read, so a reward written onto the generated object is thrown
+    // away. It has to live in state, like the shipping container does.
+    const state = createDefaultOrderState(30);
+    for (let i = 0; i < 40; i++) {
+      advanceOrder(state, state.activeOrderIndices[0], 0, ['wood'], true);
+      const carried = activeOrders(state).filter((o) => o.order.rewardFacility);
+      if (state.facilitiesAwarded.length > 0) {
+        expect(carried.length).toBeGreaterThan(0);
+        return;
+      }
+    }
+    throw new Error('no facility was ever awarded');
+  });
+});
