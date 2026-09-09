@@ -1946,7 +1946,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // width for the life of the scene, so unlocking the multiplier mid-session
     // cannot reflow the tray under the player's hand. The box's left edge is
     // untouched; only its right edge comes in.
-    const chipSize = 46;
+    const chipSize = 38;
     const chipGap = 8;
     const boxW = w - chipSize - chipGap;
 
@@ -2014,11 +2014,15 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // glyph in its own box with the multiplier as a badge on the corner. It
     // is a spend, so it is drawn in the currency's own language.
     const chipX = x + boxW + chipGap + chipSize / 2;
-    const chipY = y + h / 2;
+    // Top-aligned with the inventory button's chip rather than centred in the
+    // tray: both are controls sitting on the same line above the panel, and
+    // centring put this one 10px lower than the other for no reason a player
+    // could see. The inventory chip is drawn from the tray's own `y`.
+    const chipY = y + chipSize / 2;
     this.multiplierBg = this.add.graphics();
-    this.multiplierIcon = currencyIcon(this, 'energy', 26).setPosition(chipX, chipY);
+    this.multiplierIcon = currencyIcon(this, 'energy', 22).setPosition(chipX, chipY);
     this.multiplierBadge = this.add.text(
-      chipX + chipSize / 2 - 5, chipY - chipSize / 2 + 4, '', {
+      chipX + chipSize / 2 - 4, chipY - chipSize / 2 + 3, '', {
         resolution: textResolution,
         fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
         color: hex(Theme.textOnDark)
@@ -2059,7 +2063,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.multiplierBg.lineStyle(Theme.borderWidth, tone, active ? 1 : 0.6);
       this.multiplierBg.strokeRoundedRect(chipX - chipSize / 2, chipY - chipSize / 2, chipSize, chipSize, Theme.radiusChip);
       this.multiplierIcon.setAlpha(active ? 1 : 0.55);
-      this.multiplierBadge.setText(`x${this.collectMultiplier}`).setColor(hex(tone));
+      this.multiplierBadge.setText(`x${this.collectMultiplier}`).setColor(hex(tone)).setFontSize(10);
     };
     this.refreshCollectMultiplier();
   }
