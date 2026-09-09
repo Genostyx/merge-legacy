@@ -534,11 +534,19 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
     fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
   card.add(close);
-  // pointerUP, not down: a scroll drag that starts on the list and travels
-  // past the panel edge would otherwise release onto the backdrop and close
-  // the menu mid-gesture.
+  // Closing needs a COMPLETE press and release on the backdrop, both.
+  //
+  // On pointerdown alone, a tap inside the panel used to fall through and
+  // shut it. On pointerup alone it was worse: the very release that opened
+  // the panel from the inventory button landed on the backdrop that release
+  // had just created, so the menu shut the instant it appeared. Requiring
+  // the press as well means the opening gesture cannot close it, and a
+  // scroll that starts on the list and drifts off the panel cannot either.
+  let pressedBackdrop = false;
+  overlay.on('pointerdown', () => { pressedBackdrop = true; });
   overlay.on('pointerup', () => {
-    if (scrolling) return;
+    if (!pressedBackdrop || scrolling) return;
+    pressedBackdrop = false;
     scene.time.delayedCall(0, dismiss);
   });
   close.on('pointerdown', () => scene.time.delayedCall(0, dismiss));
