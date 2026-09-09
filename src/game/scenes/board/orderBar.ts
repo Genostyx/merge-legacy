@@ -10,7 +10,6 @@ import {
   ORDER_CARD_MAX_W,
   ORDER_CARD_MIN_W,
   ORDER_CARD_PAD,
-  ORDER_TO_BOARD_GAP,
   ORDER_GO_H,
   ORDER_GO_W,
   ORDER_HEADER_H,
@@ -667,8 +666,15 @@ export function refreshOrderBar(scene: BoardScene): void {
     const entry = built[slot];
     return entry ? sum + entry.width + ORDER_CARD_GAP : sum;
   }, -ORDER_CARD_GAP);
+  // Measured against `viewW`, the lane WITH the crate meter's space reserved -
+  // never against `visibleW`, which widens while the meter is cooling because
+  // the meter moves to the end of the queue. Fitting to the wider lane made
+  // the cards grow the moment the meter went on cooldown and shrink again
+  // when it came back, so the orders changed size for a reason that has
+  // nothing to do with them. They keep one size; the extra room while cooling
+  // is room to spread out in, not to grow into.
   const fit = totalW > 0
-    ? Math.min(1, visibleW / (totalW * scene.chromeScale))
+    ? Math.min(1, viewW / (totalW * scene.chromeScale))
     : 1;
 
   // PASS 2 - size, paint and place. A running cursor rather than
@@ -780,11 +786,16 @@ export function refreshOrderBar(scene: BoardScene): void {
   // the difference scales with chromeScale - so on a wide screen the reserve
   // grew faster than the art inside it and the gap above the board drifted.
   // Measuring the real drawn bottom and shifting the row onto the same
-  // ORDER_TO_BOARD_GAP the tray uses below makes it exact at every scale
+  // gap the tray uses below makes it exact at every scale
   // instead of tuned for one.
   const drawn = scene.orderCards.filter((c) => c.root.visible).map((c) => c.root.getBounds().bottom);
   if (drawn.length > 0) {
-    const delta = (scene.boardOriginY - ORDER_TO_BOARD_GAP) - Math.max(...drawn);
+    // scene.boardToTrayGap, NOT a constant of its own. The tray's gap is
+    // clamped by the height actually available, so on a short screen it lands
+    // at 6 while a fixed 10 up here would not - and the two things framing
+    // the board would sit different distances from it again. Reading the same
+    // number makes them equal by construction at every size.
+    const delta = (scene.boardOriginY - scene.boardToTrayGap) - Math.max(...drawn);
     for (const card of scene.orderCards) card.root.y += delta;
   }
 

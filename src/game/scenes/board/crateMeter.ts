@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
-import { CHROME_BASE_CELL, CRATE_RING_LANE, CRATE_RING_R, CRATE_RING_W, ORDER_TO_BOARD_GAP } from './config';
+import { CHROME_BASE_CELL, CRATE_RING_LANE, CRATE_RING_R, CRATE_RING_W } from './config';
 import { Theme, hex, textResolution } from '../../ui/Theme';
 import { drawCrate } from '../../objects/TierIcons';
 import { formatCountdown } from '../../economy/Economy';
@@ -101,7 +101,7 @@ export function crateRingCentre(scene: BoardScene): { cx: number; cy: number } {
     // to be centred in the order band, which left it hanging lower than the
     // cards - so two things sharing one row sat different distances from the
     // board, 2px against 10.
-    cy: scene.boardOriginY - ORDER_TO_BOARD_GAP - crateRingR(scene) - 4 * crateRingScale(scene)
+    cy: scene.boardOriginY - scene.boardToTrayGap - crateRingR(scene) - 4 * crateRingScale(scene)
   };
 }
 

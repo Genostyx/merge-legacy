@@ -21,17 +21,18 @@ import type { CrateTier } from '../../rewards/Rewards';
 
 export const COLS = 7;
 export const ROWS = 9;
+/**
+ * The gap between the board and the four things that frame it - the order row
+ * and crate meter above, the inventory button and information tray below.
+ *
+ * This is the FLOOR. `BoardScene.boardToTrayGap` holds the value actually in
+ * use, capped at 10 and reduced only when a short screen has nothing left to
+ * give, and every one of those four reads that same field - so they are equal
+ * at every screen size by construction rather than by matching constants.
+ */
 export const BOARD_TO_TRAY_GAP = 6;
 
-/**
- * How far the order row and the crate meter sit above the board.
- *
- * The same number the tray uses below it, and small on purpose: the things
- * nearest the board should read as attached to it. Both sides are measured
- * from the DRAWN edge rather than a reserved band, because a reserve that is
- * taller than its contents puts the difference straight into the gap.
- */
-export const ORDER_TO_BOARD_GAP = 10;
+
 /**
  * How far a finger must travel before a press becomes a DRAG.
  *
