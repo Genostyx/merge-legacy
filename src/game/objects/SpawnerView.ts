@@ -157,8 +157,13 @@ export class SpawnerView extends Phaser.GameObjects.Container {
    * you sell one is the honest picture of what just happened.
    */
   private drawDecagonMeter(size: number, palette: ReturnType<typeof materialLighting>): void {
-    const R = size * 0.54;
-    const pipR = Math.max(1.6, size * 0.035);
+    const R = size * 0.56;
+    // Bigger and higher contrast than they were. Ten pips are the only thing
+    // telling the player this machine wants ten items STANDING ON THE BOARD -
+    // its items cannot merge, so there is nothing else to infer that from -
+    // and at 0.035 of the cell they were a decoration rather than an
+    // instruction.
+    const pipR = Math.max(2.4, size * 0.055);
     const start = -Math.PI / 2;
     const g = this.meterRing;
     g.clear();
@@ -170,19 +175,25 @@ export class SpawnerView extends Phaser.GameObjects.Container {
       g.lineStyle(pipR * 1.6, palette.highlight, 0.35);
       g.strokeCircle(0, 0, R);
     }
+    // A faint track through all ten, so they read as one set of slots to fill
+    // rather than ten unrelated dots.
+    if (!this.payingOut) {
+      g.lineStyle(1, palette.light, 0.18);
+      g.strokeCircle(0, 0, R);
+    }
     for (let i = 0; i < 10; i++) {
       const a = start + (i / 10) * Math.PI * 2;
       const x = Math.cos(a) * R;
       const y = Math.sin(a) * R;
       const filled = this.payingOut || i < this.decagonHeld;
-      g.fillStyle(Theme.bg, 0.85);
-      g.fillCircle(x, y, pipR + 1.2);
-      g.fillStyle(filled ? palette.highlight : Theme.borderOnDark, filled ? 1 : 0.55);
+      g.fillStyle(Theme.bg, 0.9);
+      g.fillCircle(x, y, pipR + 1.6);
+      // An EMPTY pip is the instruction, so it is drawn as a real socket -
+      // outlined and legible - not as a ghost of a filled one.
+      g.fillStyle(filled ? palette.highlight : Theme.bg, 1);
       g.fillCircle(x, y, this.payingOut ? pipR * 1.35 : pipR);
-      if (filled) {
-        g.lineStyle(1, palette.light, 0.8);
-        g.strokeCircle(x, y, pipR + 1.2);
-      }
+      g.lineStyle(1.2, filled ? palette.light : palette.light, filled ? 0.9 : 0.5);
+      g.strokeCircle(x, y, (this.payingOut ? pipR * 1.35 : pipR) + 0.6);
     }
   }
 
