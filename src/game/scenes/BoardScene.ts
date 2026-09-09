@@ -2878,7 +2878,19 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
         this.refreshActionTray('BOARD FULL\nSELECT AN ITEM TO SELL');
         return;
       }
-      const produced = collectDispenser(view.spawner, now);
+      // WATER HONOURS THE MULTIPLIER TOO, but pays for it in CHARGES rather
+      // than Energy - Water's whole identity is that it costs no Energy, and
+      // its gate is the reservoir and the recharge instead. So x2 takes two
+      // charges for one item a tier higher: the same trade every other source
+      // makes, settled in the currency this one actually spends.
+      const waterCeiling = Math.min(
+        this.collectMultiplier, maxCollectMultiplier(playerLevel(this.orderState))
+      );
+      const waterUsable = COLLECT_MULTIPLIERS.filter(
+        (m) => m <= waterCeiling && m <= view.spawner.charges
+      );
+      const waterMultiplier: CollectMultiplier = waterUsable[waterUsable.length - 1] ?? 1;
+      const produced = collectDispenser(view.spawner, now, Math.random(), waterMultiplier);
       if (!produced) {
         view.refresh(now);
         this.refreshActionTray();
