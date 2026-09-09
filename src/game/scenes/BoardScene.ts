@@ -1093,9 +1093,18 @@ export class BoardScene extends Phaser.Scene {
     ));
     const isFullscreen = !!fullscreenElement();
     const extraPortraitRoom = Math.max(0, this.scale.height - this.scale.width * 1.72);
+    // THE HEADER SCALES WITH THE BOARD, rather than sitting at a fixed size
+    // and pushing what is under it out of the way.
+    //
+    // It was a flat 1 outside fullscreen, so on a narrow phone the badge,
+    // currency chips and buttons kept their full size while the board shrank
+    // beneath them - the band stayed as tall as ever and the order row gave up
+    // the difference. Scaling off the board's own cell keeps the header's
+    // contents spaced relative to each other and hands back the height the band
+    // is not using. CHROME_BASE_CELL is the cell it was tuned against.
     this.hudScale = isFullscreen
       ? Phaser.Math.Clamp(1 + extraPortraitRoom / Math.max(1, this.scale.height), 1.12, 1.2)
-      : 1;
+      : Phaser.Math.Clamp(widthCellSize / CHROME_BASE_CELL, 0.82, 1.15);
     this.chromeScale = Phaser.Math.Clamp(
       Math.max(cellFor(124) / CHROME_BASE_CELL, this.hudScale),
       1,
@@ -1113,7 +1122,7 @@ export class BoardScene extends Phaser.Scene {
     // below - which is deliberate: the gap is at least 6 and usually 24, so
     // it clears, and reserving for the tallest possible card would put the
     // hole back for every card that is not one.
-    const headerReserve = Math.round(101 * this.chromeScale);
+    const headerReserve = Math.round(101 * this.hudScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);

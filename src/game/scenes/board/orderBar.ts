@@ -73,7 +73,7 @@ export function orderBarMetrics(scene: BoardScene): { cardH: number; y: number; 
       // the level badge and shop button sitting on the HUD line above it.
       // The row is bottom-anchored to the board afterwards, so this only
       // decides where it starts from, not where it ends up.
-      : scene.contentTop + Math.round(54 * scene.chromeScale),
+      : scene.contentTop + Math.round(54 * scene.hudScale),
     viewW: COLS * scene.cellSize - scene.crateLaneW()
   };
 }
