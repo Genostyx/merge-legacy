@@ -1122,7 +1122,19 @@ export class BoardScene extends Phaser.Scene {
     // below - which is deliberate: the gap is at least 6 and usually 24, so
     // it clears, and reserving for the tallest possible card would put the
     // hole back for every card that is not one.
-    const headerReserve = Math.round(101 * this.hudScale);
+    // 116 is what the header ACTUALLY occupies: the order row starts 54 below
+    // contentTop and its cards are ORDER_CARD_H tall. Anything smaller and the
+    // board starts too high, which - because the row is bottom-anchored to the
+    // board - drags the row up into the HUD and clips the reward chips off
+    // their cards. The room comes from the spare height at the bottom, which
+    // nothing else uses.
+    // Each part measured at the scale it is DRAWN at: the row's offset from
+    // the top of the header is hudScale, but the cards themselves are drawn at
+    // chromeScale, which has a floor of 1. Using one scale for both made the
+    // reserve ~11px short on a narrow phone, and because the row is
+    // bottom-anchored to the board that shortfall pulled it up into the HUD
+    // and clipped the reward chips.
+    const headerReserve = Math.round(54 * this.hudScale + ORDER_CARD_H * this.chromeScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
@@ -1155,8 +1167,12 @@ export class BoardScene extends Phaser.Scene {
     // Floor of 0, not 10: on a short screen the block is taller than the
     // viewport, and holding a 10px top margin there pushed the tray off the
     // bottom edge. The margin is the first thing to give up, never the gaps.
+    // SPARE HEIGHT GOES TO THE TOP MARGIN, up to a real limit rather than a
+    // token 28. Nothing is drawn below the tray, so holding the block high and
+    // leaving a dead strip at the bottom wasted the only slack the layout has -
+    // slack the header needs to stop clipping what sits under it.
     this.contentTop = Phaser.Math.Clamp(
-      Math.floor((this.scale.height - blockH) / 2), 0, 28
+      Math.floor((this.scale.height - blockH) / 2), 0, 72
     );
     this.boardOriginY = this.contentTop + headerReserve + gap;
     this.boardToTrayGap = gap;
