@@ -5,6 +5,10 @@ import { TileView } from '../objects/TileView';
 import { SpawnerView } from '../objects/SpawnerView';
 import { SpawnerPieceView, drawSpawnerPieceIcon } from '../objects/SpawnerPieceView';
 import { SplitterView, drawSplitterIcon } from '../objects/SplitterView';
+import type { FacilityId } from '../Grid';
+import { FacilityView } from '../objects/FacilityView';
+import { RECLAIMER_METER_MAX } from '../facility/Reclaimer';
+import { SHREDDER_METER_MAX } from '../facility/Shredder';
 import type { GridPosition } from '../types';
 import { CHAINS, getTierDef, isCurrencyChain, spawnerPieceTiers } from '../data/chains';
 import { burstParticles, shakeForTier, floatingScore, ensureParticleTexture, shockwaveRing } from '../fx/MergeFx';
@@ -2529,7 +2533,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     for (const row of this.grid.serialize()) {
       for (const cell of row) {
         // Crates belong to no family, so they unlock nothing.
-        if (cell && cell.kind !== 'locked-item' && cell.kind !== 'crate' && cell.kind !== 'splitter' && cell.kind !== 'resource-producer' && cell.typeId !== 'water' && !isCurrencyChain(cell.typeId)) unlocked.add(cell.typeId);
+        if (cell && cell.kind !== 'locked-item' && cell.kind !== 'crate' && cell.kind !== 'splitter' && cell.kind !== 'resource-producer' && cell.kind !== 'facility' && cell.typeId !== 'water' && !isCurrencyChain(cell.typeId)) unlocked.add(cell.typeId);
       }
     }
     for (const pending of this.forcedSpawnVault) {
@@ -2825,6 +2829,33 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // pressed too, not only the one the board started with.
     if (!this.hasTappedSource) view.playAttract();
     return view;
+  }
+
+  /**
+   * Puts a facility on the board. Its meter comes from RewardsState, not from
+   * the cell, so storing one in the briefcase and taking it out again keeps
+   * whatever was banked in it.
+   */
+  placeFacility(pos: GridPosition, facilityId: FacilityId, animateIn: boolean): FacilityView {
+    const world = this.cellToWorld(pos);
+    const view = new FacilityView(this, world.x, world.y, this.cellSize, facilityId, pos);
+    this.grid.set(pos, { kind: 'facility', facilityId });
+    this.views.set(this.keyOf(pos), view);
+    this.refreshFacilityMeters();
+    if (animateIn) view.playSpawnPulse();
+    return view;
+  }
+
+  /** Pushes the banked meter onto every facility of that kind on the board. */
+  refreshFacilityMeters(): void {
+    for (const view of this.views.values()) {
+      if (!(view instanceof FacilityView)) continue;
+      if (view.facilityId === 'shredder') {
+        view.setMeter(this.rewards.shredder.meter, SHREDDER_METER_MAX);
+      } else {
+        view.setMeter(this.rewards.reclaimer.meter, RECLAIMER_METER_MAX);
+      }
+    }
   }
 
   placeResourceProducer(pos: GridPosition, producerId: ResourceProducerId, remaining: number, animateIn: boolean): ResourceProducerView {

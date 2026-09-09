@@ -32,6 +32,20 @@ export interface SplitterCellData {
   kind: 'splitter';
 }
 
+/**
+ * A facility standing on the board - the shredder or the max-tier consumer.
+ *
+ * It carries only its id. The meter lives in RewardsState rather than here,
+ * so putting a facility in the briefcase and taking it out again cannot lose
+ * the progress banked in it.
+ */
+export interface FacilityCellData {
+  kind: 'facility';
+  facilityId: FacilityId;
+}
+
+export type FacilityId = 'shredder' | 'reclaimer';
+
 export interface ResourceProducerCellData {
   kind: 'resource-producer';
   producerId: ResourceProducerId;
@@ -65,7 +79,7 @@ export type CratePayloadEntry =
   | { kind: 'resource-producer'; producerId: ResourceProducerId; remaining: number }
   | { kind: 'coins' | 'gems' | 'energy'; amount: number };
 
-export type GridCellData = ItemCellData | LockedItemCellData | SpawnerCellData | SpawnerPieceCellData | CrateCellData | SplitterCellData | ResourceProducerCellData;
+export type GridCellData = ItemCellData | LockedItemCellData | SpawnerCellData | SpawnerPieceCellData | CrateCellData | SplitterCellData | FacilityCellData | ResourceProducerCellData;
 
 /**
  * Pure data grid. Knows nothing about Phaser, rendering, or input.
@@ -138,7 +152,10 @@ export class Grid {
         const here = this.cells[row][col];
         if (!here || !canUpgrade(here)) continue;
         // A crate is never a merge partner, so it can't rescue a full board.
-        if (here.kind === 'crate' || here.kind === 'splitter' || here.kind === 'resource-producer') continue;
+        // Neither is a facility: it is a fixture, never a merge partner, so
+        // it cannot rescue a full board either.
+        if (here.kind === 'crate' || here.kind === 'splitter'
+          || here.kind === 'resource-producer' || here.kind === 'facility') continue;
         const key = `${here.kind}:${here.typeId}:${here.tier}`;
         if (seen.has(key)) return false;
         seen.add(key);

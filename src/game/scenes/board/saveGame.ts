@@ -223,6 +223,8 @@ export function loadOrSeed(scene: BoardScene): void {
             scene.placeSpawnerPiece(pos, cell.typeId, cell.tier, false);
           } else if (cell.kind === 'splitter') {
             scene.placeSplitter(pos, false);
+          } else if (cell.kind === 'facility') {
+            scene.placeFacility(pos, cell.facilityId, false);
           } else if (cell.kind === 'resource-producer') {
             scene.placeResourceProducer(pos, cell.producerId, cell.remaining, false);
           } else {

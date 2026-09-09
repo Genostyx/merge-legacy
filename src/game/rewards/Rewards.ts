@@ -2,6 +2,8 @@ import { CHAINS, isCurrencyChain, isUtilityChain } from '../data/chains';
 import type { CratePayloadEntry } from '../Grid';
 import { RESOURCE_PRODUCERS } from './ResourceRewards';
 import type { ResourceProducerId } from './ResourceRewards';
+import { normalizeShredderState } from '../facility/Shredder';
+import { normalizeReclaimerState } from '../facility/Reclaimer';
 import { maxOrderTier, minOrderTier, typicalOrderWork } from '../levels/Orders';
 
 /**
@@ -95,13 +97,21 @@ export interface RewardsState {
    */
   dailyOfferDay: number;
   dailyOfferLevel: number;
+  /**
+   * The two facilities' meters. Kept HERE rather than on their board cells,
+   * so putting a facility in the briefcase and taking it out again cannot
+   * lose what has been banked in it.
+   */
+  shredder: { meter: number };
+  reclaimer: { meter: number };
 }
 
 export function createDefaultRewardsState(): RewardsState {
   return {
     meterCollects: 0, meterCooldownEndsAt: 0, meterCooldownDurationMs: 0,
     claimedMilestoneLevel: 1, decagonMeter: 0, lastDailyDay: -1, dailyStreak: 0,
-    dailyOfferDay: -1, dailyOfferLevel: 0
+    dailyOfferDay: -1, dailyOfferLevel: 0,
+    shredder: { meter: 0 }, reclaimer: { meter: 0 }
   };
 }
 
@@ -122,7 +132,9 @@ export function normalizeRewardsState(raw: Partial<RewardsState> | undefined): R
     // -1/0 mean "not pinned yet", so an existing save simply pins on the next
     // time the daily is looked at rather than needing a migration.
     dailyOfferDay: Number.isFinite(raw.dailyOfferDay) ? Math.floor(raw.dailyOfferDay as number) : -1,
-    dailyOfferLevel: int(raw.dailyOfferLevel, 0)
+    dailyOfferLevel: int(raw.dailyOfferLevel, 0),
+    shredder: normalizeShredderState(raw.shredder),
+    reclaimer: normalizeReclaimerState(raw.reclaimer)
   };
 }
 
