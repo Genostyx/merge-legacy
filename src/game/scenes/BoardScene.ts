@@ -159,7 +159,10 @@ import {
   msRemaining,
   refillDispenser,
   rushCostGems,
-  MAX_DISPENSER_TIER
+  MAX_DISPENSER_TIER,
+  COLLECT_MULTIPLIERS,
+  maxCollectMultiplier,
+  type CollectMultiplier
 } from '../dispensers/Dispensers';
 import type { DispenserState } from '../dispensers/Dispensers';
 import { Theme, hex, materialLighting, textResolution, toneAt } from '../ui/Theme';
@@ -268,6 +271,7 @@ import {
   refreshProjectButton as refreshProjectButtonExt,
   buildInventoryButton as buildInventoryButtonExt,
   buildAutoMergeButton as buildAutoMergeButtonExt,
+  buildCollectMultiplierButton as buildCollectMultiplierButtonExt,
   updateCurrencyText as updateCurrencyTextExt,
   updateEnergyText as updateEnergyTextExt
 } from './board/hudChrome';
@@ -565,6 +569,9 @@ export class BoardScene extends Phaser.Scene {
   vaultZone?: Phaser.GameObjects.Zone;
   /** False only until the player taps a source for the first time. */
   hasTappedSource = true;
+  /** Energy spent per source tap, and how far up it shifts the drop. */
+  collectMultiplier: CollectMultiplier =
+    (Number(localStorage.getItem('merge-game-collect-multiplier')) as CollectMultiplier) || 1;
   familyOverlay: Phaser.GameObjects.Container | null = null;
   private infoButtonBg!: Phaser.GameObjects.Graphics;
   private infoButtonText!: Phaser.GameObjects.Text;
@@ -630,6 +637,8 @@ export class BoardScene extends Phaser.Scene {
   modalOpen = false;
   autoMergeEnabled = localStorage.getItem(AUTO_MERGE_KEY) === 'true';
   autoMergeText!: Phaser.GameObjects.Text;
+  collectMultiplierText!: Phaser.GameObjects.Text;
+  refreshCollectMultiplier: () => void = () => {};
   private autoDispenserCursor = 0;
   private nextAutoDispenserAt = 0;
   private deadlockOverlay: Phaser.GameObjects.Container | null = null;
@@ -835,6 +844,7 @@ export class BoardScene extends Phaser.Scene {
     this.buildSettingsButton();
     this.buildDevResetButton();
     this.buildAutoMergeButton();
+    this.buildCollectMultiplierButton();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
     this.buildCrateMeter();
@@ -2823,11 +2833,22 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.refreshActionTray('BOARD FULL\nSELECT AN ITEM TO SELL');
       return;
     }
+    // The multiplier steps DOWN to whatever is affordable: capped by the
+    // player's level, by what the reservoir still holds, and by the energy on
+    // hand. A x4 player with two charges left collects at x2 rather than
+    // being refused outright.
+    const ceiling = Math.min(this.collectMultiplier, maxCollectMultiplier(playerLevel(this.orderState)));
+    const usable = COLLECT_MULTIPLIERS.filter(
+      (m) => m <= ceiling && m <= view.spawner.charges
+        && canSpendEnergy(this.energy, m * ENERGY_COST_PER_COLLECT)
+    );
+    const multiplier: CollectMultiplier = usable[usable.length - 1] ?? 1;
+    const collectCost = multiplier * ENERGY_COST_PER_COLLECT;
     // Energy is checked BEFORE collecting but spent only after the source
     // actually yields, per DISPENSER_ENERGY_RESEARCH rule 2 - a full board
     // or a dry source must never burn energy. Checking first also avoids
     // consuming one of the source's stored drops we then can't pay for.
-    if (!canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) {
+    if (!canSpendEnergy(this.energy, collectCost)) {
       this.updateEnergyText();
       this.refreshActionTray(
         `OUT OF ENERGY\nNEXT IN ${formatCountdown(msUntilNextEnergy(this.energy))}  ·  TAP THE ENERGY BAR TO REFILL`
@@ -2837,14 +2858,14 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // The opening six drops are intentionally tier-one so the tutorial
     // teaches the merge chain instead of being skipped by a lucky bonus.
     const openingRoll = this.dispenserCollectCount < 6 ? 0.99 : Math.random();
-    const produced = collectDispenser(view.spawner, Date.now(), openingRoll);
+    const produced = collectDispenser(view.spawner, Date.now(), openingRoll, multiplier);
     if (!produced) {
       // Dry: hand the tray this source so it can offer the gem rush.
       view.refresh();
       this.refreshActionTray();
       return;
     }
-    spendEnergy(this.energy, ENERGY_COST_PER_COLLECT);
+    spendEnergy(this.energy, collectCost);
     const nearest = this.nearestEmptyCells(view.gridPos, empties);
     const pos = nearest[Math.floor(Math.random() * nearest.length)];
     this.placeTile(pos, produced.typeId, produced.tier, true);
@@ -3023,12 +3044,14 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
   layoutHudChips(): void { layoutHudChipsExt(this); }
   buildLevelBadge(cx: number, cy: number): Phaser.GameObjects.Text { return buildLevelBadgeExt(this, cx, cy); }
   playLevelUpFlourish(): void { playLevelUpFlourishExt(this); }
-  updateLevelBadge(): void { updateLevelBadgeExt(this); }
+  updateLevelBadge(): void {
+    this.refreshCollectMultiplier(); updateLevelBadgeExt(this); }
   buildShopIconButton(cx: number, cy: number, onTap: () => void): void { buildShopIconButtonExt(this, cx, cy, onTap); }
   buildProjectButton(): void { buildProjectButtonExt(this); }
   refreshProjectButton(): void { refreshProjectButtonExt(this); }
   buildInventoryButton(): void { buildInventoryButtonExt(this); }
   buildAutoMergeButton(): void { buildAutoMergeButtonExt(this); }
+  buildCollectMultiplierButton(): void { buildCollectMultiplierButtonExt(this); }
   updateCurrencyText(): void { updateCurrencyTextExt(this); }
   updateEnergyText(): void { updateEnergyTextExt(this); }
 

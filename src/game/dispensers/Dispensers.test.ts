@@ -13,7 +13,8 @@ import {
   rushCostGems,
   syncDispenser,
   outputTierDistribution,
-  rollOutputTier
+  rollOutputTier,
+  maxCollectMultiplier
 } from './Dispensers';
 
 describe('reservoir capacity', () => {
@@ -216,5 +217,36 @@ describe('below-tier output', () => {
     for (let roll = 0; roll < 1; roll += 0.05) {
       expect(rollOutputTier('decagon', 1, roll)).toBe(1);
     }
+  });
+});
+
+describe('energy multiplier', () => {
+  it('buys exactly one tier per doubling, and costs the charges it replaces', () => {
+    // The whole justification: x2 is one tier up because a tier IS two of the
+    // tier below. If this drifted, the multiplier would become an efficiency
+    // gain rather than a convenience.
+    const at = (multiplier: 1 | 2 | 4) => {
+      const d = makeDispenser('wood', 2, 0, 30);
+      const out = collectDispenser(d, 0, 0.99, multiplier);
+      return { tier: out!.tier, spent: 30 - d.charges };
+    };
+    const base = at(1);
+    expect(at(2).tier).toBe(base.tier + 1);
+    expect(at(4).tier).toBe(base.tier + 2);
+    expect(at(1).spent).toBe(1);
+    expect(at(2).spent).toBe(2);
+    expect(at(4).spent).toBe(4);
+  });
+
+  it('never spends more charges than the reservoir holds', () => {
+    const d = makeDispenser('wood', 2, 0, 3);
+    collectDispenser(d, 0, 0.99, 4);
+    expect(d.charges).toBe(0);
+  });
+
+  it('gates the multiplier by level', () => {
+    expect(maxCollectMultiplier(1)).toBe(1);
+    expect(maxCollectMultiplier(5)).toBe(2);
+    expect(maxCollectMultiplier(15)).toBe(4);
   });
 });

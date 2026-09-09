@@ -317,13 +317,44 @@ export function rollOutputTier(typeId: string, tier: number, roll: number): numb
   return order[order.length - 1];
 }
 
+/**
+ * THE ENERGY MULTIPLIER LADDER.
+ *
+ * Powers of two, because a tier is worth exactly two of the tier below it -
+ * so 2 energy instead of 1 buys precisely one tier up, and 4 buys two. A x3
+ * step was considered and dropped: 3 energy does not land on a tier, so it
+ * would either waste a third of the spend or hand out a 33% efficiency gain,
+ * and a multiplier that pays better than the one below it is the only one
+ * anybody would ever use.
+ *
+ * The point is FEWER TAPS, not more value. A x4 collect spends 4 energy and
+ * 4 charges to make one item worth 4 drops - the same trade the player was
+ * always making, settled in one press instead of four, and landing in one
+ * board cell instead of four.
+ */
+export const COLLECT_MULTIPLIERS = [1, 2, 4] as const;
+export type CollectMultiplier = (typeof COLLECT_MULTIPLIERS)[number];
+
+/** Highest multiplier a player of this level may use. */
+export function maxCollectMultiplier(level: number): CollectMultiplier {
+  if (level >= 15) return 4;
+  if (level >= 5) return 2;
+  return 1;
+}
+
 export function collectDispenser(
   d: Dispenser,
   now: number = Date.now(),
-  roll: number = Math.random()
+  roll: number = Math.random(),
+  multiplier: CollectMultiplier = 1
 ): { typeId: string; tier: number } | null {
   if (!isReady(d, now)) return null;
-  const tierRoll = rollOutputTier(d.typeId, d.tier, roll);
+  // A multiplier is a TIER SHIFT, not a separate roll: the same distribution,
+  // moved up by log2(multiplier). It costs the charges it replaces, so the
+  // reservoir empties at exactly the rate it always did.
+  const steps = Math.round(Math.log2(multiplier));
+  const spend = Math.min(d.charges, multiplier);
+  const tierRoll = rollOutputTier(d.typeId, d.tier, roll) + steps;
   // The cap is the CHAIN'S OWN LENGTH, not a literal.
   //
   // This was `water ? 12 : 9`, which is right for every family that happens
@@ -335,9 +366,10 @@ export function collectDispenser(
   //
   // Falls back to 9 for a typeId with no chain so the pure-rules tests can
   // still drive this with invented families.
-  const produced = { typeId: d.typeId, tier: tierRoll };
+  const chainCap = CHAINS.find((c) => c.typeId === d.typeId)?.tiers.length ?? 9;
+  const produced = { typeId: d.typeId, tier: Math.min(chainCap, tierRoll) };
   const wasFull = d.charges >= capacityForTier(d.typeId, d.tier);
-  d.charges -= 1;
+  d.charges -= spend;
   if (wasFull || d.readyAt <= 0) d.readyAt = now + cooldownForTier(d.typeId, d.tier);
   return produced;
 }
