@@ -5,7 +5,6 @@ import { Theme, hex, materialLighting, textResolution, toneAt } from '../../ui/T
 import { currencyBoxFor } from '../../ui/CurrencyGlyph';
 import { playerLevel, playerXpProgress } from '../../levels/Orders';
 import { syncEnergy } from '../../economy/Energy';
-import { COLLECT_MULTIPLIERS, maxCollectMultiplier } from '../../dispensers/Dispensers';
 import { dailyAvailable } from '../../rewards/Rewards';
 import { unclaimedDiscoveryCount } from '../../collection/Collection';
 
@@ -499,52 +498,6 @@ export function buildAutoMergeButton(scene: BoardScene): void {
     scene.autoMergeEnabled = !scene.autoMergeEnabled;
     localStorage.setItem(AUTO_MERGE_KEY, String(scene.autoMergeEnabled));
     refresh();
-  });
-}
-
-/**
- * The energy-multiplier chip: x1 / x2 / x4, cycled by tapping it.
- *
- * Hidden entirely below the level that unlocks x2, so a new player is never
- * shown a control that does nothing. Sits by the auto toggle rather than on
- * the sources themselves - it is one setting for every source, not a
- * per-source one, and putting it on each would say the opposite.
- */
-export function buildCollectMultiplierButton(scene: BoardScene): void {
-  scene.collectMultiplierText = scene.add.text(
-    scene.scale.width - 48, scene.scale.height - 24, '', {
-      resolution: textResolution,
-      fontFamily: Theme.fontMono,
-      fontSize: '10px',
-      color: hex(Theme.currencyEnergy)
-    }
-  ).setOrigin(1, 1).setAlpha(0.9).setDepth(10).setInteractive({ useHandCursor: true });
-
-  const refresh = (): void => {
-    const cap = maxCollectMultiplier(playerLevel(scene.orderState));
-    scene.collectMultiplierText.setVisible(cap > 1);
-    if (cap === 1) return;
-    // Clamp on every refresh, so levelling never leaves the player holding a
-    // multiplier they are no longer entitled to.
-    if (scene.collectMultiplier > cap) scene.collectMultiplier = cap;
-    scene.collectMultiplierText
-      .setText(`energy x${scene.collectMultiplier}`)
-      .setColor(hex(scene.collectMultiplier > 1 ? Theme.currencyEnergy : Theme.textOnDarkMuted));
-  };
-  scene.refreshCollectMultiplier = refresh;
-  refresh();
-
-  scene.collectMultiplierText.on('pointerdown', () => {
-    const cap = maxCollectMultiplier(playerLevel(scene.orderState));
-    const allowed = COLLECT_MULTIPLIERS.filter((m) => m <= cap);
-    const next = allowed[(allowed.indexOf(scene.collectMultiplier) + 1) % allowed.length];
-    scene.collectMultiplier = next;
-    localStorage.setItem('merge-game-collect-multiplier', String(next));
-    refresh();
-    scene.refreshActionTray(
-      `ENERGY x${next}  ·  ${next} ENERGY PER TAP
-${next === 1 ? 'ONE DROP AT A TIME' : `ONE ITEM ${Math.round(Math.log2(next))} TIER${next > 2 ? 'S' : ''} HIGHER`}`
-    );
   });
 }
 

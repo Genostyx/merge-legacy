@@ -271,7 +271,6 @@ import {
   refreshProjectButton as refreshProjectButtonExt,
   buildInventoryButton as buildInventoryButtonExt,
   buildAutoMergeButton as buildAutoMergeButtonExt,
-  buildCollectMultiplierButton as buildCollectMultiplierButtonExt,
   updateCurrencyText as updateCurrencyTextExt,
   updateEnergyText as updateEnergyTextExt
 } from './board/hudChrome';
@@ -637,7 +636,10 @@ export class BoardScene extends Phaser.Scene {
   modalOpen = false;
   autoMergeEnabled = localStorage.getItem(AUTO_MERGE_KEY) === 'true';
   autoMergeText!: Phaser.GameObjects.Text;
-  collectMultiplierText!: Phaser.GameObjects.Text;
+  private multiplierBg!: Phaser.GameObjects.Graphics;
+  private multiplierIcon!: Phaser.GameObjects.Graphics | Phaser.GameObjects.Image;
+  private multiplierBadge!: Phaser.GameObjects.Text;
+  private multiplierZone!: Phaser.GameObjects.Zone;
   refreshCollectMultiplier: () => void = () => {};
   private autoDispenserCursor = 0;
   private nextAutoDispenserAt = 0;
@@ -844,7 +846,6 @@ export class BoardScene extends Phaser.Scene {
     this.buildSettingsButton();
     this.buildDevResetButton();
     this.buildAutoMergeButton();
-    this.buildCollectMultiplierButton();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
     this.buildCrateMeter();
@@ -1940,12 +1941,20 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     const w = COLS * this.cellSize - railW;
     const h = 66;
+    // The multiplier chip sits OUTSIDE the info box, to its right. The space
+    // is reserved whether or not the chip is showing yet - the box keeps one
+    // width for the life of the scene, so unlocking the multiplier mid-session
+    // cannot reflow the tray under the player's hand. The box's left edge is
+    // untouched; only its right edge comes in.
+    const chipSize = 46;
+    const chipGap = 8;
+    const boxW = w - chipSize - chipGap;
 
     this.actionBg = this.add.graphics();
     this.actionBg.fillStyle(Theme.bgElevated, 1);
-    this.actionBg.fillRoundedRect(x, y, w, h, Theme.radiusPanel);
+    this.actionBg.fillRoundedRect(x, y, boxW, h, Theme.radiusPanel);
     this.actionBg.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
-    this.actionBg.strokeRoundedRect(x, y, w, h, Theme.radiusPanel);
+    this.actionBg.strokeRoundedRect(x, y, boxW, h, Theme.radiusPanel);
 
     this.actionText = this.add.text(x + 14, y + h / 2, '', {
       resolution: textResolution,
@@ -1955,7 +1964,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       lineSpacing: 2
     }).setOrigin(0, 0.5);
 
-    this.sellButtonRightX = x + w - 12;
+    this.sellButtonRightX = x + boxW - 12;
     this.sellButtonCenterY = y + h / 2;
     // Created BEFORE the label so it paints behind it.
     this.sellButtonBg = this.add.graphics();
@@ -2000,6 +2009,59 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       const family = this.familyForSelection();
       if (family) openFamilyPanel(this, family);
     });
+
+    // The energy multiplier, as a chip rather than a line of text: the energy
+    // glyph in its own box with the multiplier as a badge on the corner. It
+    // is a spend, so it is drawn in the currency's own language.
+    const chipX = x + boxW + chipGap + chipSize / 2;
+    const chipY = y + h / 2;
+    this.multiplierBg = this.add.graphics();
+    this.multiplierIcon = currencyIcon(this, 'energy', 26).setPosition(chipX, chipY);
+    this.multiplierBadge = this.add.text(
+      chipX + chipSize / 2 - 5, chipY - chipSize / 2 + 4, '', {
+        resolution: textResolution,
+        fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
+        color: hex(Theme.textOnDark)
+      }
+    ).setOrigin(1, 0);
+    this.multiplierZone = this.add.zone(chipX, chipY, chipSize + 6, chipSize + 6)
+      .setInteractive({ useHandCursor: true });
+    this.multiplierZone.on('pointerup', () => {
+      const cap = maxCollectMultiplier(playerLevel(this.orderState));
+      const allowed = COLLECT_MULTIPLIERS.filter((m) => m <= cap);
+      const next = allowed[(allowed.indexOf(this.collectMultiplier) + 1) % allowed.length];
+      this.collectMultiplier = next;
+      localStorage.setItem('merge-game-collect-multiplier', String(next));
+      this.refreshCollectMultiplier();
+      this.refreshActionTray(
+        `ENERGY x${next}  ·  ${next} PER TAP
+` +
+        (next === 1 ? 'ONE DROP AT A TIME' : `ONE ITEM ${Math.round(Math.log2(next))} TIER${next > 2 ? 'S' : ''} HIGHER`)
+      );
+    });
+
+    this.refreshCollectMultiplier = (): void => {
+      const cap = maxCollectMultiplier(playerLevel(this.orderState));
+      const on = cap > 1;
+      // Clamped on every refresh, so a level change never leaves the player
+      // holding a multiplier they are no longer entitled to.
+      if (this.collectMultiplier > cap) this.collectMultiplier = cap;
+      this.multiplierBg.setVisible(on);
+      this.multiplierIcon.setVisible(on);
+      this.multiplierBadge.setVisible(on);
+      this.multiplierZone.setVisible(on);
+      if (!on) return;
+      const active = this.collectMultiplier > 1;
+      const tone = active ? Theme.currencyEnergy : Theme.borderOnDark;
+      this.multiplierBg.clear();
+      this.multiplierBg.fillStyle(Theme.bgElevated, 1);
+      this.multiplierBg.fillRoundedRect(chipX - chipSize / 2, chipY - chipSize / 2, chipSize, chipSize, Theme.radiusChip);
+      this.multiplierBg.lineStyle(Theme.borderWidth, tone, active ? 1 : 0.6);
+      this.multiplierBg.strokeRoundedRect(chipX - chipSize / 2, chipY - chipSize / 2, chipSize, chipSize, Theme.radiusChip);
+      this.multiplierIcon.setAlpha(active ? 1 : 0.55);
+      this.multiplierBadge.setText(`x${this.collectMultiplier}`).setColor(hex(tone));
+    };
+    this.refreshCollectMultiplier();
   }
 
   /**
@@ -3051,7 +3113,6 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
   refreshProjectButton(): void { refreshProjectButtonExt(this); }
   buildInventoryButton(): void { buildInventoryButtonExt(this); }
   buildAutoMergeButton(): void { buildAutoMergeButtonExt(this); }
-  buildCollectMultiplierButton(): void { buildCollectMultiplierButtonExt(this); }
   updateCurrencyText(): void { updateCurrencyTextExt(this); }
   updateEnergyText(): void { updateEnergyTextExt(this); }
 
