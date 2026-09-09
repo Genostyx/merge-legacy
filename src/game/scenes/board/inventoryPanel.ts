@@ -248,12 +248,22 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
   const CELL = 72;
   const rows = Math.ceil(INVENTORY_MAX_SLOTS / COLS_N);
   const W = COLS_N * CELL + 40;
-  const H = Math.min(scene.scale.height - 40, 96 + INVENTORY_GRID * CELL);
+  // Height comes from what will FIT, capped at what the content needs. It
+  // used to be `96 + INVENTORY_GRID * CELL`, which pinned the viewport to
+  // three rows on every device - so 35 slots were read three at a time
+  // through a letterbox on a phone that had room for twice that.
+  const H = Math.min(scene.scale.height - 40, 96 + rows * CELL);
 
   const overlay = scene.add.rectangle(
     scene.scale.width / 2, scene.scale.height / 2, scene.scale.width, scene.scale.height, 0x000000, 0.6
   ).setDepth(3000).setInteractive();
   const card = scene.add.container(scene.scale.width / 2, scene.scale.height / 2).setDepth(3001);
+  // Swallows every pointer inside the panel. The backdrop below is what
+  // closes the menu, and a Graphics background is not interactive - so
+  // without this, a tap on the panel itself fell straight through to the
+  // backdrop and shut the thing the player was using.
+  const catcher = scene.add.zone(0, 0, W, H).setInteractive();
+  card.add(catcher);
   const bg = scene.add.graphics();
   bg.fillStyle(Theme.bgElevated, 1);
   bg.fillRoundedRect(-W / 2, -H / 2, W, H, Theme.radiusPanel);
@@ -286,23 +296,42 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
     content.y = -scroll;
   };
   setScroll(initialScroll);
-  let inventoryItemPressed = false;
+  /**
+   * ONE GESTURE, decided by direction on the first few pixels of movement.
+   *
+   * A press on an item used to block scrolling outright, and with a full
+   * grid almost every pixel of the viewport IS an item - so the list could
+   * only be dragged from the gaps between slots, which reads as not
+   * scrolling at all. Now both are armed on press and the first real
+   * movement claims it: mostly vertical is a scroll, anything else is the
+   * item being dragged to a new slot.
+   */
+  let gesture: 'none' | 'scroll' | 'item' = 'none';
   let scrolling = false;
   let scrollStartY = 0;
+  let scrollStartX = 0;
   let scrollStart = 0;
   const onScrollDown = (pointer: Phaser.Input.Pointer): void => {
-    if (inventoryItemPressed) return;
     if (pointer.x < card.x - W / 2 + 10 || pointer.x > card.x + W / 2 - 10
       || pointer.y < card.y + gridTop || pointer.y > card.y + viewportBottom) return;
+    gesture = 'none';
     scrolling = true;
     scrollStartY = pointer.y;
+    scrollStartX = pointer.x;
     scrollStart = scroll;
   };
   const onScrollMove = (pointer: Phaser.Input.Pointer): void => {
-    if (!scrolling || inventoryItemPressed) return;
-    setScroll(scrollStart + scrollStartY - pointer.y);
+    if (!scrolling || gesture === 'item') return;
+    const dy = scrollStartY - pointer.y;
+    const dx = scrollStartX - pointer.x;
+    if (gesture === 'none') {
+      if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
+      if (Math.abs(dy) <= Math.abs(dx)) return;   // let the item drag claim it
+      gesture = 'scroll';
+    }
+    setScroll(scrollStart + dy);
   };
-  const onScrollUp = (): void => { scrolling = false; };
+  const onScrollUp = (): void => { scrolling = false; gesture = 'none'; };
   const onScrollWheel = (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void => {
     if (pointer.x < card.x - W / 2 || pointer.x > card.x + W / 2
       || pointer.y < card.y + gridTop || pointer.y > card.y + viewportBottom) return;
@@ -415,13 +444,15 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
       let pressX = 0;
       let pressY = 0;
       hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        inventoryItemPressed = true;
         pressX = pointer.x;
         pressY = pointer.y;
       });
       hit.on('drag', (pointer: Phaser.Input.Pointer) => {
+        // The list already claimed this gesture as a scroll.
+        if (gesture === 'scroll') return;
         if (!wasDragged && Phaser.Math.Distance.Between(pressX, pressY, pointer.x, pointer.y) <= 6) return;
         if (!wasDragged) {
+          gesture = 'item';
           wasDragged = true;
           content.bringToTop(visual);
           content.bringToTop(hit);
@@ -429,7 +460,6 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         visual.setPosition(pointer.x - card.x, pointer.y - card.y - content.y);
       });
       hit.on('dragend', (pointer: Phaser.Input.Pointer) => {
-        inventoryItemPressed = false;
         if (!wasDragged) return;
         const target = slotAtPointer(pointer.x, pointer.y);
         if (target === null || target === slot) {
@@ -447,8 +477,7 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         reopen();
       });
       hit.on('pointerup', () => {
-        inventoryItemPressed = false;
-        if (wasDragged) return;
+        if (wasDragged || gesture === 'scroll') return;
         scene.time.delayedCall(0, () => {
           if (item.kind === 'crate') deployStoredCrate(scene, slot, item.tier as CrateTier, item.remaining, item.readyAt);
           else retrieveStoredItem(scene, slot);
@@ -505,6 +534,12 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
     fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold', color: hex(Theme.textOnDarkMuted)
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
   card.add(close);
-  overlay.on('pointerdown', () => scene.time.delayedCall(0, dismiss));
+  // pointerUP, not down: a scroll drag that starts on the list and travels
+  // past the panel edge would otherwise release onto the backdrop and close
+  // the menu mid-gesture.
+  overlay.on('pointerup', () => {
+    if (scrolling) return;
+    scene.time.delayedCall(0, dismiss);
+  });
   close.on('pointerdown', () => scene.time.delayedCall(0, dismiss));
 }
