@@ -1106,35 +1106,33 @@ export class BoardScene extends Phaser.Scene {
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
 
-    // Anchored, not centred as one block.
+    // ONE GAP, USED ON BOTH SIDES OF THE BOARD.
     //
-    // A seven-column board is WIDTH-limited on a phone - nine rows fit the
-    // height with room to spare - so on a 20:9 screen the block came out
-    // several hundred pixels shorter than the viewport, and centring split
-    // that leftover evenly above and below. The half below the tray read as a
-    // black bar along the bottom of the phone, because nothing is drawn there.
+    // The order row above, and the inventory button and information tray
+    // below, are the two things that frame the board - and they have to sit
+    // the same distance from it on every device. They did not: the board was
+    // CENTRED in the band between them while the lower gap was separately
+    // clamped to 12, so on a tall screen it floated 44px under the orders and
+    // 12 above the tray. The asymmetry grew with the screen, which is exactly
+    // the case that had to hold.
     //
-    // Instead: the header sits near the top, the tray is pinned to the bottom,
-    // and the board is centred in the band between them. The same pixels are
-    // still spare, but they become breathing room around the board rather than
-    // a dead strip at one end.
+    // So the gap is computed ONCE, from whatever height is spare after the
+    // header, the board and the tray have taken theirs, and then used above
+    // AND below. Any height still left over goes outside the whole block,
+    // never into one of the two gaps.
+    const boardH = ROWS * this.cellSize;
+    const spare = this.scale.height - headerReserve - boardH - trayReserve - outerReserve * 2;
+    const gap = Phaser.Math.Clamp(Math.floor(spare / 2), BOARD_TO_TRAY_GAP, 24);
+    const blockH = headerReserve + gap + boardH + gap + trayReserve;
+
+    // Floor of 0, not 10: on a short screen the block is taller than the
+    // viewport, and holding a 10px top margin there pushed the tray off the
+    // bottom edge. The margin is the first thing to give up, never the gaps.
     this.contentTop = Phaser.Math.Clamp(
-      Math.floor((this.scale.height - contentH) / 2), 10, 28
+      Math.floor((this.scale.height - blockH) / 2), 0, 28
     );
-    const headerBottom = this.contentTop + headerReserve;
-    const trayTop = this.scale.height - outerReserve - trayReserve;
-    const band = trayTop - headerBottom;
-    // `max(0, ...)` for short screens, where the band is smaller than the
-    // board: there the board keeps its old position directly under the header
-    // and the gap falls back to its floor, exactly as before.
-    this.boardOriginY = headerBottom + Math.max(0, Math.floor((band - ROWS * this.cellSize) / 2));
-    // The rail and the information tray belong to the BOARD, not to the screen
-    // edge. Letting the gap absorb all the leftover height pushed them to the
-    // bottom of the phone with a canyon between them and the last row, so the
-    // readout for the piece you just tapped was nowhere near the piece.
-    this.boardToTrayGap = Phaser.Math.Clamp(
-      trayTop - (this.boardOriginY + ROWS * this.cellSize), BOARD_TO_TRAY_GAP, 12
-    );
+    this.boardOriginY = this.contentTop + headerReserve + gap;
+    this.boardToTrayGap = gap;
   }
 
   /**
