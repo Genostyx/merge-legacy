@@ -30,7 +30,7 @@ export interface OrderDef {
    * is the point at which board pressure starts to matter - which is exactly
    * what both machines are for.
    */
-  rewardFacility?: 'shredder' | 'reclaimer';
+  rewardFacility?: 'shredder' | 'crucible';
 }
 
 /**
@@ -469,13 +469,13 @@ export function normalizeOrderState(
   const activeOrderShipping = activeOrderIndices.map((_, slot) => raw.activeOrderShipping?.[slot] === true);
   const activeOrderFacility = activeOrderIndices.map((_, slot) => {
     const id = raw.activeOrderFacility?.[slot];
-    return id === 'shredder' || id === 'reclaimer' ? id : null;
+    return id === 'shredder' || id === 'crucible' ? id : null;
   });
   const state: OrderState = {
     activeOrderIndices, activeOrderLevels, activeOrderFamilies, nextOrderIndex, collectBaselines, totalXp,
     completedSinceShipping: Math.max(0, Math.floor(raw.completedSinceShipping ?? 0)),
     facilitiesAwarded: Array.isArray(raw.facilitiesAwarded)
-      ? raw.facilitiesAwarded.filter((id): id is string => id === 'shredder' || id === 'reclaimer')
+      ? raw.facilitiesAwarded.filter((id): id is string => id === 'shredder' || id === 'crucible')
       : [],
     shippingRewardPending: raw.shippingRewardPending === true,
     activeOrderShipping,
@@ -516,7 +516,7 @@ export function activeOrders(state: OrderState): ActiveOrder[] {
     order: {
       ...generateOrder(index, state.activeOrderLevels[slot] ?? playerLevel(state), state.activeOrderFamilies[slot] ?? ['wood']),
       rewardShippingContainer: state.activeOrderShipping[slot] || undefined,
-      rewardFacility: (state.activeOrderFacility[slot] as 'shredder' | 'reclaimer' | null) ?? undefined
+      rewardFacility: (state.activeOrderFacility[slot] as 'shredder' | 'crucible' | null) ?? undefined
     }
   }));
 }
@@ -771,7 +771,7 @@ export function advanceOrder(
   // Only ever attached to a delivery worth doing, so the machine arrives as
   // the reward for real work rather than for whatever came up next.
   if (boardIsClear && replacement.type === 'deliver-items' && work >= typicalOrderWork(level)) {
-    const next = (['shredder', 'reclaimer'] as const)
+    const next = (['shredder', 'crucible'] as const)
       .find((id) => !state.facilitiesAwarded.includes(id));
     // Cleared first, so a slot that carried a facility last time cannot pay
     // it a second time when that slot is refilled.

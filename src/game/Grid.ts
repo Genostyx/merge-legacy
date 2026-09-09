@@ -44,7 +44,7 @@ export interface FacilityCellData {
   facilityId: FacilityId;
 }
 
-export type FacilityId = 'shredder' | 'reclaimer';
+export type FacilityId = 'shredder' | 'crucible';
 
 export interface ResourceProducerCellData {
   kind: 'resource-producer';

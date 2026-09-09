@@ -97,7 +97,7 @@ export function storeDraggedView(scene: BoardScene, view: BoardView, fromCell: G
     // right now should not tax the scarcest thing in the game. The meter is
     // banked in RewardsState, so nothing in it is lost by putting it away.
     entry = { kind: 'facility', facilityId: cell.facilityId };
-    label = cell.facilityId === 'shredder' ? 'SHREDDER' : 'RECLAIMER';
+    label = cell.facilityId === 'shredder' ? 'SHREDDER' : 'CRUCIBLE';
   } else if (view instanceof SplitterView && cell.kind === 'splitter') {
     // A Splitter is a one-shot TOOL, and the board is the scarcest thing in
     // the game - so being unable to put one aside meant an unspent Splitter
@@ -260,7 +260,7 @@ export function retrieveStoredItem(scene: BoardScene, index: number): void {
       : item.kind === 'spawner'
         ? sourceTierLabel(item.typeId, item.tier)
         : item.kind === 'facility'
-        ? (item.facilityId === 'shredder' ? 'SHREDDER' : 'RECLAIMER')
+        ? (item.facilityId === 'shredder' ? 'SHREDDER' : 'CRUCIBLE')
       : item.kind === 'splitter'
           ? 'SPLITTER'
           : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();

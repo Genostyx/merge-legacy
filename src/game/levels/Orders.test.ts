@@ -524,7 +524,7 @@ describe('facility rewards', () => {
     for (let i = 0; i < 40; i++) {
       advanceOrder(state, state.activeOrderIndices[0], 0, ['wood'], true);
     }
-    expect(new Set(state.facilitiesAwarded)).toEqual(new Set(['shredder', 'reclaimer']));
+    expect(new Set(state.facilitiesAwarded)).toEqual(new Set(['shredder', 'crucible']));
     expect(state.facilitiesAwarded).toHaveLength(2);
   });
 });

@@ -36,7 +36,7 @@ export type StoredItem =
   | { kind: 'splitter' }
   // A facility carries only its id: its meter lives in RewardsState, so
   // storing one and taking it out again keeps whatever was banked in it.
-  | { kind: 'facility'; facilityId: 'shredder' | 'reclaimer' };
+  | { kind: 'facility'; facilityId: 'shredder' | 'crucible' };
 
 export interface InventoryState {
   slots: number;
@@ -85,7 +85,7 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
           if (!entry || typeof entry !== 'object') return false;
           const e = entry as { kind?: string; typeId?: unknown; tier?: unknown };
           if (e.kind === 'splitter') return true;
-          if (e.kind === 'facility') return (entry as { facilityId?: unknown }).facilityId === 'shredder' || (entry as { facilityId?: unknown }).facilityId === 'reclaimer';
+          if (e.kind === 'facility') return (entry as { facilityId?: unknown }).facilityId === 'shredder' || (entry as { facilityId?: unknown }).facilityId === 'crucible';
           if (e.kind === 'crate') return typeof e.tier === 'string';
           if (e.kind === 'spawner') return typeof e.typeId === 'string' && Number.isFinite(e.tier);
           if (e.kind === 'resource-producer') return typeof (entry as { producerId?: unknown }).producerId === 'string' && Number.isFinite((entry as { remaining?: unknown }).remaining);

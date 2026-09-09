@@ -150,7 +150,7 @@ export function loadOrSeed(scene: BoardScene): void {
             if (!entry || typeof entry !== 'object' || typeof entry.kind !== 'string') return false;
             if (entry.kind === 'crate') return typeof entry.tier === 'string' && Array.isArray(entry.remaining);
             if (entry.kind === 'splitter') return true;
-            if (entry.kind === 'facility') return entry.facilityId === 'shredder' || entry.facilityId === 'reclaimer';
+            if (entry.kind === 'facility') return entry.facilityId === 'shredder' || entry.facilityId === 'crucible';
             if (entry.kind === 'resource-producer') return typeof entry.producerId === 'string' && Number.isFinite(entry.remaining);
             return typeof entry.typeId === 'string' && Number.isFinite(entry.tier);
           })

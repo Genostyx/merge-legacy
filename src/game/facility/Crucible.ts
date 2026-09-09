@@ -36,9 +36,9 @@ export function acceptsItem(typeId: string, tier: number): boolean {
  * energy is the only honest unit here. Ten items is roughly 130 energy a
  * roll.
  */
-export const RECLAIMER_METER_MAX = 10;
+export const CRUCIBLE_METER_MAX = 10;
 
-export type ReclaimerPrize =
+export type CruciblePrize =
   | { kind: 'shipping' }
   | { kind: 'crate'; tier: CrateTier };
 
@@ -59,47 +59,47 @@ export type ReclaimerPrize =
  * Every other row is a crate, so there is no losing pull - the floor is what
  * stops variance reading as punishment.
  */
-export const RECLAIMER_PRIZES: { weight: number; prize: ReclaimerPrize }[] = [
+export const CRUCIBLE_PRIZES: { weight: number; prize: CruciblePrize }[] = [
   { weight: 30, prize: { kind: 'shipping' } },
   { weight: 34, prize: { kind: 'crate', tier: 'gold' } },
   { weight: 24, prize: { kind: 'crate', tier: 'silver' } },
   { weight: 12, prize: { kind: 'crate', tier: 'vault' } }
 ];
 
-export interface ReclaimerState {
-  /** Max-tier items fed since the last payout, 0..RECLAIMER_METER_MAX. */
+export interface CrucibleState {
+  /** Max-tier items fed since the last payout, 0..CRUCIBLE_METER_MAX. */
   meter: number;
 }
 
-export function createDefaultReclaimerState(): ReclaimerState {
+export function createDefaultCrucibleState(): CrucibleState {
   return { meter: 0 };
 }
 
-export function normalizeReclaimerState(raw: Partial<ReclaimerState> | undefined): ReclaimerState {
+export function normalizeCrucibleState(raw: Partial<CrucibleState> | undefined): CrucibleState {
   const meter = Number.isFinite(raw?.meter) ? Math.floor(raw!.meter as number) : 0;
-  return { meter: Math.max(0, Math.min(RECLAIMER_METER_MAX, meter)) };
+  return { meter: Math.max(0, Math.min(CRUCIBLE_METER_MAX, meter)) };
 }
 
 /**
  * Banks one item. Returns true when this one filled the meter, which is the
  * caller's cue to roll and pay out.
  */
-export function feedReclaimer(state: ReclaimerState): boolean {
-  state.meter = Math.min(RECLAIMER_METER_MAX, state.meter + 1);
-  return state.meter >= RECLAIMER_METER_MAX;
+export function feedCrucible(state: CrucibleState): boolean {
+  state.meter = Math.min(CRUCIBLE_METER_MAX, state.meter + 1);
+  return state.meter >= CRUCIBLE_METER_MAX;
 }
 
 /** Rolls the table and empties the meter. */
-export function rollReclaimerPrize(
-  state: ReclaimerState,
+export function rollCruciblePrize(
+  state: CrucibleState,
   rng: () => number = Math.random
-): ReclaimerPrize {
+): CruciblePrize {
   state.meter = 0;
-  const total = RECLAIMER_PRIZES.reduce((sum, row) => sum + row.weight, 0);
+  const total = CRUCIBLE_PRIZES.reduce((sum, row) => sum + row.weight, 0);
   let roll = rng() * total;
-  for (const row of RECLAIMER_PRIZES) {
+  for (const row of CRUCIBLE_PRIZES) {
     roll -= row.weight;
     if (roll < 0) return row.prize;
   }
-  return RECLAIMER_PRIZES[0].prize;
+  return CRUCIBLE_PRIZES[0].prize;
 }

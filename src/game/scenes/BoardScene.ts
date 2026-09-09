@@ -7,7 +7,7 @@ import { SpawnerPieceView, drawSpawnerPieceIcon } from '../objects/SpawnerPieceV
 import { SplitterView, drawSplitterIcon } from '../objects/SplitterView';
 import type { FacilityId } from '../Grid';
 import { FacilityView } from '../objects/FacilityView';
-import { RECLAIMER_METER_MAX, acceptsItem as reclaimerAccepts, feedReclaimer, rollReclaimerPrize } from '../facility/Reclaimer';
+import { CRUCIBLE_METER_MAX, acceptsItem as crucibleAccepts, feedCrucible, rollCruciblePrize } from '../facility/Crucible';
 import { SHREDDER_METER_MAX, feedShredder, rollShredderPrize, shredderAccepts } from '../facility/Shredder';
 import type { GridPosition } from '../types';
 import { CHAINS, getTierDef, isCurrencyChain, spawnerPieceTiers } from '../data/chains';
@@ -2858,7 +2858,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     const shredder = facility.facilityId === 'shredder';
     const accepted = shredder
       ? shredderAccepts(view.typeId, view.tier)
-      : reclaimerAccepts(view.typeId, view.tier);
+      : crucibleAccepts(view.typeId, view.tier);
     if (view.locked) {
       this.refreshActionTray('LOCKED ITEMS CANNOT BE FED\nMERGE A MATCH ONTO IT TO UNLOCK');
       return false;
@@ -2882,14 +2882,14 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
 
     const filled = shredder
       ? feedShredder(this.rewards.shredder)
-      : feedReclaimer(this.rewards.reclaimer);
+      : feedCrucible(this.rewards.crucible);
     this.refreshFacilityMeters();
 
     if (filled) this.payOutFacility(facility);
     else {
-      const state = shredder ? this.rewards.shredder : this.rewards.reclaimer;
-      const max = shredder ? SHREDDER_METER_MAX : RECLAIMER_METER_MAX;
-      this.refreshActionTray(`${shredder ? 'SHREDDER' : 'RECLAIMER'}  ·  ${state.meter}/${max}`);
+      const state = shredder ? this.rewards.shredder : this.rewards.crucible;
+      const max = shredder ? SHREDDER_METER_MAX : CRUCIBLE_METER_MAX;
+      this.refreshActionTray(`${shredder ? 'SHREDDER' : 'CRUCIBLE'}  ·  ${state.meter}/${max}`);
     }
     this.saveState();
     this.refreshOrderBar();
@@ -2905,10 +2905,10 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.awardCrate(tier, 'SHREDDER', at);
       this.refreshActionTray(`SHREDDER PAID  ·  ${CRATE_LABELS[tier]}`);
     } else {
-      const prize = rollReclaimerPrize(this.rewards.reclaimer);
+      const prize = rollCruciblePrize(this.rewards.crucible);
       const tier: CrateTier = prize.kind === 'shipping' ? 'shipping' : prize.tier;
-      this.awardCrate(tier, 'RECLAIMER', at);
-      this.refreshActionTray(`RECLAIMER PAID  ·  ${CRATE_LABELS[tier]}`);
+      this.awardCrate(tier, 'CRUCIBLE', at);
+      this.refreshActionTray(`CRUCIBLE PAID  ·  ${CRATE_LABELS[tier]}`);
     }
     this.refreshFacilityMeters();
     shockwaveRing(this, at.x, at.y, DECAGON_MACHINE_COLOR);
@@ -2921,7 +2921,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       if (view.facilityId === 'shredder') {
         view.setMeter(this.rewards.shredder.meter, SHREDDER_METER_MAX);
       } else {
-        view.setMeter(this.rewards.reclaimer.meter, RECLAIMER_METER_MAX);
+        view.setMeter(this.rewards.crucible.meter, CRUCIBLE_METER_MAX);
       }
     }
   }

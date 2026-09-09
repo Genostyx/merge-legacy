@@ -108,30 +108,112 @@ export function drawShredder(g: Phaser.GameObjects.Graphics, s: number, p: Mater
 }
 
 /**
+ * THE CRUCIBLE, in the same isometric language as the Shredder.
+ *
+ * A squat furnace rather than a machine: a heavy body, a flue stack rising
+ * off the back corner, and an ARCHED MOUTH glowing on the front face. The
+ * arch is what separates it from the Shredder at a glance - the Shredder's
+ * opening is a straight-edged throat full of teeth, this one is a smooth
+ * vault with light coming out of it. Nothing goes in and comes back as
+ * scrap; it comes back as something worth having, and the glow is the only
+ * way to say that without a caption.
+ *
+ * The glow is the machine's OWN violet rather than a fire orange. Warm
+ * representational colour is against the brief, and orange is close enough
+ * to the reserved amber accent to read as a selection state.
+ */
+export function drawCrucible(g: Phaser.GameObjects.Graphics, s: number, p: MaterialLighting): void {
+  const L = s * 0.44;
+  const W = s * 0.34;
+  const H = s * 0.32;
+
+  const RX = Math.cos(Math.PI / 6), RY = -Math.sin(Math.PI / 6);
+  const ox = (W - L) * RX * 0.5;
+  const oy = ((L + W) * 0.5 + H) * 0.5 - H * 0.1;
+  const nx = ox, ny = oy;
+  const pt = (right: number, left: number, up: number): Phaser.Geom.Point =>
+    new Phaser.Geom.Point(nx + right * RX - left * RX, ny + right * RY + left * RY - up);
+
+  const face = (points: Phaser.Geom.Point[], tone: number): void => {
+    g.fillStyle(tone, 1);
+    g.fillPoints(points, true);
+    g.lineStyle(Math.max(1, s * 0.012), p.shadow, 0.75);
+    g.strokePoints(points, true);
+  };
+
+  // THE FLUE, drawn first so the body overlaps its base - which is what makes
+  // it read as rising THROUGH the roof rather than balanced on it.
+  const fx = L * 0.72, fy = W * 0.74, fw = L * 0.16, fh = H * 0.72;
+  face([
+    pt(fx, fy, H), pt(fx + fw, fy, H), pt(fx + fw, fy, H + fh), pt(fx, fy, H + fh)
+  ], p.dark);
+  face([
+    pt(fx, fy, H), pt(fx, fy + fw, H), pt(fx, fy + fw, H + fh), pt(fx, fy, H + fh)
+  ], p.base);
+  face([
+    pt(fx, fy, H + fh), pt(fx + fw, fy, H + fh),
+    pt(fx + fw, fy + fw, H + fh), pt(fx, fy + fw, H + fh)
+  ], p.light);
+
+  // Body.
+  face([pt(0, 0, 0), pt(L, 0, 0), pt(L, 0, H), pt(0, 0, H)], p.dark);
+  face([pt(0, 0, 0), pt(0, W, 0), pt(0, W, H), pt(0, 0, H)], p.base);
+  face([pt(0, 0, H), pt(L, 0, H), pt(L, W, H), pt(0, W, H)], p.light);
+
+  g.lineStyle(Math.max(1, s * 0.02), p.shadow, 0.9);
+  g.lineBetween(pt(0, 0, 0).x, pt(0, 0, 0).y, pt(L, 0, 0).x, pt(L, 0, 0).y);
+  g.lineBetween(pt(0, 0, 0).x, pt(0, 0, 0).y, pt(0, W, 0).x, pt(0, W, 0).y);
+
+  // THE ARCHED MOUTH, on the front-right face. Built as a fan of points so
+  // the top is a real curve - a rectangle with a rounded corner reads as a
+  // hatch, and an arch is the whole point of the shape.
+  const a0 = 0.2, a1 = 0.8;
+  const mouthLow = H * 0.06;
+  const mouthHigh = H * 0.62;
+  const arch: Phaser.Geom.Point[] = [pt(L * a0, 0, mouthLow)];
+  const STEPS = 9;
+  for (let i = 0; i <= STEPS; i++) {
+    const t = i / STEPS;
+    const x = a0 + (a1 - a0) * t;
+    // A half-ellipse: flat springing line, curved head.
+    const up = mouthLow + (mouthHigh - mouthLow) * Math.sin(Math.PI * t);
+    arch.push(pt(L * x, 0, up));
+  }
+  arch.push(pt(L * a1, 0, mouthLow));
+
+  g.fillStyle(Theme.bg, 0.95);
+  g.fillPoints(arch, true);
+  // The glow, as two insets rather than a blur - Graphics has no blur, and
+  // stacked low-alpha fills are how every other soft edge in this game is
+  // made.
+  for (const [inset, alpha] of [[0.18, 0.35], [0.34, 0.6]] as const) {
+    const inner: Phaser.Geom.Point[] = [];
+    for (let i = 0; i <= STEPS; i++) {
+      const t = i / STEPS;
+      const x = a0 + (a1 - a0) * (inset + t * (1 - inset * 2));
+      const up = mouthLow + (mouthHigh - mouthLow) * (1 - inset) * Math.sin(Math.PI * t);
+      inner.push(pt(L * x, 0, up));
+    }
+    inner.push(pt(L * (a1 - (a1 - a0) * inset), 0, mouthLow));
+    inner.push(pt(L * (a0 + (a1 - a0) * inset), 0, mouthLow));
+    g.fillStyle(p.highlight, alpha);
+    g.fillPoints(inner, true);
+  }
+  g.lineStyle(Math.max(1, s * 0.012), p.shadow, 1);
+  g.strokePoints(arch, true);
+}
+
+/**
  * The facility's housing, drawn on its own so the briefcase slot can show the
  * same object the board does rather than a second drawing of it.
  */
 export function drawFacilityIcon(
   g: Phaser.GameObjects.Graphics, facilityId: FacilityId, s: number
 ): void {
-  const base = facilityId === 'reclaimer' ? 0x6b4fd0 : 0x6d7580;
+  const base = facilityId === 'crucible' ? 0x6b4fd0 : 0x6d7580;
   const p = materialLighting(base, 6);
-  if (facilityId === 'shredder') { drawShredder(g, s, p); return; }
-  const w = s * 0.78;
-  const h = s * 0.66;
-  const x = -w / 2;
-  const y = -h / 2;
-  const r = Math.max(2, s * 0.06);
-  g.fillGradientStyle(p.light, p.light, p.dark, p.dark, 1);
-  g.fillRoundedRect(x, y, w, h, r);
-  g.lineStyle(Math.max(1, s * 0.02), p.shadow, 0.9);
-  g.strokeRoundedRect(x, y, w, h, r);
-  g.lineStyle(Math.max(1, s * 0.015), 0xffffff, 0.16);
-  g.lineBetween(x + r, y + 1.5, x + w - r, y + 1.5);
-  const slotW = w * 0.62;
-  const slotH = h * 0.16;
-  g.fillStyle(Theme.bg, 0.92);
-  g.fillRoundedRect(-slotW / 2, y + h * 0.3, slotW, slotH, slotH / 2);
+  if (facilityId === 'shredder') drawShredder(g, s, p);
+  else drawCrucible(g, s, p);
 }
 
 /**
@@ -183,43 +265,16 @@ export class FacilityView extends Phaser.GameObjects.Container {
     // The consumer eats finished chains and pays the best prizes, so it takes
     // the premium violet; the shredder is disposal, and industrial grey says
     // so without a caption.
-    const base = this.facilityId === 'reclaimer' ? 0x6b4fd0 : 0x6d7580;
+    const base = this.facilityId === 'crucible' ? 0x6b4fd0 : 0x6d7580;
     const p = materialLighting(base, 6);
     const g = this.art;
     g.clear();
 
-    if (this.facilityId === 'shredder') {
-      // Real art, lifted a little so the meter has room under it.
-      g.setPosition(0, -s * 0.06);
-      drawShredder(g, s * 0.98, p);
-      g.setPosition(0, 0);
-      this.drawMeter(g, s, p);
-      return;
-    }
-
-    const w = s * 0.78;
-    const h = s * 0.66;
-    const x = -w / 2;
-    const y = -h / 2 - s * 0.04;
-    const r = Math.max(2, s * 0.06);
-
-    g.fillGradientStyle(p.light, p.light, p.dark, p.dark, 1);
-    g.fillRoundedRect(x, y, w, h, r);
-    g.lineStyle(Math.max(1, s * 0.02), p.shadow, 0.9);
-    g.strokeRoundedRect(x, y, w, h, r);
-    // Lit upper edge, one light, upper-left, as everywhere else.
-    g.lineStyle(Math.max(1, s * 0.015), 0xffffff, 0.16);
-    g.lineBetween(x + r, y + 1.5, x + w - r, y + 1.5);
-
-    // THE INTAKE. A recessed slot across the face - the one thing that says
-    // "put something in here" without a word on it.
-    const slotW = w * 0.62;
-    const slotH = h * 0.16;
-    g.fillStyle(Theme.bg, 0.92);
-    g.fillRoundedRect(-slotW / 2, y + h * 0.22, slotW, slotH, slotH / 2);
-    g.lineStyle(1, p.shadow, 0.8);
-    g.strokeRoundedRect(-slotW / 2, y + h * 0.22, slotW, slotH, slotH / 2);
-
+    // Real art, lifted a little so the meter has room under it.
+    g.setPosition(0, -s * 0.06);
+    if (this.facilityId === 'shredder') drawShredder(g, s * 0.98, p);
+    else drawCrucible(g, s * 0.98, p);
+    g.setPosition(0, 0);
     this.drawMeter(g, s, p);
   }
 

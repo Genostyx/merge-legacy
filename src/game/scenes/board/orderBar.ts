@@ -326,7 +326,7 @@ export function refreshOrderBar(scene: BoardScene): void {
     label: string;
     color: number;
     kind?: CurrencyKind;
-    art?: 'shipping' | 'shredder' | 'reclaimer';
+    art?: 'shipping' | 'shredder' | 'crucible';
     size?: number;
     bold?: boolean;
   };
@@ -515,7 +515,7 @@ export function refreshOrderBar(scene: BoardScene): void {
             drawCrate(icon, 30, 'shipping');
             return scene.add.container(0, rowY, [icon]).setSize(30, 30);
           })()
-        : token.art === 'shredder' || token.art === 'reclaimer'
+        : token.art === 'shredder' || token.art === 'crucible'
         ? (() => {
             // The machine's own housing, so the chip shows the thing the
             // order actually pays rather than a caption naming it.
@@ -1004,7 +1004,7 @@ export function showOrderDetails(scene: BoardScene, order: OrderDef, current: nu
   // value chips that change, and they change because the receipt that
   // floats off this very card when the order is delivered already uses the
   // mark.
-  type Reward = { label: string; color: number } | { amount: number; kind: CurrencyKind } | { art: 'shipping' | 'shredder' | 'reclaimer' };
+  type Reward = { label: string; color: number } | { amount: number; kind: CurrencyKind } | { art: 'shipping' | 'shredder' | 'crucible' };
   const rewards: Reward[] = [
     { amount: order.rewardCoins, kind: 'credit' }
   ];
@@ -1137,7 +1137,7 @@ export function completeOrder(scene: BoardScene, index: number, order: OrderDef,
   if (order.rewardSpawner) trayMessage += `  ·  ${order.rewardSpawner.typeId.toUpperCase()} SOURCE`;
   if (order.rewardShippingContainer) trayMessage += '  ·  SHIPPING CONTAINER';
   if (order.rewardFacility) {
-    trayMessage += order.rewardFacility === 'shredder' ? '  ·  SHREDDER' : '  ·  RECLAIMER';
+    trayMessage += order.rewardFacility === 'shredder' ? '  ·  SHREDDER' : '  ·  CRUCIBLE';
   }
   if (levelAfter > levelBefore) {
     const newest = automaticLevelRewards[automaticLevelRewards.length - 1];

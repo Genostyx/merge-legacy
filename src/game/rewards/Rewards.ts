@@ -3,7 +3,7 @@ import type { CratePayloadEntry } from '../Grid';
 import { RESOURCE_PRODUCERS } from './ResourceRewards';
 import type { ResourceProducerId } from './ResourceRewards';
 import { normalizeShredderState } from '../facility/Shredder';
-import { normalizeReclaimerState } from '../facility/Reclaimer';
+import { normalizeCrucibleState } from '../facility/Crucible';
 import { maxOrderTier, minOrderTier, typicalOrderWork } from '../levels/Orders';
 
 /**
@@ -103,7 +103,7 @@ export interface RewardsState {
    * lose what has been banked in it.
    */
   shredder: { meter: number };
-  reclaimer: { meter: number };
+  crucible: { meter: number };
 }
 
 export function createDefaultRewardsState(): RewardsState {
@@ -111,7 +111,7 @@ export function createDefaultRewardsState(): RewardsState {
     meterCollects: 0, meterCooldownEndsAt: 0, meterCooldownDurationMs: 0,
     claimedMilestoneLevel: 1, decagonMeter: 0, lastDailyDay: -1, dailyStreak: 0,
     dailyOfferDay: -1, dailyOfferLevel: 0,
-    shredder: { meter: 0 }, reclaimer: { meter: 0 }
+    shredder: { meter: 0 }, crucible: { meter: 0 }
   };
 }
 
@@ -134,7 +134,12 @@ export function normalizeRewardsState(raw: Partial<RewardsState> | undefined): R
     dailyOfferDay: Number.isFinite(raw.dailyOfferDay) ? Math.floor(raw.dailyOfferDay as number) : -1,
     dailyOfferLevel: int(raw.dailyOfferLevel, 0),
     shredder: normalizeShredderState(raw.shredder),
-    reclaimer: normalizeReclaimerState(raw.reclaimer)
+    // `reclaimer` was this machine's name for a few hours before it became the
+    // Crucible. Reading the old key keeps a save written in that window from
+    // silently losing whatever was banked in it.
+    crucible: normalizeCrucibleState(
+      raw.crucible ?? (raw as { reclaimer?: { meter: number } }).reclaimer
+    )
   };
 }
 

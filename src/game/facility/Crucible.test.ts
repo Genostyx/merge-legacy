@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  RECLAIMER_METER_MAX,
-  RECLAIMER_PRIZES,
+  CRUCIBLE_METER_MAX,
+  CRUCIBLE_PRIZES,
   acceptsItem,
-  createDefaultReclaimerState,
-  feedReclaimer,
-  normalizeReclaimerState,
-  rollReclaimerPrize
-} from './Reclaimer';
+  createDefaultCrucibleState,
+  feedCrucible,
+  normalizeCrucibleState,
+  rollCruciblePrize
+} from './Crucible';
 
 describe('the max-tier consumer', () => {
   it('takes only the top of an energy family\'s chain', () => {
@@ -28,16 +28,16 @@ describe('the max-tier consumer', () => {
   });
 
   it('reports the fill exactly once and never overruns', () => {
-    const state = createDefaultReclaimerState();
-    for (let i = 1; i < RECLAIMER_METER_MAX; i++) expect(feedReclaimer(state)).toBe(false);
-    expect(feedReclaimer(state)).toBe(true);
-    expect(state.meter).toBe(RECLAIMER_METER_MAX);
+    const state = createDefaultCrucibleState();
+    for (let i = 1; i < CRUCIBLE_METER_MAX; i++) expect(feedCrucible(state)).toBe(false);
+    expect(feedCrucible(state)).toBe(true);
+    expect(state.meter).toBe(CRUCIBLE_METER_MAX);
   });
 
   it('never pays nothing - the floor is what makes the variance fair', () => {
     for (const rng of [() => 0, () => 0.5, () => 0.999]) {
-      const state = createDefaultReclaimerState();
-      const prize = rollReclaimerPrize(state, rng);
+      const state = createDefaultCrucibleState();
+      const prize = rollCruciblePrize(state, rng);
       expect(prize.kind === 'shipping' || prize.kind === 'crate').toBe(true);
       expect(state.meter).toBe(0);
     }
@@ -48,16 +48,16 @@ describe('the max-tier consumer', () => {
     // call it 200 energy. Ten max-tier items is ~130. The weight is chosen so
     // this route costs roughly double, and this pins that ratio rather than
     // the number, so retuning the meter has to keep it honest.
-    const total = RECLAIMER_PRIZES.reduce((sum, row) => sum + row.weight, 0);
-    const shipping = RECLAIMER_PRIZES.find((row) => row.prize.kind === 'shipping')!;
-    const energyPerContainer = (RECLAIMER_METER_MAX * 13) / (shipping.weight / total);
+    const total = CRUCIBLE_PRIZES.reduce((sum, row) => sum + row.weight, 0);
+    const shipping = CRUCIBLE_PRIZES.find((row) => row.prize.kind === 'shipping')!;
+    const energyPerContainer = (CRUCIBLE_METER_MAX * 13) / (shipping.weight / total);
     expect(energyPerContainer).toBeGreaterThan(300);
     expect(energyPerContainer).toBeLessThan(550);
   });
 
   it('clamps a junk save', () => {
-    expect(normalizeReclaimerState({ meter: 99 }).meter).toBe(RECLAIMER_METER_MAX);
-    expect(normalizeReclaimerState({ meter: -4 }).meter).toBe(0);
-    expect(normalizeReclaimerState(undefined).meter).toBe(0);
+    expect(normalizeCrucibleState({ meter: 99 }).meter).toBe(CRUCIBLE_METER_MAX);
+    expect(normalizeCrucibleState({ meter: -4 }).meter).toBe(0);
+    expect(normalizeCrucibleState(undefined).meter).toBe(0);
   });
 });
