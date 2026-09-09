@@ -641,7 +641,13 @@ export function refreshOrderBar(scene: BoardScene): void {
     // The reward bar is its OWN element, sized to what is in it - like the
     // HUD currency chips. It does not stretch to the card and the card does
     // not stretch to it; it just extends rightward as its contents grow.
-    rewardRow.fluid = true;
+    // NOT fluid. A fluid row keeps its natural size and is allowed to run
+    // past the card, which was fine while the card could always grow to meet
+    // it - but the card is clamped at ORDER_CARD_MAX_W, so a two-reward order
+    // overflowed and the bar was clipped by the lane's mask. Scaling it to
+    // the card, exactly like the requirement rows, keeps the whole chip on
+    // screen.
+    rewardRow.fluid = false;
     const rows = [...requirementRows, rewardRow];
 
     // No title to size against any more: the card is its contents.
@@ -705,8 +711,14 @@ export function refreshOrderBar(scene: BoardScene): void {
     // The reward BAR: its own shape, hugging its own contents. Shorter than
     // the card is fine and expected; longer is allowed too, and it simply
     // runs past the edge rather than dragging the card wider with it.
-    const rewardNatural = rows[rows.length - 1]?.natural ?? 0;
-    const barW = rewardNatural + ORDER_CARD_PAD * 2;
+    // The BAR follows the row's own scale, so it hugs the contents at the
+    // size they were actually drawn rather than at their natural width.
+    const rewardRowOut = rows[rows.length - 1];
+    const rewardNatural = rewardRowOut?.natural ?? 0;
+    const rewardScale = rewardRowOut
+      ? Math.min(1, innerW(width) / Math.max(1, rewardNatural))
+      : 1;
+    const barW = Math.min(width, rewardNatural * rewardScale + ORDER_CARD_PAD * 2);
     // Drawn BEFORE the tray and running past its top edge, so the tray
     // paints over the bar's lower half. Only the top of the bar is ever
     // seen - its bottom bevels finish behind the card, which is what makes
