@@ -506,6 +506,8 @@ export class BoardScene extends Phaser.Scene {
   chromeScale = 1;
   /** Fullscreen-only HUD scale, derived from the extra vertical room. */
   hudScale = 1;
+  /** Scale for the information tray and its controls. */
+  trayScale = 1;
   /**
    * Redraws the open project panel's footer, or null when it is closed.
    *
@@ -1075,9 +1077,19 @@ export class BoardScene extends Phaser.Scene {
     // The inventory/vault rail and 66px information tray end roughly 82px
     // below the board. The old 116px reserve left unused space underneath;
     // reclaim it for the two additional board rows.
-    const trayReserve = 74;
     const trayGap = 0;
     const outerReserve = 4;
+    // The information tray scales with the device the same way the header
+    // does, so its reserve is computed from that scale rather than left at a
+    // flat 74 - otherwise the tray keeps its full size on a narrow phone and
+    // takes the height out of the board.
+    const trayScale = Phaser.Math.Clamp(
+      Math.floor(Math.min(96, (this.scale.width - margin * 2) / COLS)) / CHROME_BASE_CELL,
+      0.82,
+      1.15
+    );
+    this.trayScale = trayScale;
+    const trayReserve = Math.round(74 * trayScale);
     const availW = this.scale.width - margin * 2;
 
     // TWO passes, because the two sizes depend on each other: the chrome
@@ -1977,18 +1989,22 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
 
 
   private buildActionTray(): void {
-    const railW = 48;
+    // Everything in this tray is expressed in trayScale units, so the text,
+    // the action chip, the `i` and the multiplier chip shrink and grow with
+    // the device together, instead of the box resizing around fixed contents.
+    const ts = this.trayScale;
+    const railW = Math.round(48 * ts);
     const x = this.boardOriginX + railW;
     const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     const w = COLS * this.cellSize - railW;
-    const h = 66;
+    const h = Math.round(66 * ts);
     // The multiplier chip sits OUTSIDE the info box, to its right. The space
     // is reserved whether or not the chip is showing yet - the box keeps one
     // width for the life of the scene, so unlocking the multiplier mid-session
     // cannot reflow the tray under the player's hand. The box's left edge is
     // untouched; only its right edge comes in.
-    const chipSize = 38;
-    const chipGap = 8;
+    const chipSize = Math.round(38 * ts);
+    const chipGap = Math.round(8 * ts);
     const boxW = w - chipSize - chipGap;
 
     this.actionBg = this.add.graphics();
@@ -1997,15 +2013,15 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     this.actionBg.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
     this.actionBg.strokeRoundedRect(x, y, boxW, h, Theme.radiusPanel);
 
-    this.actionText = this.add.text(x + 14, y + h / 2, '', {
+    this.actionText = this.add.text(x + Math.round(14 * ts), y + h / 2, '', {
       resolution: textResolution,
       fontFamily: Theme.fontMono,
-      fontSize: '11px',
+      fontSize: `${Math.max(8, Math.round(11 * ts))}px`,
       color: hex(Theme.textOnDarkMuted),
       lineSpacing: 2
     }).setOrigin(0, 0.5);
 
-    this.sellButtonRightX = x + boxW - 12;
+    this.sellButtonRightX = x + boxW - Math.round(12 * ts);
     this.sellButtonCenterY = y + h / 2;
     // Created BEFORE the label so it paints behind it.
     this.sellButtonBg = this.add.graphics();
@@ -2061,11 +2077,11 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // could see. The inventory chip is drawn from the tray's own `y`.
     const chipY = y + chipSize / 2;
     this.multiplierBg = this.add.graphics();
-    this.multiplierIcon = currencyIcon(this, 'energy', 22).setPosition(chipX, chipY);
+    this.multiplierIcon = currencyIcon(this, 'energy', Math.round(22 * ts)).setPosition(chipX, chipY);
     this.multiplierBadge = this.add.text(
       chipX + chipSize / 2 - 4, chipY - chipSize / 2 + 3, '', {
         resolution: textResolution,
-        fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
+        fontFamily: Theme.fontNumeric, fontSize: `${Math.max(8, Math.round(11 * ts))}px`, fontStyle: 'bold',
         color: hex(Theme.textOnDark)
       }
     ).setOrigin(1, 0);
@@ -2104,7 +2120,8 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.multiplierBg.lineStyle(Theme.borderWidth, tone, active ? 1 : 0.6);
       this.multiplierBg.strokeRoundedRect(chipX - chipSize / 2, chipY - chipSize / 2, chipSize, chipSize, Theme.radiusChip);
       this.multiplierIcon.setAlpha(active ? 1 : 0.55);
-      this.multiplierBadge.setText(`x${this.collectMultiplier}`).setColor(hex(tone)).setFontSize(10);
+      this.multiplierBadge.setText(`x${this.collectMultiplier}`).setColor(hex(tone))
+        .setFontSize(Math.max(8, Math.round(10 * ts)));
     };
     this.refreshCollectMultiplier();
   }
@@ -2144,8 +2161,8 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.infoButtonZone.setVisible(false);
       return;
     }
-    const R = 12;
-    const GAP = 8;
+    const R = Math.round(12 * this.trayScale);
+    const GAP = Math.round(8 * this.trayScale);
     const chip = this.sellButtonBg?.visible ? this.sellChipWidth + GAP : 0;
     const cx = this.sellButtonRightX - chip - R;
     const cy = this.sellButtonCenterY;
@@ -2332,16 +2349,17 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
    * the way ` CR` did.
    */
   private setSellButton(verb: string, amount: string, kind: CurrencyKind, color: number): void {
-    const GLYPH = 16;
-    const GAP = 4;
-    const PAD_X = 10;
-    const PAD_Y = 5;
-    const LINE = 7;
+    const ts = this.trayScale;
+    const GLYPH = Math.round(16 * ts);
+    const GAP = Math.round(4 * ts);
+    const PAD_X = Math.round(10 * ts);
+    const PAD_Y = Math.round(5 * ts);
+    const LINE = Math.round(7 * ts);
 
     // REFILL is a longer word than SELL. A slightly smaller refill label
     // keeps the source action chip close to the sell chip's width, leaving
     // the descriptive copy more room in the tray.
-    this.sellButton.setFontSize(verb === 'REFILL' ? 10 : 12);
+    this.sellButton.setFontSize(Math.max(8, Math.round((verb === 'REFILL' ? 10 : 12) * ts)));
     this.sellButton.setText(verb).setColor(hex(color)).setVisible(true);
     this.sellButtonAmount.setText(amount).setColor(hex(color)).setVisible(true);
 
