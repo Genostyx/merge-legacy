@@ -10,6 +10,7 @@ import {
   ORDER_CARD_MAX_W,
   ORDER_CARD_MIN_W,
   ORDER_CARD_PAD,
+  ORDER_TO_BOARD_GAP,
   ORDER_GO_H,
   ORDER_GO_W,
   ORDER_HEADER_H,
@@ -771,6 +772,20 @@ export function refreshOrderBar(scene: BoardScene): void {
       scene.tweens.add({ targets: view.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out' });
     }
     cursor += width * scene.chromeScale * fit + ORDER_CARD_GAP * fit;
+  }
+
+  // BOTTOM-ANCHOR THE WHOLE ROW to the board, after it is laid out.
+  //
+  // The row's reserved band is taller than what the cards actually draw, and
+  // the difference scales with chromeScale - so on a wide screen the reserve
+  // grew faster than the art inside it and the gap above the board drifted.
+  // Measuring the real drawn bottom and shifting the row onto the same
+  // ORDER_TO_BOARD_GAP the tray uses below makes it exact at every scale
+  // instead of tuned for one.
+  const drawn = scene.orderCards.filter((c) => c.root.visible).map((c) => c.root.getBounds().bottom);
+  if (drawn.length > 0) {
+    const delta = (scene.boardOriginY - ORDER_TO_BOARD_GAP) - Math.max(...drawn);
+    for (const card of scene.orderCards) card.root.y += delta;
   }
 
   if (cooling && scene.orderBarContainer && scene.crateMeterContainer) {

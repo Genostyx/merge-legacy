@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
-import { CRATE_RING_LANE, CRATE_RING_R, CRATE_RING_W, ORDER_HEADER_H } from './config';
+import { CHROME_BASE_CELL, CRATE_RING_LANE, CRATE_RING_R, CRATE_RING_W, ORDER_TO_BOARD_GAP } from './config';
 import { Theme, hex, textResolution } from '../../ui/Theme';
 import { drawCrate } from '../../objects/TierIcons';
 import { formatCountdown } from '../../economy/Economy';
@@ -72,19 +72,36 @@ export function buildCrateMeter(scene: BoardScene): void {
  * overlapping the first card with its own ring clipped.
  */
 export function crateLaneW(scene: BoardScene): number {
-  return Math.round(CRATE_RING_LANE * scene.chromeScale);
+  return Math.round(CRATE_RING_LANE * crateRingScale(scene));
 }
 
-/** Ring radius at the current chrome scale. */
+/**
+ * Ring scale, taken from the BOARD rather than from the chrome.
+ *
+ * `chromeScale` is floored at 1, so the meter never got smaller however small
+ * the screen was - on a phone with 43px cells it sat at full desktop size,
+ * wider than a board cell and hanging below the order row beside it. Sizing
+ * it off the cell makes it shrink with everything it sits next to.
+ *
+ * The 0.78 floor is legibility: below that the crate art inside the ring
+ * stops reading as a crate.
+ */
+export function crateRingScale(scene: BoardScene): number {
+  return Phaser.Math.Clamp(scene.cellSize / CHROME_BASE_CELL, 0.78, 1.5);
+}
+
 export function crateRingR(scene: BoardScene): number {
-  return CRATE_RING_R * scene.chromeScale;
+  return CRATE_RING_R * crateRingScale(scene);
 }
 
 export function crateRingCentre(scene: BoardScene): { cx: number; cy: number } {
-  const { cardH, y } = scene.orderBarMetrics();
   return {
-    cx: scene.boardOriginX + (crateLaneW(scene) - Math.round(8 * scene.chromeScale)) / 2,
-    cy: y + (ORDER_HEADER_H + (cardH - ORDER_HEADER_H) / 2) * scene.chromeScale
+    cx: scene.boardOriginX + (crateLaneW(scene) - Math.round(8 * crateRingScale(scene))) / 2,
+    // BOTTOM-ALIGNED with the board, exactly like the cards beside it. It used
+    // to be centred in the order band, which left it hanging lower than the
+    // cards - so two things sharing one row sat different distances from the
+    // board, 2px against 10.
+    cy: scene.boardOriginY - ORDER_TO_BOARD_GAP - crateRingR(scene) - 4 * crateRingScale(scene)
   };
 }
 
@@ -107,12 +124,12 @@ export function refreshCrateMeter(scene: BoardScene, now = Date.now()): void {
   // the ring and crate itself; persistent explanatory copy was unnecessary.
   for (const text of scene.crateMeterRuns) text.destroy();
   scene.crateMeterRuns = [];
-  const { cardH: laneH, y: laneY } = scene.orderBarMetrics();
-  // Same scale the cards are drawn at, so the meter's box lines up with the
-  // card band beside it instead of sitting short and high.
-  const boxY = laneY + ORDER_HEADER_H * scene.chromeScale;
-  const boxH = (laneH - ORDER_HEADER_H) * scene.chromeScale;
-  const boxW = crateLaneW(scene) - Math.round(8 * scene.chromeScale);
+  // Centred on the ring rather than measured from the order band's top: the
+  // ring is bottom-anchored to the board now, so anything drawn around it has
+  // to follow the ring, not the band.
+  const boxH = (CRATE_RING_R * 2 + 16) * crateRingScale(scene);
+  const boxY = cy - boxH / 2;
+  const boxW = crateLaneW(scene) - Math.round(8 * crateRingScale(scene));
   g.fillStyle(Theme.bg, 0.9);
   g.fillRoundedRect(scene.boardOriginX, boxY, boxW, boxH, Theme.radiusChip);
   g.lineStyle(Theme.borderWidth, Theme.borderOnDark, 1);
@@ -124,7 +141,7 @@ export function refreshCrateMeter(scene: BoardScene, now = Date.now()): void {
   // for it by hand; the art centres itself now, so the correction was the
   // only thing left pushing it off.
   scene.crateMeterIcon.clear().setPosition(cx, cy).setAlpha(cooling ? 0.3 : earned ? 1 : 0.55);
-  drawCrate(scene.crateMeterIcon, (CRATE_RING_R * 1.25 + 14) * scene.chromeScale, showTier);
+  drawCrate(scene.crateMeterIcon, (CRATE_RING_R * 1.25 + 14) * crateRingScale(scene), showTier);
   if (cooling) {
     const timer = scene.add.text(cx, boxY + boxH - 6, formatCountdown(cooldownRemaining), {
       resolution: textResolution,
