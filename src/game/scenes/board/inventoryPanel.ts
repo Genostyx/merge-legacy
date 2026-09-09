@@ -12,6 +12,7 @@ import { TileView } from '../../objects/TileView';
 import { CrateView } from '../../objects/CrateView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
 import { SpawnerView } from '../../objects/SpawnerView';
+import { FacilityView, drawFacilityIcon } from '../../objects/FacilityView';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import { CRATE_LABELS, cratePayload, rollCrate, type CrateTier } from '../../rewards/Rewards';
 import { getTierDef } from '../../data/chains';
@@ -91,6 +92,12 @@ export function storeDraggedView(scene: BoardScene, view: BoardView, fromCell: G
       id: cell.id, readyAt: cell.readyAt, charges: cell.charges
     };
     label = sourceTierLabel(cell.typeId, cell.tier);
+  } else if (view instanceof FacilityView && cell.kind === 'facility') {
+    // Storable for the same reason sources are: a machine you are not feeding
+    // right now should not tax the scarcest thing in the game. The meter is
+    // banked in RewardsState, so nothing in it is lost by putting it away.
+    entry = { kind: 'facility', facilityId: cell.facilityId };
+    label = cell.facilityId === 'shredder' ? 'SHREDDER' : 'RECLAIMER';
   } else if (view instanceof SplitterView && cell.kind === 'splitter') {
     // A Splitter is a one-shot TOOL, and the board is the scarcest thing in
     // the game - so being unable to put one aside meant an unspent Splitter
@@ -232,6 +239,7 @@ export function retrieveStoredItem(scene: BoardScene, index: number): void {
   if (item.kind === 'item') scene.placeTile(pos, item.typeId, item.tier, true);
   else if (item.kind === 'spawner-piece') scene.placeSpawnerPiece(pos, item.typeId, item.tier, true);
   else if (item.kind === 'splitter') scene.placeSplitter(pos, true);
+  else if (item.kind === 'facility') scene.placeFacility(pos, item.facilityId, true);
   else if (item.kind === 'spawner') {
     // Restored from the saved dispenser rather than a fresh one, so the
     // reservoir and the recharge come back exactly as they went in.
@@ -251,7 +259,9 @@ export function retrieveStoredItem(scene: BoardScene, index: number): void {
       ? spawnerPieceLabel(item.typeId, item.tier)
       : item.kind === 'spawner'
         ? sourceTierLabel(item.typeId, item.tier)
-        : item.kind === 'splitter'
+        : item.kind === 'facility'
+        ? (item.facilityId === 'shredder' ? 'SHREDDER' : 'RECLAIMER')
+      : item.kind === 'splitter'
           ? 'SPLITTER'
           : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();
   scene.refreshActionTray(`${label} RETRIEVED`);
@@ -429,6 +439,9 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         content.add(image);
       } else if (item.kind === 'spawner') {
         drawSourceBuilding(icon, item.typeId, item.tier, size * 0.42, sourcePalette(item.typeId), true);
+        icon.setPosition(cx, cy);
+      } else if (item.kind === 'facility') {
+        drawFacilityIcon(icon, item.facilityId, size);
         icon.setPosition(cx, cy);
       } else if (item.kind === 'splitter') {
         drawSplitterIcon(icon, size * 0.9);

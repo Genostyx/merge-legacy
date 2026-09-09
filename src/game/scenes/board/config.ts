@@ -6,6 +6,7 @@ import { SpawnerView } from '../../objects/SpawnerView';
 import { SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { SplitterView } from '../../objects/SplitterView';
 import { FacilityView } from '../../objects/FacilityView';
+import type { FacilityId } from '../../Grid';
 import { CrateView } from '../../objects/CrateView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
 import type { ResourceProducerId } from '../../rewards/ResourceRewards';
@@ -90,6 +91,7 @@ export type ForcedSpawn =
   | { kind: 'spawner-piece'; typeId: string; tier: number }
   | { kind: 'spawner'; typeId: string; tier: number }
   | { kind: 'splitter' }
+  | { kind: 'facility'; facilityId: FacilityId }
   | { kind: 'resource-producer'; producerId: ResourceProducerId; remaining: number }
   // `readyAt` rides along so a bought crate that has to wait for board space
   // keeps counting down in the vault rather than restarting when it lands.

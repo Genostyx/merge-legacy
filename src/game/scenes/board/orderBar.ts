@@ -626,7 +626,10 @@ export function refreshOrderBar(scene: BoardScene): void {
         color: getTierDef(order.rewardSpawner.typeId, 1)?.color ?? Theme.accentGreen
       });
     }
-    if (order.rewardShippingContainer) {
+    if (order.rewardFacility) {
+    scene.enqueueForcedSpawn({ kind: 'facility', facilityId: order.rewardFacility });
+  }
+  if (order.rewardShippingContainer) {
       secondary.push({ label: '', color: 0x9fb2bd, art: 'shipping' });
     }
 
@@ -1061,7 +1064,10 @@ export function completeOrder(scene: BoardScene, index: number, order: OrderDef,
   // which put the reward popup over an unrelated card.
   const rewardAt = orderCardWorldCenter(scene, position);
   const levelBefore = playerLevel(scene.orderState);
-  advanceOrder(scene.orderState, index, scene.dispenserCollectCount, scene.ownedDispenserTypeIds());
+  advanceOrder(
+    scene.orderState, index, scene.dispenserCollectCount, scene.ownedDispenserTypeIds(),
+    !scene.grid.serialize().flat().some((cell) => cell?.kind === 'locked-item')
+  );
   const levelAfter = playerLevel(scene.orderState);
   addCoins(scene.economy, order.rewardCoins);
   if (order.rewardEnergy) addEnergy(scene.energy, order.rewardEnergy);
@@ -1112,6 +1118,9 @@ export function completeOrder(scene: BoardScene, index: number, order: OrderDef,
   if (order.rewardGems) trayMessage += `  ·  +${order.rewardGems} GM`;
   if (order.rewardSpawner) trayMessage += `  ·  ${order.rewardSpawner.typeId.toUpperCase()} SOURCE`;
   if (order.rewardShippingContainer) trayMessage += '  ·  SHIPPING CONTAINER';
+  if (order.rewardFacility) {
+    trayMessage += order.rewardFacility === 'shredder' ? '  ·  SHREDDER' : '  ·  RECLAIMER';
+  }
   if (levelAfter > levelBefore) {
     const newest = automaticLevelRewards[automaticLevelRewards.length - 1];
     trayMessage = newest

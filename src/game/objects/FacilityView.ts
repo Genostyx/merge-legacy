@@ -4,6 +4,32 @@ import type { FacilityId } from '../Grid';
 import { Theme, materialLighting, textResolution, hex } from '../ui/Theme';
 
 /**
+ * The facility's housing, drawn on its own so the briefcase slot can show the
+ * same object the board does rather than a second drawing of it.
+ */
+export function drawFacilityIcon(
+  g: Phaser.GameObjects.Graphics, facilityId: FacilityId, s: number
+): void {
+  const base = facilityId === 'reclaimer' ? 0x6b4fd0 : 0x6d7580;
+  const p = materialLighting(base, 6);
+  const w = s * 0.78;
+  const h = s * 0.66;
+  const x = -w / 2;
+  const y = -h / 2;
+  const r = Math.max(2, s * 0.06);
+  g.fillGradientStyle(p.light, p.light, p.dark, p.dark, 1);
+  g.fillRoundedRect(x, y, w, h, r);
+  g.lineStyle(Math.max(1, s * 0.02), p.shadow, 0.9);
+  g.strokeRoundedRect(x, y, w, h, r);
+  g.lineStyle(Math.max(1, s * 0.015), 0xffffff, 0.16);
+  g.lineBetween(x + r, y + 1.5, x + w - r, y + 1.5);
+  const slotW = w * 0.62;
+  const slotH = h * 0.16;
+  g.fillStyle(Theme.bg, 0.92);
+  g.fillRoundedRect(-slotW / 2, y + h * 0.3, slotW, slotH, slotH / 2);
+}
+
+/**
  * A facility standing on the board: the shredder, or the max-tier consumer.
  *
  * Drawn rather than rastered, and deliberately machine-like - a squared

@@ -6,6 +6,7 @@ import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon } from '../../objects/SplitterView';
+import { drawFacilityIcon } from '../../objects/FacilityView';
 import { getTierDef } from '../../data/chains';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import { boxForDrawnArt } from '../../objects/ArtFill';
@@ -88,6 +89,7 @@ export function refreshForcedSpawnVault(scene: BoardScene): void {
 export function drawForcedSpawnIcon(scene: BoardScene, g: Phaser.GameObjects.Graphics, spawn: ForcedSpawn, size: number): void {
   if (spawn.kind === 'crate') drawCrate(g, size, spawn.tier);
   else if (spawn.kind === 'splitter') drawSplitterIcon(g, size);
+  else if (spawn.kind === 'facility') drawFacilityIcon(g, spawn.facilityId, size);
   else if (spawn.kind === 'spawner') {
     drawSourceBuilding(g, spawn.typeId, spawn.tier, size * 0.4, sourcePalette(spawn.typeId), true);
   } else if (spawn.kind === 'spawner-piece') drawSpawnerPieceIcon(g, spawn.typeId, spawn.tier, size);
@@ -253,6 +255,7 @@ export function releaseOneVaultItem(scene: BoardScene): boolean {
 export function placeForcedSpawn(scene: BoardScene, spot: GridPosition, spawn: ForcedSpawn): BoardView {
   if (spawn.kind === 'crate') return scene.placeCrate(spot, spawn.tier, spawn.remaining, spawn.readyAt);
   if (spawn.kind === 'splitter') return scene.placeSplitter(spot, false);
+  if (spawn.kind === 'facility') return scene.placeFacility(spot, spawn.facilityId, false);
   if (spawn.kind === 'resource-producer') return scene.placeResourceProducer(spot, spawn.producerId, spawn.remaining, false);
   if (spawn.kind === 'spawner') return scene.placeSpawner(spot, spawn.typeId, spawn.tier, false);
   if (spawn.kind === 'spawner-piece') return scene.placeSpawnerPiece(spot, spawn.typeId, spawn.tier, false);

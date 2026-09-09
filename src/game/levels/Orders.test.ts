@@ -506,3 +506,25 @@ describe('order queue', () => {
     expect(state.totalXp).toBe(80);
   });
 });
+
+describe('facility rewards', () => {
+  it('hands over neither while a locked cell remains', () => {
+    // The gate is the locked board, not a level. A level is time served;
+    // clearing the locks is when board pressure starts to matter, which is
+    // what both machines are for.
+    const state = createDefaultOrderState(30);
+    for (let i = 0; i < 12; i++) {
+      advanceOrder(state, state.activeOrderIndices[0], 0, ['wood'], false);
+    }
+    expect(state.facilitiesAwarded).toEqual([]);
+  });
+
+  it('hands over each exactly once after the board is clear', () => {
+    const state = createDefaultOrderState(30);
+    for (let i = 0; i < 40; i++) {
+      advanceOrder(state, state.activeOrderIndices[0], 0, ['wood'], true);
+    }
+    expect(new Set(state.facilitiesAwarded)).toEqual(new Set(['shredder', 'reclaimer']));
+    expect(state.facilitiesAwarded).toHaveLength(2);
+  });
+});

@@ -24,6 +24,13 @@ export interface OrderDef {
   rewardGems?: number;
   rewardSpawner?: { typeId: string; tier: number };
   rewardShippingContainer?: boolean;
+  /**
+   * A facility, handed over once each. Gated on the LOCKED CELLS BEING CLEAR
+   * rather than on a level: a level is time served, while clearing the locks
+   * is the point at which board pressure starts to matter - which is exactly
+   * what both machines are for.
+   */
+  rewardFacility?: 'shredder' | 'reclaimer';
 }
 
 /**
@@ -365,6 +372,8 @@ export interface OrderState {
   collectBaselines: Record<string, number>;
   totalXp: number;
   completedSinceShipping: number;
+  /** Facility ids already handed over, so neither is ever given twice. */
+  facilitiesAwarded: string[];
   shippingRewardPending: boolean;
   activeOrderShipping: boolean[];
 }
@@ -400,6 +409,7 @@ export function createDefaultOrderState(dispenserCollects = 0): OrderState {
     collectBaselines: { 'order-02': dispenserCollects },
     totalXp: 0,
     completedSinceShipping: 0,
+    facilitiesAwarded: [],
     shippingRewardPending: false,
     activeOrderShipping: [false, false, false]
   };
@@ -452,6 +462,9 @@ export function normalizeOrderState(
   const state: OrderState = {
     activeOrderIndices, activeOrderLevels, activeOrderFamilies, nextOrderIndex, collectBaselines, totalXp,
     completedSinceShipping: Math.max(0, Math.floor(raw.completedSinceShipping ?? 0)),
+    facilitiesAwarded: Array.isArray(raw.facilitiesAwarded)
+      ? raw.facilitiesAwarded.filter((id): id is string => id === 'shredder' || id === 'reclaimer')
+      : [],
     shippingRewardPending: raw.shippingRewardPending === true,
     activeOrderShipping
   };
@@ -704,7 +717,9 @@ export function advanceOrder(
   state: OrderState,
   completedIndex: number,
   dispenserCollects: number,
-  eligibleFamilies: string[] = ['wood']
+  eligibleFamilies: string[] = ['wood'],
+  /** True when no locked cell remains. The facilities gate on it. */
+  boardIsClear = false
 ): void {
   const slot = state.activeOrderIndices.indexOf(completedIndex);
   if (slot < 0) return;
@@ -734,6 +749,20 @@ export function advanceOrder(
     : 0;
   const awardShipping = level >= 5 && state.shippingRewardPending && activeShippingCount < 2 &&
     replacement.type === 'deliver-items' && work >= typicalOrderWork(level);
+
+  // THE TWO FACILITIES, one per order, and only once the board is clear of
+  // locked cells. `boardIsClear` is passed in because OrderState knows
+  // nothing about the grid - the caller is the only thing that can answer it.
+  // Only ever attached to a delivery worth doing, so the machine arrives as
+  // the reward for real work rather than for whatever came up next.
+  if (boardIsClear && replacement.type === 'deliver-items' && work >= typicalOrderWork(level)) {
+    const next = (['shredder', 'reclaimer'] as const)
+      .find((id) => !state.facilitiesAwarded.includes(id));
+    if (next && !awardShipping) {
+      replacement.rewardFacility = next;
+      state.facilitiesAwarded.push(next);
+    }
+  }
   state.activeOrderShipping[slot] = awardShipping;
   if (awardShipping) {
     state.shippingRewardPending = false;

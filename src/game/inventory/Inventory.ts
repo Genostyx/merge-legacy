@@ -33,7 +33,10 @@ export type StoredItem =
   | { kind: 'spawner'; typeId: string; tier: number; id: string; readyAt: number; charges: number }
   // A Splitter carries nothing with it - it is one tool, in one state - so it
   // is the only stored kind with no fields at all.
-  | { kind: 'splitter' };
+  | { kind: 'splitter' }
+  // A facility carries only its id: its meter lives in RewardsState, so
+  // storing one and taking it out again keeps whatever was banked in it.
+  | { kind: 'facility'; facilityId: 'shredder' | 'reclaimer' };
 
 export interface InventoryState {
   slots: number;
@@ -82,6 +85,7 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
           if (!entry || typeof entry !== 'object') return false;
           const e = entry as { kind?: string; typeId?: unknown; tier?: unknown };
           if (e.kind === 'splitter') return true;
+          if (e.kind === 'facility') return (entry as { facilityId?: unknown }).facilityId === 'shredder' || (entry as { facilityId?: unknown }).facilityId === 'reclaimer';
           if (e.kind === 'crate') return typeof e.tier === 'string';
           if (e.kind === 'spawner') return typeof e.typeId === 'string' && Number.isFinite(e.tier);
           if (e.kind === 'resource-producer') return typeof (entry as { producerId?: unknown }).producerId === 'string' && Number.isFinite((entry as { remaining?: unknown }).remaining);
@@ -89,6 +93,8 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
         })
         .map((entry) => entry.kind === 'splitter'
           ? { kind: 'splitter' as const }
+          : entry.kind === 'facility'
+          ? { kind: 'facility' as const, facilityId: entry.facilityId }
           : entry.kind === 'crate'
           ? {
             kind: 'crate' as const, tier: entry.tier,

@@ -7,8 +7,8 @@ import { SpawnerPieceView, drawSpawnerPieceIcon } from '../objects/SpawnerPieceV
 import { SplitterView, drawSplitterIcon } from '../objects/SplitterView';
 import type { FacilityId } from '../Grid';
 import { FacilityView } from '../objects/FacilityView';
-import { RECLAIMER_METER_MAX } from '../facility/Reclaimer';
-import { SHREDDER_METER_MAX } from '../facility/Shredder';
+import { RECLAIMER_METER_MAX, acceptsItem as reclaimerAccepts, feedReclaimer, rollReclaimerPrize } from '../facility/Reclaimer';
+import { SHREDDER_METER_MAX, feedShredder, rollShredderPrize, shredderAccepts } from '../facility/Shredder';
 import type { GridPosition } from '../types';
 import { CHAINS, getTierDef, isCurrencyChain, spawnerPieceTiers } from '../data/chains';
 import { burstParticles, shakeForTier, floatingScore, ensureParticleTexture, shockwaveRing } from '../fx/MergeFx';
@@ -2844,6 +2844,74 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     this.refreshFacilityMeters();
     if (animateIn) view.playSpawnPulse();
     return view;
+  }
+
+  /**
+   * Feeds one item to a facility. Returns false when it will not take it, so
+   * the caller snaps the item back rather than swallowing it silently.
+   *
+   * The two machines never accept the same item: the shredder takes anything
+   * with a merge path left, the consumer takes only the top of a chain. That
+   * split is what stops the expensive machine being pointless.
+   */
+  feedFacility(facility: FacilityView, view: TileView, fromCell: GridPosition): boolean {
+    const shredder = facility.facilityId === 'shredder';
+    const accepted = shredder
+      ? shredderAccepts(view.typeId, view.tier)
+      : reclaimerAccepts(view.typeId, view.tier);
+    if (view.locked) {
+      this.refreshActionTray('LOCKED ITEMS CANNOT BE FED\nMERGE A MATCH ONTO IT TO UNLOCK');
+      return false;
+    }
+    if (!accepted) {
+      this.refreshActionTray(shredder
+        ? 'THE SHREDDER TAKES ANY UNFINISHED ITEM\nA FINISHED CHAIN GOES TO THE OTHER MACHINE'
+        : 'THIS MACHINE TAKES FINISHED CHAINS ONLY\nTOP TIER, AND NOT WATER OR DECAGON');
+      return false;
+    }
+
+    // The item is consumed WHERE IT STOOD, and its cell is freed before the
+    // payout - so a full board is one cell less full by the time anything
+    // comes back out of the machine.
+    const key = this.keyOf(fromCell);
+    this.grid.set(fromCell, null);
+    this.views.delete(key);
+    if (this.selectedItemKey === key) this.selectedItemKey = null;
+    view.destroy();
+    facility.playIntake();
+
+    const filled = shredder
+      ? feedShredder(this.rewards.shredder)
+      : feedReclaimer(this.rewards.reclaimer);
+    this.refreshFacilityMeters();
+
+    if (filled) this.payOutFacility(facility);
+    else {
+      const state = shredder ? this.rewards.shredder : this.rewards.reclaimer;
+      const max = shredder ? SHREDDER_METER_MAX : RECLAIMER_METER_MAX;
+      this.refreshActionTray(`${shredder ? 'SHREDDER' : 'RECLAIMER'}  ·  ${state.meter}/${max}`);
+    }
+    this.saveState();
+    this.refreshOrderBar();
+    this.checkDeadlock();
+    return true;
+  }
+
+  /** Rolls a full facility's prize and hands it over through the crate path. */
+  private payOutFacility(facility: FacilityView): void {
+    const at = this.cellToWorld(facility.gridPos);
+    if (facility.facilityId === 'shredder') {
+      const tier = rollShredderPrize(this.rewards.shredder);
+      this.awardCrate(tier, 'SHREDDER', at);
+      this.refreshActionTray(`SHREDDER PAID  ·  ${CRATE_LABELS[tier]}`);
+    } else {
+      const prize = rollReclaimerPrize(this.rewards.reclaimer);
+      const tier: CrateTier = prize.kind === 'shipping' ? 'shipping' : prize.tier;
+      this.awardCrate(tier, 'RECLAIMER', at);
+      this.refreshActionTray(`RECLAIMER PAID  ·  ${CRATE_LABELS[tier]}`);
+    }
+    this.refreshFacilityMeters();
+    shockwaveRing(this, at.x, at.y, DECAGON_MACHINE_COLOR);
   }
 
   /** Pushes the banked meter onto every facility of that kind on the board. */

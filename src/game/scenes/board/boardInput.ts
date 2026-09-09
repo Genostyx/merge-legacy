@@ -16,6 +16,7 @@ import { TileView } from '../../objects/TileView';
 import { SpawnerView } from '../../objects/SpawnerView';
 import { SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { SplitterView } from '../../objects/SplitterView';
+import { FacilityView } from '../../objects/FacilityView';
 import { CrateView } from '../../objects/CrateView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
 import { getTierDef, isCurrencyChain, spawnerPieceTiers } from '../../data/chains';
@@ -204,6 +205,17 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
 
   const targetKey = scene.keyOf(targetCell);
   const targetView = scene.views.get(targetKey);
+
+  // FEEDING A FACILITY. Dropping an item onto one is the whole interaction -
+  // the same gesture that stores a piece in the briefcase, because tapping is
+  // already spoken for on every other board object.
+  if (targetView instanceof FacilityView && view instanceof TileView) {
+    if (scene.feedFacility(targetView, view, fromCell)) return;
+    view.setScale(1);
+    await view.snapTo(fromWorld.x, fromWorld.y);
+    view.state = 'idle';
+    return;
+  }
 
   if (!targetView) {
     if (scene.grid.isBlocked(targetCell)) {
