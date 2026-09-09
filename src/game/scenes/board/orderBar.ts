@@ -21,6 +21,7 @@ import {
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyLabel, type CurrencyKind } from '../../ui/CurrencyGlyph';
 import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { drawFacilityIcon } from '../../objects/FacilityView';
 import { SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { TileView } from '../../objects/TileView';
 import { getTierDef } from '../../data/chains';
@@ -325,7 +326,7 @@ export function refreshOrderBar(scene: BoardScene): void {
     label: string;
     color: number;
     kind?: CurrencyKind;
-    art?: 'shipping';
+    art?: 'shipping' | 'shredder' | 'reclaimer';
     size?: number;
     bold?: boolean;
   };
@@ -514,6 +515,14 @@ export function refreshOrderBar(scene: BoardScene): void {
             drawCrate(icon, 30, 'shipping');
             return scene.add.container(0, rowY, [icon]).setSize(30, 30);
           })()
+        : token.art === 'shredder' || token.art === 'reclaimer'
+        ? (() => {
+            // The machine's own housing, so the chip shows the thing the
+            // order actually pays rather than a caption naming it.
+            const icon = scene.add.graphics().setX(15);
+            drawFacilityIcon(icon, token.art, 30);
+            return scene.add.container(0, rowY, [icon]).setSize(30, 30);
+          })()
         : token.kind
           ? currencyLabel(scene, token.label, token.kind, {
             fontSize: 11,
@@ -626,11 +635,11 @@ export function refreshOrderBar(scene: BoardScene): void {
         color: getTierDef(order.rewardSpawner.typeId, 1)?.color ?? Theme.accentGreen
       });
     }
-    if (order.rewardFacility) {
-    scene.enqueueForcedSpawn({ kind: 'facility', facilityId: order.rewardFacility });
-  }
-  if (order.rewardShippingContainer) {
+    if (order.rewardShippingContainer) {
       secondary.push({ label: '', color: 0x9fb2bd, art: 'shipping' });
+    }
+    if (order.rewardFacility) {
+      secondary.push({ label: '', color: 0x9fb2bd, art: order.rewardFacility });
     }
 
     // ONE reward line, and it sits ABOVE the card rather than inside it.
@@ -995,7 +1004,7 @@ export function showOrderDetails(scene: BoardScene, order: OrderDef, current: nu
   // value chips that change, and they change because the receipt that
   // floats off this very card when the order is delivered already uses the
   // mark.
-  type Reward = { label: string; color: number } | { amount: number; kind: CurrencyKind } | { art: 'shipping' };
+  type Reward = { label: string; color: number } | { amount: number; kind: CurrencyKind } | { art: 'shipping' | 'shredder' | 'reclaimer' };
   const rewards: Reward[] = [
     { amount: order.rewardCoins, kind: 'credit' }
   ];
@@ -1009,6 +1018,9 @@ export function showOrderDetails(scene: BoardScene, order: OrderDef, current: nu
   }
   if (order.rewardShippingContainer) {
     rewards.push({ art: 'shipping' });
+  }
+  if (order.rewardFacility) {
+    rewards.push({ art: order.rewardFacility });
   }
 
   let cursorX = left;
@@ -1087,6 +1099,12 @@ export function completeOrder(scene: BoardScene, index: number, order: OrderDef,
         Date.now(), scene.collection.discovered
       );
     }
+  }
+  if (order.rewardFacility) {
+    scene.enqueueForcedSpawn(
+      { kind: 'facility', facilityId: order.rewardFacility },
+      rewardAt ?? undefined
+    );
   }
   if (order.rewardShippingContainer) {
     scene.enqueueForcedSpawn({
