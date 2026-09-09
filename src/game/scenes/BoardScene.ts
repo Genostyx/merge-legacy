@@ -1101,7 +1101,19 @@ export class BoardScene extends Phaser.Scene {
       1,
       1.5
     );
-    const headerReserve = Math.round(124 * this.chromeScale);
+    // The reserve is the ORDER ROW'S REAL EXTENT, not a round number.
+    //
+    // It was 124, but the row starts 48 below contentTop and the cards draw
+    // about 56 tall - so 20px of the reserve was empty, and that emptiness
+    // sat directly above the board. The gaps either side were equal by the
+    // maths and visibly unequal on screen, which is the only thing that
+    // counts. 104 is where the row actually ends.
+    //
+    // A card with a GO chip hangs about 16px lower than this, into the gap
+    // below - which is deliberate: the gap is at least 6 and usually 24, so
+    // it clears, and reserving for the tallest possible card would put the
+    // hole back for every card that is not one.
+    const headerReserve = Math.round(104 * this.chromeScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
