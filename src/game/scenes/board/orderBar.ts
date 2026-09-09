@@ -653,6 +653,23 @@ export function refreshOrderBar(scene: BoardScene): void {
     return { view, status, rows, width };
   });
 
+  // FIT THE WHOLE ROW, rather than letting it run off the edge.
+  //
+  // Cards size themselves to their contents, so a few wide ones overflowed
+  // the lane and the row always looked mid-scroll: a card sliced in half at
+  // the right edge and another at the left. Nothing above the board in the
+  // reference art does that. When the row is too wide, every card is scaled
+  // by the same factor so the set lands exactly in the lane - uniform, so
+  // the cards stay the same size as each other, which is what stops one
+  // looking broken next to the rest.
+  const totalW = scene.orderDisplayOrder.reduce((sum, slot) => {
+    const entry = built[slot];
+    return entry ? sum + entry.width + ORDER_CARD_GAP : sum;
+  }, -ORDER_CARD_GAP);
+  const fit = totalW > 0
+    ? Math.min(1, visibleW / (totalW * scene.chromeScale))
+    : 1;
+
   // PASS 2 - size, paint and place. A running cursor rather than
   // `position * cardW`, since cards no longer share a width.
   let cursor = laneX;
@@ -663,10 +680,10 @@ export function refreshOrderBar(scene: BoardScene): void {
     const entry = built[queueSlot];
     if (!entry) continue;
     const { view, status, rows, width } = entry;
-    view.root.setScale(scene.chromeScale);
+    view.root.setScale(scene.chromeScale * fit);
     // Bookkeeping is WORLD width - callers use it to find a card's centre
     // on screen - while everything inside the card stays in local units.
-    view.width = width * scene.chromeScale;
+    view.width = width * scene.chromeScale * fit;
 
     view.bg.clear();
     // NO outer card panel. There were three stacked shapes - an outer card,
@@ -753,7 +770,7 @@ export function refreshOrderBar(scene: BoardScene): void {
       view.root.y = y;
       scene.tweens.add({ targets: view.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out' });
     }
-    cursor += width * scene.chromeScale + ORDER_CARD_GAP;
+    cursor += width * scene.chromeScale * fit + ORDER_CARD_GAP * fit;
   }
 
   if (cooling && scene.orderBarContainer && scene.crateMeterContainer) {
