@@ -11,6 +11,19 @@ Newest first.
 
 ## Unreleased
 
+## v0.4.0-beta
+
+- Sources drop the odd lower-tier item again, so nothing you still need ever
+  stops appearing.
+- New energy multiplier: spend 2 or 4 energy on a tap for one item a tier or
+  two higher, instead of tapping four times.
+- Sources can be kept in the briefcase, so a family you are not working does
+  not cost a board cell.
+- The vault hands things back one at a time when you tap it, and the
+  inventory scrolls.
+- Water merges pay much less XP and levels cost more. Existing games keep the
+  level they had.
+
 ## v0.3.1-beta
 
 - The vault hands things back one at a time when you tap it, instead of
