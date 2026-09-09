@@ -248,13 +248,82 @@ export function rollOutputBonus(roll: number): number {
   return 0;
 }
 
+/**
+ * How much of a source's output falls BELOW its own tier.
+ *
+ * A source used to be a floor: a tier-5 one produced tier 5 in 72% of drops
+ * and nothing smaller, ever. Two things came out of that. Low tiers stopped
+ * existing once your sources climbed, so anything still asking for them - a
+ * locked cell at tier 2 or 4 - could only be answered by building a whole
+ * new tier-1 source from pieces. And the late game got cheap, because three
+ * drops in four were already most of a finished item rather than material to
+ * work.
+ *
+ * So a slice of the output now falls below the source's tier, weighted
+ * toward the tier just under it. The source keeps its ceiling and its peak;
+ * what changes is that the bulk of what it makes is material again.
+ *
+ * UPGRADING STILL PAYS, which is the constraint this was tuned against: each
+ * source tier is still worth 1.98x the one below it, against 2.0x before. A
+ * player has every reason to keep climbing.
+ */
+const LOW_TIER_SHARE = 0.16;
+
+/**
+ * The full output distribution for a source: tier -> probability.
+ *
+ * The top three rows are the old bonus table, scaled down to make room; the
+ * remainder is spread over every tier below, weighted by 2^(tier-1) so it
+ * lands mostly just under the source and only rarely at the very bottom.
+ * A tier-1 source has nothing below it, so it keeps the old table exactly.
+ */
+export function outputTierDistribution(typeId: string, tier: number): Map<number, number> {
+  const chainCap = CHAINS.find((c) => c.typeId === typeId)?.tiers.length ?? 9;
+  const out = new Map<number, number>();
+  const low = tier > 1 ? LOW_TIER_SHARE : 0;
+  for (const entry of OUTPUT_BONUS_TABLE) {
+    const t = Math.min(chainCap, tier + entry.bonus);
+    out.set(t, (out.get(t) ?? 0) + entry.chance * (1 - low));
+  }
+  if (low > 0) {
+    let total = 0;
+    for (let t = 1; t < tier; t++) total += 2 ** (t - 1);
+    for (let t = 1; t < tier; t++) {
+      out.set(t, (out.get(t) ?? 0) + low * (2 ** (t - 1)) / total);
+    }
+  }
+  return out;
+}
+
+/**
+ * Picks an output tier from that distribution for a 0..1 roll.
+ *
+ * The below-tier band is walked FIRST and the source's own tier LAST, which
+ * keeps `rollOutputBonus`'s old meaning intact: a high roll still lands on
+ * the base tier, exactly as it did before this band existed.
+ */
+export function rollOutputTier(typeId: string, tier: number, roll: number): number {
+  const dist = outputTierDistribution(typeId, tier);
+  const order = [...dist.keys()]
+    .filter((t) => t < tier)
+    .sort((a, b) => a - b)
+    .concat([...dist.keys()].filter((t) => t >= tier).sort((a, b) => b - a));
+  let remaining = roll;
+  for (const t of order) {
+    const chance = dist.get(t) ?? 0;
+    if (remaining < chance) return t;
+    remaining -= chance;
+  }
+  return order[order.length - 1];
+}
+
 export function collectDispenser(
   d: Dispenser,
   now: number = Date.now(),
   roll: number = Math.random()
 ): { typeId: string; tier: number } | null {
   if (!isReady(d, now)) return null;
-  const bonus = rollOutputBonus(roll);
+  const tierRoll = rollOutputTier(d.typeId, d.tier, roll);
   // The cap is the CHAIN'S OWN LENGTH, not a literal.
   //
   // This was `water ? 12 : 9`, which is right for every family that happens
@@ -266,8 +335,7 @@ export function collectDispenser(
   //
   // Falls back to 9 for a typeId with no chain so the pure-rules tests can
   // still drive this with invented families.
-  const chainCap = CHAINS.find((c) => c.typeId === d.typeId)?.tiers.length ?? 9;
-  const produced = { typeId: d.typeId, tier: Math.min(chainCap, d.tier + bonus) };
+  const produced = { typeId: d.typeId, tier: tierRoll };
   const wasFull = d.charges >= capacityForTier(d.typeId, d.tier);
   d.charges -= 1;
   if (wasFull || d.readyAt <= 0) d.readyAt = now + cooldownForTier(d.typeId, d.tier);

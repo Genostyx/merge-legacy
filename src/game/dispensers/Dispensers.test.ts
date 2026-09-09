@@ -11,7 +11,9 @@ import {
   refillDispenser,
   rechargeMsForFamily,
   rushCostGems,
-  syncDispenser
+  syncDispenser,
+  outputTierDistribution,
+  rollOutputTier
 } from './Dispensers';
 
 describe('reservoir capacity', () => {
@@ -181,5 +183,38 @@ describe('whole-reservoir gem refill', () => {
     refillDispenser(source);
     expect(source.charges).toBe(capacityForTier('mineral', 2));
     expect(source.readyAt).toBe(0);
+  });
+});
+
+describe('below-tier output', () => {
+  it('keeps upgrading worth it - each tier still pays about double', () => {
+    // The constraint this was tuned against. If a source tier stopped being
+    // worth roughly twice the one below it, climbing the ladder would stop
+    // making sense and the whole capability curve would go with it.
+    const ev = (tier: number) => [...outputTierDistribution('wood', tier).entries()]
+      .reduce((sum, [t, p]) => sum + p * 2 ** (t - 1), 0);
+    for (let tier = 2; tier <= 5; tier++) {
+      const ratio = ev(tier) / ev(tier - 1);
+      expect(ratio, `tier ${tier}`).toBeGreaterThan(1.75);
+      expect(ratio, `tier ${tier}`).toBeLessThan(2.05);
+    }
+  });
+
+  it('always leaves the low tiers reachable, and every distribution sums to 1', () => {
+    for (let tier = 1; tier <= 5; tier++) {
+      const dist = outputTierDistribution('wood', tier);
+      const total = [...dist.values()].reduce((sum, p) => sum + p, 0);
+      expect(total, `tier ${tier}`).toBeCloseTo(1, 6);
+      // Nothing above the chain cap, nothing below tier 1.
+      for (const t of dist.keys()) expect(t).toBeGreaterThanOrEqual(1);
+      if (tier > 1) expect(dist.get(1) ?? 0, `tier ${tier}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('never produces a tier the chain does not have', () => {
+    // The Decagon is one tier long; its source must not roll tier 2 or 3.
+    for (let roll = 0; roll < 1; roll += 0.05) {
+      expect(rollOutputTier('decagon', 1, roll)).toBe(1);
+    }
   });
 });
