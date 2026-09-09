@@ -544,14 +544,6 @@ export function refreshOrderBar(scene: BoardScene): void {
   // front was an instant content swap with no motion to follow, which is
   // exactly what made it read as a pop. The slide below could never fire
   // either, because a card's target x was always the x it already had.
-  // Local units: the row is drawn at its tuned size and scaled as a unit.
-  const slotCount = Math.max(1, scene.orderState.activeOrderIndices.length);
-  const laneLocal = viewW / scene.chromeScale;
-  const slotWidth = Math.max(
-    ORDER_CARD_MIN_W,
-    Math.floor((laneLocal - ORDER_CARD_GAP * (slotCount - 1)) / slotCount)
-  );
-
   const built = scene.orderCards.map((view, queueSlot) => {
     const active = orders[queueSlot];
     for (const text of view.rewardTexts) text.destroy();
@@ -652,44 +644,19 @@ export function refreshOrderBar(scene: BoardScene): void {
     // Width comes from the SLOTS, but never less than the reward bar needs.
     // The bar still sizes itself to its own contents - it just cannot hang
     // off the end of the tray any more, which a two-reward order did.
-    // ONE WIDTH FOR EVERY CARD, taken from the lane rather than from what is
-    // inside the card.
-    //
-    // Cards used to size themselves to their own contents, so finishing an
-    // order resized the WHOLE ROW: the replacement asked for something of a
-    // different width, the total changed, and every other card was rescaled
-    // to fit. Nothing the player did to one order should change the size of
-    // the others. The lane and the slot count are both properties of the
-    // device, so a card is now the same size all session.
-    //
-    // Contents still shrink to fit inside it, which is what the per-row scale
-    // below is for.
-    return { view, status, rows, width: slotWidth };
+    // Width comes from the card's own CONTENTS, so the reward chip above a
+    // card is never wider than the card under it. Cards therefore differ from
+    // each other, which is fine and always was - what must not happen is one
+    // card changing size because a DIFFERENT card changed, which is what the
+    // uniform fit factor used to cause every time an order completed.
+    const widest = Math.max(rewardRow.natural, ...requirementRows.map((row) => row.natural));
+    const width = Phaser.Math.Clamp(
+      Math.ceil(widest) + ORDER_CARD_PAD * 2,
+      ORDER_CARD_MIN_W,
+      ORDER_CARD_MAX_W
+    );
+    return { view, status, rows, width };
   });
-
-  // FIT THE WHOLE ROW, rather than letting it run off the edge.
-  //
-  // Cards size themselves to their contents, so a few wide ones overflowed
-  // the lane and the row always looked mid-scroll: a card sliced in half at
-  // the right edge and another at the left. Nothing above the board in the
-  // reference art does that. When the row is too wide, every card is scaled
-  // by the same factor so the set lands exactly in the lane - uniform, so
-  // the cards stay the same size as each other, which is what stops one
-  // looking broken next to the rest.
-  const totalW = scene.orderDisplayOrder.reduce((sum, slot) => {
-    const entry = built[slot];
-    return entry ? sum + entry.width + ORDER_CARD_GAP : sum;
-  }, -ORDER_CARD_GAP);
-  // Measured against `viewW`, the lane WITH the crate meter's space reserved -
-  // never against `visibleW`, which widens while the meter is cooling because
-  // the meter moves to the end of the queue. Fitting to the wider lane made
-  // the cards grow the moment the meter went on cooldown and shrink again
-  // when it came back, so the orders changed size for a reason that has
-  // nothing to do with them. They keep one size; the extra room while cooling
-  // is room to spread out in, not to grow into.
-  const fit = totalW > 0
-    ? Math.min(1, viewW / (totalW * scene.chromeScale))
-    : 1;
 
   // PASS 2 - size, paint and place. A running cursor rather than
   // `position * cardW`, since cards no longer share a width.
@@ -701,10 +668,10 @@ export function refreshOrderBar(scene: BoardScene): void {
     const entry = built[queueSlot];
     if (!entry) continue;
     const { view, status, rows, width } = entry;
-    view.root.setScale(scene.chromeScale * fit);
+    view.root.setScale(scene.chromeScale);
     // Bookkeeping is WORLD width - callers use it to find a card's centre
     // on screen - while everything inside the card stays in local units.
-    view.width = width * scene.chromeScale * fit;
+    view.width = width * scene.chromeScale;
 
     view.bg.clear();
     // NO outer card panel. There were three stacked shapes - an outer card,
@@ -791,7 +758,7 @@ export function refreshOrderBar(scene: BoardScene): void {
       view.root.y = y;
       scene.tweens.add({ targets: view.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out' });
     }
-    cursor += width * scene.chromeScale * fit + ORDER_CARD_GAP * fit;
+    cursor += width * scene.chromeScale + ORDER_CARD_GAP;
   }
 
   // BOTTOM-ANCHOR THE WHOLE ROW to the board, after it is laid out.
@@ -808,7 +775,7 @@ export function refreshOrderBar(scene: BoardScene): void {
   // hang into the gap; what it must not do is move anything.
   const drawn = scene.orderCards
     .filter((c) => c.root.visible)
-    .map((c) => c.root.y + ORDER_CARD_H * scene.chromeScale * fit);
+    .map((c) => c.root.y + ORDER_CARD_H * scene.chromeScale);
   if (drawn.length > 0) {
     // scene.boardToTrayGap, NOT a constant of its own. The tray's gap is
     // clamped by the height actually available, so on a short screen it lands
