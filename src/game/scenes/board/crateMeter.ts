@@ -101,7 +101,7 @@ export function crateRingCentre(scene: BoardScene): { cx: number; cy: number } {
     // to be centred in the order band, which left it hanging lower than the
     // cards - so two things sharing one row sat different distances from the
     // board, 2px against 10.
-    cy: scene.boardOriginY - scene.boardToTrayGap - crateRingR(scene) - 4 * crateRingScale(scene)
+    cy: scene.boardOriginY - scene.boardToTrayGap - crateRingR(scene) - 8 * crateRingScale(scene)
   };
 }
 

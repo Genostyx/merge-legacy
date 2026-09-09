@@ -544,6 +544,14 @@ export function refreshOrderBar(scene: BoardScene): void {
   // front was an instant content swap with no motion to follow, which is
   // exactly what made it read as a pop. The slide below could never fire
   // either, because a card's target x was always the x it already had.
+  // Local units: the row is drawn at its tuned size and scaled as a unit.
+  const slotCount = Math.max(1, scene.orderState.activeOrderIndices.length);
+  const laneLocal = viewW / scene.chromeScale;
+  const slotWidth = Math.max(
+    ORDER_CARD_MIN_W,
+    Math.floor((laneLocal - ORDER_CARD_GAP * (slotCount - 1)) / slotCount)
+  );
+
   const built = scene.orderCards.map((view, queueSlot) => {
     const active = orders[queueSlot];
     for (const text of view.rewardTexts) text.destroy();
@@ -644,13 +652,19 @@ export function refreshOrderBar(scene: BoardScene): void {
     // Width comes from the SLOTS, but never less than the reward bar needs.
     // The bar still sizes itself to its own contents - it just cannot hang
     // off the end of the tray any more, which a two-reward order did.
-    const widest = Math.max(rewardRow.natural, ...requirementRows.map((row) => row.natural));
-    const width = Phaser.Math.Clamp(
-      Math.ceil(widest) + ORDER_CARD_PAD * 2,
-      ORDER_CARD_MIN_W,
-      ORDER_CARD_MAX_W
-    );
-    return { view, status, rows, width };
+    // ONE WIDTH FOR EVERY CARD, taken from the lane rather than from what is
+    // inside the card.
+    //
+    // Cards used to size themselves to their own contents, so finishing an
+    // order resized the WHOLE ROW: the replacement asked for something of a
+    // different width, the total changed, and every other card was rescaled
+    // to fit. Nothing the player did to one order should change the size of
+    // the others. The lane and the slot count are both properties of the
+    // device, so a card is now the same size all session.
+    //
+    // Contents still shrink to fit inside it, which is what the per-row scale
+    // below is for.
+    return { view, status, rows, width: slotWidth };
   });
 
   // FIT THE WHOLE ROW, rather than letting it run off the edge.
@@ -788,7 +802,13 @@ export function refreshOrderBar(scene: BoardScene): void {
   // Measuring the real drawn bottom and shifting the row onto the same
   // gap the tray uses below makes it exact at every scale
   // instead of tuned for one.
-  const drawn = scene.orderCards.filter((c) => c.root.visible).map((c) => c.root.getBounds().bottom);
+  // Measured from the CARD, never from its bounds. A ready card draws a GO
+  // chip straddling its lower edge, and bounds include it - so an order
+  // becoming completable shifted the whole row up. The GO chip is allowed to
+  // hang into the gap; what it must not do is move anything.
+  const drawn = scene.orderCards
+    .filter((c) => c.root.visible)
+    .map((c) => c.root.y + ORDER_CARD_H * scene.chromeScale * fit);
   if (drawn.length > 0) {
     // scene.boardToTrayGap, NOT a constant of its own. The tray's gap is
     // clamped by the height actually available, so on a short screen it lands
