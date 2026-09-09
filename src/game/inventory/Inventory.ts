@@ -26,6 +26,11 @@ export type StoredItem =
   | { kind: 'spawner-piece'; typeId: string; tier: number }
   | { kind: 'resource-producer'; producerId: ResourceProducerId; remaining: number; tier: 1 }
   | { kind: 'crate'; tier: string; remaining?: CratePayloadEntry[]; readyAt?: number }
+  // A SOURCE, carrying its whole dispenser state. `charges` and `readyAt`
+  // travel with it for the same reason a crate's `readyAt` does: putting a
+  // full source away and taking it out must not reset its reservoir, and
+  // putting a spent one away must not refill it.
+  | { kind: 'spawner'; typeId: string; tier: number; id: string; readyAt: number; charges: number }
   // A Splitter carries nothing with it - it is one tool, in one state - so it
   // is the only stored kind with no fields at all.
   | { kind: 'splitter' };
@@ -78,6 +83,7 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
           const e = entry as { kind?: string; typeId?: unknown; tier?: unknown };
           if (e.kind === 'splitter') return true;
           if (e.kind === 'crate') return typeof e.tier === 'string';
+          if (e.kind === 'spawner') return typeof e.typeId === 'string' && Number.isFinite(e.tier);
           if (e.kind === 'resource-producer') return typeof (entry as { producerId?: unknown }).producerId === 'string' && Number.isFinite((entry as { remaining?: unknown }).remaining);
           return typeof e.typeId === 'string' && Number.isFinite(e.tier);
         })
@@ -88,6 +94,19 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
             kind: 'crate' as const, tier: entry.tier,
             remaining: Array.isArray(entry.remaining) ? (entry.remaining as CratePayloadEntry[]) : undefined,
             readyAt: typeof entry.readyAt === 'number' ? entry.readyAt : undefined
+          }
+          : entry.kind === 'spawner'
+          ? {
+            kind: 'spawner' as const,
+            typeId: entry.typeId,
+            tier: Math.max(1, Math.floor(entry.tier)),
+            id: typeof (entry as { id?: unknown }).id === 'string'
+              ? (entry as { id: string }).id
+              : `s${Math.random().toString(36).slice(2, 9)}`,
+            readyAt: Number.isFinite((entry as { readyAt?: unknown }).readyAt) ? (entry as { readyAt: number }).readyAt : 0,
+            charges: Number.isFinite((entry as { charges?: unknown }).charges)
+              ? Math.max(0, Math.floor((entry as { charges: number }).charges))
+              : 0
           }
           : entry.kind === 'resource-producer'
             ? { kind: 'resource-producer' as const, producerId: entry.producerId, remaining: Math.max(1, Math.floor(entry.remaining)), tier: 1 as const }

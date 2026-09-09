@@ -216,3 +216,32 @@ describe('storing a splitter', () => {
     expect(loaded.items).toEqual([{ kind: 'splitter' }, { kind: 'item', typeId: 'wood', tier: 3 }]);
   });
 });
+
+describe('storing a source', () => {
+  it('keeps its reservoir and recharge across a round trip', () => {
+    // The point of carrying the whole dispenser: putting a half-spent source
+    // away and taking it out must not refill it, and putting a full one away
+    // must not empty it.
+    const state = createDefaultInventory();
+    const source = {
+      kind: 'spawner' as const, typeId: 'wood', tier: 3,
+      id: 'd-abc', readyAt: 1_700_000_000_000, charges: 17
+    };
+    expect(storeItem(state, source)).toBe(true);
+    const back = normalizeInventory(JSON.parse(JSON.stringify(state))).items[0];
+    expect(back).toEqual(source);
+  });
+
+  it('defaults a source saved without its dispenser fields', () => {
+    const state = normalizeInventory({
+      slots: 5,
+      items: [{ kind: 'spawner', typeId: 'glass', tier: 2 }]
+    } as never);
+    const item = state.items[0];
+    expect(item.kind).toBe('spawner');
+    if (item.kind !== 'spawner') return;
+    expect(item.charges).toBe(0);
+    expect(item.readyAt).toBe(0);
+    expect(typeof item.id).toBe('string');
+  });
+});

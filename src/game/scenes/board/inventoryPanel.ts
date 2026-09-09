@@ -1,16 +1,17 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
-import { ROWS, familyTierLabel, spawnerPieceLabel, type BoardView } from './config';
+import { ROWS, familyTierLabel, sourceTierLabel, spawnerPieceLabel, type BoardView } from './config';
 import type { GridPosition } from '../../types';
 import type { CratePayloadEntry } from '../../Grid';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyPill } from '../../ui/CurrencyGlyph';
-import { drawBriefcase, drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { drawBriefcase, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon, SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon, SplitterView } from '../../objects/SplitterView';
 import { TileView } from '../../objects/TileView';
 import { CrateView } from '../../objects/CrateView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
+import { SpawnerView } from '../../objects/SpawnerView';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import { CRATE_LABELS, cratePayload, rollCrate, type CrateTier } from '../../rewards/Rewards';
 import { getTierDef } from '../../data/chains';
@@ -79,6 +80,17 @@ export function storeDraggedView(scene: BoardScene, view: BoardView, fromCell: G
   } else if (view instanceof SpawnerPieceView) {
     entry = { kind: 'spawner-piece', typeId: view.typeId, tier: view.tier };
     label = spawnerPieceLabel(view.typeId, view.tier);
+  } else if (view instanceof SpawnerView && cell.kind === 'spawner') {
+    // Sources used to be the one thing that could not be put away, on the
+    // grounds that they are fixtures which produce where they stand. They
+    // still are - but board space is the scarcest thing in the game, and a
+    // family the player is not working right now taxed a cell permanently.
+    // The whole dispenser state travels, so nothing is refilled or reset.
+    entry = {
+      kind: 'spawner', typeId: cell.typeId, tier: cell.tier,
+      id: cell.id, readyAt: cell.readyAt, charges: cell.charges
+    };
+    label = sourceTierLabel(cell.typeId, cell.tier);
   } else if (view instanceof SplitterView && cell.kind === 'splitter') {
     // A Splitter is a one-shot TOOL, and the board is the scarcest thing in
     // the game - so being unable to put one aside meant an unspent Splitter
@@ -220,6 +232,14 @@ export function retrieveStoredItem(scene: BoardScene, index: number): void {
   if (item.kind === 'item') scene.placeTile(pos, item.typeId, item.tier, true);
   else if (item.kind === 'spawner-piece') scene.placeSpawnerPiece(pos, item.typeId, item.tier, true);
   else if (item.kind === 'splitter') scene.placeSplitter(pos, true);
+  else if (item.kind === 'spawner') {
+    // Restored from the saved dispenser rather than a fresh one, so the
+    // reservoir and the recharge come back exactly as they went in.
+    scene.placeSpawner(pos, item.typeId, item.tier, true, {
+      kind: 'spawner', id: item.id, typeId: item.typeId, tier: item.tier,
+      readyAt: item.readyAt, charges: item.charges
+    });
+  }
   else scene.placeResourceProducer(pos, item.producerId, item.remaining, true);
   refreshInventoryButton(scene);
   scene.updateLevelBadge();
@@ -229,9 +249,11 @@ export function retrieveStoredItem(scene: BoardScene, index: number): void {
     ? familyTierLabel(item.typeId, item.tier)
     : item.kind === 'spawner-piece'
       ? spawnerPieceLabel(item.typeId, item.tier)
-      : item.kind === 'splitter'
-        ? 'SPLITTER'
-        : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();
+      : item.kind === 'spawner'
+        ? sourceTierLabel(item.typeId, item.tier)
+        : item.kind === 'splitter'
+          ? 'SPLITTER'
+          : RESOURCE_PRODUCERS[item.producerId].label.toUpperCase();
   scene.refreshActionTray(`${label} RETRIEVED`);
 }
 
@@ -405,6 +427,9 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         const image = scene.add.image(cx, cy, RESOURCE_PRODUCERS[item.producerId].textureKey).setDisplaySize(size, size);
         visual = image;
         content.add(image);
+      } else if (item.kind === 'spawner') {
+        drawSourceBuilding(icon, item.typeId, item.tier, size * 0.42, sourcePalette(item.typeId), true);
+        icon.setPosition(cx, cy);
       } else if (item.kind === 'splitter') {
         drawSplitterIcon(icon, size * 0.9);
         icon.setPosition(cx, cy);
