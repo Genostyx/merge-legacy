@@ -1113,7 +1113,7 @@ export class BoardScene extends Phaser.Scene {
     // below - which is deliberate: the gap is at least 6 and usually 24, so
     // it clears, and reserving for the tallest possible card would put the
     // hole back for every card that is not one.
-    const headerReserve = Math.round(104 * this.chromeScale);
+    const headerReserve = Math.round(107 * this.chromeScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
@@ -1134,7 +1134,13 @@ export class BoardScene extends Phaser.Scene {
     // never into one of the two gaps.
     const boardH = ROWS * this.cellSize;
     const spare = this.scale.height - headerReserve - boardH - trayReserve - outerReserve * 2;
-    const gap = Phaser.Math.Clamp(Math.floor(spare / 2), BOARD_TO_TRAY_GAP, 24);
+    // TIGHT, and capped. The things nearest the board - the order row above,
+    // the inventory button and tray below - should sit right against it, not
+    // float. Letting the gap grow with the spare height put 24px there on a
+    // tall phone, which reads as the board drifting loose from its own
+    // chrome. Anything left over belongs outside the block, not around the
+    // board.
+    const gap = Phaser.Math.Clamp(Math.floor(spare / 2), BOARD_TO_TRAY_GAP, 10);
     const blockH = headerReserve + gap + boardH + gap + trayReserve;
 
     // Floor of 0, not 10: on a short screen the block is taller than the
