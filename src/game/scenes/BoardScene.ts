@@ -1113,7 +1113,7 @@ export class BoardScene extends Phaser.Scene {
     // below - which is deliberate: the gap is at least 6 and usually 24, so
     // it clears, and reserving for the tallest possible card would put the
     // hole back for every card that is not one.
-    const headerReserve = Math.round(107 * this.chromeScale);
+    const headerReserve = Math.round(101 * this.chromeScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
     this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);

@@ -247,7 +247,7 @@ export const BG_FILE = 'bg.jpg';
 export const BG_FALLBACK_FILE = 'minimalist-spa-interior-meditation-space_23-2151935107.avif';
 export const BG_FALLBACK_KEY = 'bgPhotoFallback';
 
-export const ORDER_CARD_H = 68;
+export const ORDER_CARD_H = 62;
 /** Crate meter ring, beside the board's top-left corner. */
 export const CRATE_RING_R = 19;
 export const CRATE_RING_W = 6;

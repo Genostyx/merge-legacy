@@ -69,7 +69,11 @@ export function orderBarMetrics(scene: BoardScene): { cardH: number; y: number; 
     // the header, which created the large empty band seen on tall phones.
     y: fullscreenElement()
       ? fullscreenY
-      : scene.contentTop + Math.round(48 * scene.chromeScale),
+      // 54 rather than 48: the row starts lower so a card's top edge clears
+      // the level badge and shop button sitting on the HUD line above it.
+      // The row is bottom-anchored to the board afterwards, so this only
+      // decides where it starts from, not where it ends up.
+      : scene.contentTop + Math.round(54 * scene.chromeScale),
     viewW: COLS * scene.cellSize - scene.crateLaneW()
   };
 }
@@ -332,7 +336,7 @@ export function refreshOrderBar(scene: BoardScene): void {
    * smaller number here buys nothing but a shape too small to recognise -
    * which would defeat the whole point of drawing it.
    */
-  const REQ_ICON = 38;
+  const REQ_ICON = 34;
   /** Requirement tokens need more air than text tokens - each is a picture. */
   const REQ_GAP = 4;
   const REQ_ROW_Y = ORDER_HEADER_H + 5;
@@ -343,7 +347,7 @@ export function refreshOrderBar(scene: BoardScene): void {
    * what it is given, so this is deliberately larger than the plate - it
    * makes the item nearly fill its square, as in the reference.
    */
-  const REQ_ICON_ART = 52;
+  const REQ_ICON_ART = 46;
   /**
    * The sapphire is the one icon the plate cannot hold. `iconPresentation`
    * sizes on sqrt(w*h), so the marquise's narrow waist buys it height: it
