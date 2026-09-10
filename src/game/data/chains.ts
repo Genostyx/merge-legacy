@@ -1,4 +1,5 @@
 import type { ChainDef } from '../types';
+import { EVENT_CHAIN } from '../events/EventChain';
 
 // Two merge families, both framed as "cheap raw material -> priceless
 // refined material" rather than a growing-things metaphor - wood you mill
@@ -208,8 +209,13 @@ export function isUtilityChain(typeId: string): boolean {
 
 export function getChain(typeId: string): ChainDef {
   const chain = CHAINS.find((c) => c.typeId === typeId);
-  if (!chain) throw new Error(`Unknown chain typeId: ${typeId}`);
-  return chain;
+  if (chain) return chain;
+  // The event chain is deliberately absent from CHAINS - registering it would
+  // put it in the shop, the collection and order generation, all of which
+  // outlive its window - but it still has to RESOLVE: TileView and the icon
+  // layer both look their family up through here.
+  if (typeId === EVENT_CHAIN.typeId) return EVENT_CHAIN;
+  throw new Error(`Unknown chain typeId: ${typeId}`);
 }
 
 export function getTierDef(typeId: string, tier: number) {

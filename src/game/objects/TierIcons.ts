@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { EVENT_CHAIN } from '../events/EventBoard';
+import { EVENT_CHAIN } from '../events/EventChain';
 import { Theme, materialLighting, toneAt, toneForNormal } from '../ui/Theme';
 import { CHAINS, getTierDef } from '../data/chains';
 import { GraphicsRecorder } from './GraphicsRecorder';
@@ -3800,26 +3800,15 @@ function copperPits(g: Phaser.GameObjects.Graphics, p: Palette, pits: [number, n
 }
 
 /**
- * Pale oxide creeping over the metal. `amount` is 0-1 and drives how much of
- * the form it has taken, so the top of the chain reads as further gone rather
- * than merely a lighter green.
+ * The patina bloom that used to live here is GONE, not tuned down.
+ *
+ * It drew pale blobs over the metal to say "corroding". At icon size they did
+ * not read as oxide - they read as grey dirt sitting on top of the form, and
+ * on the lattice they broke the woven straps into confetti. The chain's
+ * colours already run greener with every tier, which says the same thing
+ * without covering the silhouette, so the blobs were saying it twice and
+ * costing the shape to do it.
  */
-function patinaBloom(g: Phaser.GameObjects.Graphics, s: number, p: Palette, amount: number): void {
-  const blooms: [number, number, number][] = [
-    [-s * 0.16, -s * 0.1, s * 0.075],
-    [s * 0.13, s * 0.05, s * 0.06],
-    [-s * 0.04, s * 0.16, s * 0.05],
-    [s * 0.18, -s * 0.15, s * 0.045]
-  ];
-  const take = Math.round(blooms.length * Math.min(1, Math.max(0, amount)));
-  for (let i = 0; i < take; i++) {
-    const [x, y, r] = blooms[i];
-    g.fillStyle(p.highlight, 0.22 + 0.14 * amount);
-    g.fillCircle(x, y, r);
-    g.fillStyle(p.light, 0.2);
-    g.fillCircle(x - r * 0.3, y - r * 0.25, r * 0.55);
-  }
-}
 
 /** 01 - a poured blob of slag: lobed rather than fractured, and gas-pitted. */
 function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
@@ -3830,10 +3819,12 @@ function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
     [s * 0.12, -s * 0.11], [s * 0.22, s * 0.02], [s * 0.14, s * 0.16],
     [-s * 0.08, s * 0.18]
   ], p);
+  // Small, and none of them near the middle: two large centred pits read as
+  // a face, which is the one thing a lump of slag must not do.
   copperPits(g, p, [
-    [-s * 0.08, s * 0.02, s * 0.035],
-    [s * 0.08, s * 0.06, s * 0.026],
-    [s * 0.02, -s * 0.08, s * 0.02]
+    [-s * 0.11, s * 0.05, s * 0.019],
+    [s * 0.09, s * 0.08, s * 0.016],
+    [s * 0.04, -s * 0.07, s * 0.014]
   ]);
 }
 
@@ -3854,7 +3845,7 @@ function drawOxideShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   g.lineTo(-s * 0.1, -s * 0.08);
   g.closePath();
   g.fillPath();
-  copperPits(g, p, [[s * 0.06, s * 0.08, s * 0.028]]);
+  copperPits(g, p, [[s * 0.06, s * 0.09, s * 0.018]]);
 }
 
 /**
@@ -3888,7 +3879,7 @@ function drawCutCathode(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   g.moveTo(x, y);
   g.lineTo(x + w, y);
   g.strokePath();
-  copperPits(g, p, [[x + w * 0.62, y + h * 0.6, s * 0.03]]);
+  copperPits(g, p, [[x + w * 0.62, y + h * 0.6, s * 0.02]]);
 }
 
 /** 04 - a cast billet: squared, and struck with the mark of whoever poured it. */
@@ -3903,40 +3894,67 @@ function drawBronzeBillet(g: Phaser.GameObjects.Graphics, s: number, p: Palette)
   g.fillCircle(-s * 0.115, s * 0.043, s * 0.04);
   g.fillStyle(p.dark, 0.9);
   g.fillCircle(-s * 0.11, s * 0.05, s * 0.016);
-  patinaBloom(g, s * 0.7, p, 0.25);
 }
 
 /**
- * 05 - the billet chamfered: a squared solid with its corners taken off.
+ * 05 - the billet chamfered.
  *
- * A chamfered RECTANGLE, deliberately not the rosette `drawFacetedForm`
- * draws: at icon size a five- or six-sided rosette reads as a cut gem, and
- * this tier has to still read as tier 4's block, one operation further on.
+ * A SOLID with three planes, not a flat outline. The first version filled a
+ * chamfered rectangle with fan facets and read as a soft cushion - which made
+ * tier 5 look like a downgrade from tier 4's crisp box, exactly the merge that
+ * has to read as better. Keeping tier 4's block and cutting its corners is
+ * what says "the same bar, one operation further on".
  */
 function drawFacetedBronze(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const w = s * 0.23, h = s * 0.19, c = s * 0.075;
-  const pts: [number, number][] = [
-    [-w + c, -h], [w - c, -h], [w, -h + c], [w, h - c],
-    [w - c, h], [-w + c, h], [-w, h - c], [-w, -h + c]
-  ];
-  const drop = dropOffset(s);
+  const w = s * 0.44, h = s * 0.26, d = s * 0.12, c = s * 0.07;
+  const x = -w / 2, y = -s * 0.06;
+
   g.fillStyle(p.shadow, 1);
+  g.fillRect(x + d * 0.5, y + dropOffset(s), w, h);
+
+  // FRONT, with its corners taken off.
+  const front: [number, number][] = [
+    [x + c, y], [x + w - c, y], [x + w, y + c], [x + w, y + h - c],
+    [x + w - c, y + h], [x + c, y + h], [x, y + h - c], [x, y + c]
+  ];
+  g.fillGradientStyle(p.light, p.base, p.dark, p.shadow, 1);
   g.beginPath();
-  pts.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py + drop) : g.lineTo(px, py + drop)));
+  front.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py) : g.lineTo(px, py)));
   g.closePath();
   g.fillPath();
 
-  fillFanFacets(g, pts, p);
-  g.lineStyle(1, p.shadow, 0.6);
-  g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
-  // The chamfer itself takes the key hardest. That one bright short edge is
-  // what tells you a corner was cut off rather than rounded.
-  g.lineStyle(Math.max(1, s * 0.018), p.highlight, 0.75);
+  // TOP, pushed back along the same isometric offset the block above uses.
+  g.fillStyle(p.highlight, 0.9);
   g.beginPath();
-  g.moveTo(-w, -h + c);
-  g.lineTo(-w + c, -h);
-  g.strokePath();
-  patinaBloom(g, s * 0.8, p, 0.45);
+  g.moveTo(x + c, y);
+  g.lineTo(x + w - c, y);
+  g.lineTo(x + w - c + d, y - d * 0.62);
+  g.lineTo(x + c + d, y - d * 0.62);
+  g.closePath();
+  g.fillPath();
+
+  // RIGHT.
+  g.fillStyle(p.dark, 1);
+  g.beginPath();
+  g.moveTo(x + w, y + c);
+  g.lineTo(x + w + d, y + c - d * 0.62);
+  g.lineTo(x + w + d, y + h - c - d * 0.62);
+  g.lineTo(x + w, y + h - c);
+  g.closePath();
+  g.fillPath();
+
+  // The chamfers catch the key hardest - a bright short edge at each corner is
+  // the whole difference between a cut corner and a rounded one.
+  g.lineStyle(Math.max(1, s * 0.016), p.highlight, 0.8);
+  for (const [ax, ay, bx, by] of [
+    [x, y + c, x + c, y],
+    [x + w - c, y + h, x + w, y + h - c]
+  ] as [number, number, number, number][]) {
+    g.beginPath();
+    g.moveTo(ax, ay);
+    g.lineTo(bx, by);
+    g.strokePath();
+  }
 }
 
 /**
@@ -3987,7 +4005,6 @@ function drawPatinaSpire(g: Phaser.GameObjects.Graphics, s: number, p: Palette):
   }
   g.fillStyle(p.highlight, 0.95);
   g.fillCircle(0, apexY - s * 0.015, s * 0.035);
-  patinaBloom(g, s * 0.9, p, 0.6);
 }
 
 /**
@@ -3999,7 +4016,10 @@ function drawPatinaSpire(g: Phaser.GameObjects.Graphics, s: number, p: Palette):
  * over/under is what separates a weave from three bars simply overlaid.
  */
 function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const len = s * 0.54, w = s * 0.115;
+  // Wide and thick enough that three of them still read as BANDS at cell
+  // size. The first pass used thin straps with prominent rivets, and the
+  // rivets won - the whole icon read as scattered specks.
+  const len = s * 0.66, w = s * 0.155;
   const angles = [Math.PI * 0.08, Math.PI * 0.75, Math.PI * 0.42];
 
   for (const angle of angles) {
@@ -4016,13 +4036,12 @@ function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Pale
     g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
     for (const t of [-0.36, 0.36]) {
       const rx = len * t * cos, ry = len * t * sin;
-      g.fillStyle(p.highlight, 0.85);
-      g.fillCircle(rx, ry, s * 0.022);
+      g.fillStyle(p.highlight, 0.8);
+      g.fillCircle(rx, ry, s * 0.016);
       g.fillStyle(p.shadow, 0.5);
-      g.fillCircle(rx + s * 0.008, ry + s * 0.008, s * 0.011);
+      g.fillCircle(rx + s * 0.006, ry + s * 0.006, s * 0.008);
     }
   }
-  patinaBloom(g, s, p, 0.8);
 }
 
 /**
@@ -4052,7 +4071,6 @@ function drawVerdigrisKnot(g: Phaser.GameObjects.Graphics, s: number, p: Palette
   g.strokePoints(pts, false, true);
   g.lineStyle(s * 0.022, p.highlight, 0.85);
   g.strokePoints(pts, false, true);
-  patinaBloom(g, s * 1.1, p, 1);
 }
 
 /**

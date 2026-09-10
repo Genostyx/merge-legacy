@@ -1,4 +1,3 @@
-import type { ChainDef } from '../types';
 import type { GridCellData } from '../Grid';
 import { Grid } from '../Grid';
 import type { TimedEventDef } from './TimedEvents';
@@ -34,51 +33,8 @@ export const EVENT_BOARD_ROWS = 7;
 /** What one tap of the event spawner costs. */
 export const EVENT_SPAWN_COST = 1;
 
-/**
- * THE EVENT CHAIN - oxidised copper, raw ore up to a patinated knot.
- *
- * Kept OUT of `CHAINS` so it cannot leak into the shop, the collection or
- * order generation, all of which outlive the window this chain dies with.
- *
- * Copper because none of the standing families own it - Wood runs amber,
- * Stone warm neutral, Glass pale prismatic, Water cyan - and because it is
- * the one common material whose refined state is a COLOUR CHANGE rather than
- * a polish. That gives the ramp somewhere to go that no other family's does:
- * it gets greener as it gets better, which is the opposite of every other
- * chain here, and reads as foreign at a glance.
- *
- * It also lands on the token's own teal around tier 6, so the material and
- * the currency of the event are visibly the same substance.
- *
- * The tiers walk the shared eight-stage shape grammar (see
- * docs/FAMILIES_ROADMAP.md) - rough chunk, shard, cut slab, squared solid,
- * faceted block, spire, interlocking lattice, smooth knot. The event does not
- * get its own grammar; only its material differs.
- */
-export const EVENT_CHAIN: ChainDef = {
-  typeId: 'verdigris',
-  tiers: [
-    { tier: 1, key: 'copper-slag', label: 'Copper Slag', color: 0x2b3a33 },
-    { tier: 2, key: 'oxide-shard', label: 'Oxide Shard', color: 0x334a3f },
-    { tier: 3, key: 'cut-cathode', label: 'Cut Cathode', color: 0x2f5c4c },
-    { tier: 4, key: 'bronze-billet', label: 'Bronze Billet', color: 0x2a7060 },
-    { tier: 5, key: 'faceted-bronze', label: 'Faceted Bronze', color: 0x268a74 },
-    { tier: 6, key: 'patina-spire', label: 'Patina Spire', color: 0x2fa88c },
-    { tier: 7, key: 'verdigris-lattice', label: 'Verdigris Lattice', color: 0x58c7a8 },
-    { tier: 8, key: 'verdigris-knot', label: 'Verdigris Knot', color: 0x8fe3c6 }
-  ]
-};
-
-export const EVENT_MAX_TIER = EVENT_CHAIN.tiers.length;
-
-export function eventTierDef(tier: number): ChainDef['tiers'][number] | null {
-  return EVENT_CHAIN.tiers.find((def) => def.tier === tier) ?? null;
-}
-
-/** True for anything that belongs to the event chain rather than the board's. */
-export function isEventTypeId(typeId: string): boolean {
-  return typeId === EVENT_CHAIN.typeId;
-}
+export { EVENT_CHAIN, EVENT_MAX_TIER, eventTierDef, isEventTypeId } from './EventChain';
+import { EVENT_CHAIN, EVENT_MAX_TIER } from './EventChain';
 
 /**
  * Points an event order pays, by the tier it asked for.
