@@ -46,6 +46,15 @@ export interface FacilityCellData {
 
 export type FacilityId = 'shredder' | 'crucible';
 
+/**
+ * An event token standing on the board. It carries nothing: which event it
+ * belongs to is whichever one is open, and a token cannot outlive its window
+ * because the cleanup sweeps them all when the window shuts.
+ */
+export interface EventTokenCellData {
+  kind: 'event-token';
+}
+
 export interface ResourceProducerCellData {
   kind: 'resource-producer';
   producerId: ResourceProducerId;
@@ -79,7 +88,7 @@ export type CratePayloadEntry =
   | { kind: 'resource-producer'; producerId: ResourceProducerId; remaining: number }
   | { kind: 'coins' | 'gems' | 'energy'; amount: number };
 
-export type GridCellData = ItemCellData | LockedItemCellData | SpawnerCellData | SpawnerPieceCellData | CrateCellData | SplitterCellData | FacilityCellData | ResourceProducerCellData;
+export type GridCellData = ItemCellData | LockedItemCellData | SpawnerCellData | SpawnerPieceCellData | CrateCellData | SplitterCellData | FacilityCellData | EventTokenCellData | ResourceProducerCellData;
 
 /**
  * Pure data grid. Knows nothing about Phaser, rendering, or input.
@@ -155,7 +164,8 @@ export class Grid {
         // Neither is a facility: it is a fixture, never a merge partner, so
         // it cannot rescue a full board either.
         if (here.kind === 'crate' || here.kind === 'splitter'
-          || here.kind === 'resource-producer' || here.kind === 'facility') continue;
+          || here.kind === 'resource-producer' || here.kind === 'facility'
+          || here.kind === 'event-token') continue;
         const key = `${here.kind}:${here.typeId}:${here.tier}`;
         if (seen.has(key)) return false;
         seen.add(key);

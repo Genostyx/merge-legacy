@@ -18,6 +18,7 @@ import { SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { SplitterView } from '../../objects/SplitterView';
 import { FacilityView } from '../../objects/FacilityView';
 import { CrateView } from '../../objects/CrateView';
+import { EventTokenView } from '../../objects/EventTokenView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
 import { getTierDef, isCurrencyChain, spawnerPieceTiers } from '../../data/chains';
 import { burstParticles, shakeForTier } from '../../fx/MergeFx';
@@ -181,7 +182,8 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     // down was dispensing from it, because "same cell" was being treated as
     // "tapped" no matter how far it had travelled.
     if (targetCell && !wasDragging) {
-      if (view instanceof CrateView) scene.tapCrate(view);
+      if (view instanceof EventTokenView) scene.collectEventToken(view);
+      else if (view instanceof CrateView) scene.tapCrate(view);
       else if (view instanceof ResourceProducerView) scene.tapResourceProducer(view);
       else if (view instanceof SpawnerView) scene.spawnFromSpawner(view);
       else if (view instanceof TileView && (

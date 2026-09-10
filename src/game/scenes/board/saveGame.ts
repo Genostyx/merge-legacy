@@ -30,6 +30,8 @@ import type { RewardsState } from '../../rewards/Rewards';
 import { normalizeInventory } from '../../inventory/Inventory';
 import type { InventoryState } from '../../inventory/Inventory';
 import { discoverThrough, normalizeCollectionState } from '../../collection/Collection';
+import { normalizeTimedEventState } from '../../events/TimedEvents';
+import type { TimedEventState } from '../../events/TimedEvents';
 import type { CollectionState } from '../../collection/Collection';
 import { ROOM_PIECES } from '../../rooms/RoomView3D';
 
@@ -87,6 +89,7 @@ export function loadOrSeed(scene: BoardScene): void {
         dispenserCollectCount?: number;
         rewards?: Partial<RewardsState>;
         collection?: Partial<CollectionState>;
+        timedEvents?: Partial<TimedEventState>;
         inventory?: Partial<InventoryState>;
         pendingSpawners?: { typeId: string; tier: number }[];
         forcedSpawnVault?: ForcedSpawn[];
@@ -144,6 +147,7 @@ export function loadOrSeed(scene: BoardScene): void {
       scene.rewards = normalizeRewardsState(parsed.rewards);
       const legacyCollection = parsed.collection == null;
       scene.collection = normalizeCollectionState(parsed.collection);
+      scene.timedEvents = normalizeTimedEventState(parsed.timedEvents);
       scene.inventory = normalizeInventory(parsed.inventory);
       const savedVault = Array.isArray(parsed.forcedSpawnVault)
         ? parsed.forcedSpawnVault.filter((entry): entry is ForcedSpawn => {
@@ -224,6 +228,8 @@ export function loadOrSeed(scene: BoardScene): void {
             scene.placeSpawnerPiece(pos, cell.typeId, cell.tier, false);
           } else if (cell.kind === 'splitter') {
             scene.placeSplitter(pos, false);
+          } else if (cell.kind === 'event-token') {
+            scene.placeEventToken(pos, false);
           } else if (cell.kind === 'facility') {
             scene.placeFacility(pos, cell.facilityId, false);
           } else if (cell.kind === 'resource-producer') {
@@ -293,6 +299,9 @@ export function loadOrSeed(scene: BoardScene): void {
       // Captured only once the load has fully succeeded, so `.prev` always
       // holds a save that is known to be readable.
       stashSave(PREVIOUS_SAVE_KEY, raw);
+      // A token from a finished event would otherwise sit on its cell for
+      // ever, uncollectable and unmergeable.
+      scene.sweepExpiredEventTokens();
       if (saveMigration) saveState(scene);
       scene.updateLevelBadge();
       return;
@@ -352,6 +361,7 @@ export function saveState(scene: BoardScene): void {
     dispenserCollectCount: scene.dispenserCollectCount,
     rewards: scene.rewards,
     collection: scene.collection,
+    timedEvents: scene.timedEvents,
     inventory: scene.inventory,
     forcedSpawnVault: scene.forcedSpawnVault,
     boardExpansion: { unlockedCells: [...scene.boardExpansionUnlocked] }

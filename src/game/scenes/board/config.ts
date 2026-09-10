@@ -6,6 +6,7 @@ import { SpawnerView } from '../../objects/SpawnerView';
 import { SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { SplitterView } from '../../objects/SplitterView';
 import { FacilityView } from '../../objects/FacilityView';
+import { EventTokenView } from '../../objects/EventTokenView';
 import type { FacilityId } from '../../Grid';
 import { CrateView } from '../../objects/CrateView';
 import { ResourceProducerView } from '../../objects/ResourceProducerView';
@@ -85,7 +86,7 @@ export function stashSave(key: string, value: string): void {
 }
 export const AUTO_MERGE_KEY = 'merge-game-auto-merge';
 export const TYPE_ID = 'wood';
-export type BoardView = TileView | SpawnerView | SpawnerPieceView | CrateView | SplitterView | ResourceProducerView | FacilityView;
+export type BoardView = TileView | SpawnerView | SpawnerPieceView | CrateView | SplitterView | ResourceProducerView | FacilityView | EventTokenView;
 export type ForcedSpawn =
   | { kind: 'item'; typeId: string; tier: number }
   | { kind: 'spawner-piece'; typeId: string; tier: number }

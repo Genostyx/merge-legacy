@@ -47,10 +47,32 @@ export type EventMilestone =
   | { at: number; kind: 'gems'; amount: number };
 
 /**
- * The authored schedule. EMPTY ON PURPOSE - an event only exists once one is
- * written here, so merging this cannot start anything.
+ * The authored schedule. An event exists only while its own window contains
+ * the clock, so a past entry is inert without being deleted - which is what
+ * keeps its claimed rungs meaningful in a save (see `normalizeTimedEventState`,
+ * which prunes only ids that are gone from this list entirely).
  */
-export const EVENTS: readonly TimedEventDef[] = [];
+export const EVENTS: readonly TimedEventDef[] = [
+  {
+    id: 'first-haul',
+    title: 'First Haul',
+    // Absolute, and deliberately short. A three-day window is the length the
+    // genre has settled on: long enough that one missed evening does not lose
+    // it, short enough that the track still reads as something to finish.
+    startsAt: Date.UTC(2026, 8, 10),
+    endsAt: Date.UTC(2026, 8, 13),
+    goal: 100,
+    // Four rungs, front-loaded. The first lands inside a single session, so a
+    // player learns what tokens are for before deciding whether to chase the
+    // rest; the last is the only one that needs the full window.
+    milestones: [
+      { at: 15, kind: 'crate', tier: 'bronze' },
+      { at: 35, kind: 'gems', amount: 15 },
+      { at: 65, kind: 'crate', tier: 'silver' },
+      { at: 100, kind: 'crate', tier: 'gold' }
+    ]
+  }
+];
 
 /**
  * Tokens per source tap, and per order completed.

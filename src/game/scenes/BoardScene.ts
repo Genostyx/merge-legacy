@@ -7,6 +7,18 @@ import { SpawnerPieceView, drawSpawnerPieceIcon } from '../objects/SpawnerPieceV
 import { SplitterView, drawSplitterIcon } from '../objects/SplitterView';
 import type { FacilityId } from '../Grid';
 import { FacilityView } from '../objects/FacilityView';
+import { EventTokenView } from '../objects/EventTokenView';
+import {
+  EVENT_TOKENS_PER_ORDER, EVENT_TOKENS_PER_TAP,
+  activeEvent, addEventProgress, createDefaultTimedEventState, eventProgress
+} from '../events/TimedEvents';
+import type { EventMilestone } from '../events/TimedEvents';
+import {
+  buildEventChip as buildEventChipExt,
+  openEventTrack as openEventTrackExt,
+  refreshEventChip as refreshEventChipExt
+} from './board/eventChip';
+import type { TimedEventState } from '../events/TimedEvents';
 import { CRUCIBLE_METER_MAX, acceptsItem as crucibleAccepts, feedCrucible, rollCruciblePrize } from '../facility/Crucible';
 import { SHREDDER_METER_MAX, feedShredder, rollShredderPrize, shredderAccepts } from '../facility/Shredder';
 import type { GridPosition } from '../types';
@@ -558,6 +570,13 @@ export class BoardScene extends Phaser.Scene {
   /** Per-colour segments of the meter label, rebuilt on every refresh. */
   inventory: InventoryState = createDefaultInventory();
   collection: CollectionState = createDefaultCollectionState();
+  timedEvents: TimedEventState = createDefaultTimedEventState();
+  eventChip: Phaser.GameObjects.Container | null = null;
+  eventChipBg: Phaser.GameObjects.Graphics | null = null;
+  eventChipCount: Phaser.GameObjects.Text | null = null;
+  eventChipClock: Phaser.GameObjects.Text | null = null;
+  eventChipZone: Phaser.GameObjects.Zone | null = null;
+  eventOverlay: Phaser.GameObjects.Container | null = null;
   collectionOverlay: Phaser.GameObjects.Container | null = null;
   mainCollectionBadge!: Phaser.GameObjects.Text;
   mainCollectionPanel!: Phaser.GameObjects.Graphics;
@@ -855,6 +874,7 @@ export class BoardScene extends Phaser.Scene {
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
     this.buildCrateMeter();
+    this.buildEventChip();
     this.buildInventoryButton();
     this.buildForcedSpawnVault();
 
@@ -872,6 +892,7 @@ export class BoardScene extends Phaser.Scene {
     this.refreshForcedSpawnVault();
     this.tryDeliverMeterGold();
     this.refreshCrateMeter();
+    this.refreshEventChip();
     this.refreshInventoryButton();
     this.refreshOrderBar();
     this.checkDeadlock();
@@ -2568,7 +2589,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     for (const row of this.grid.serialize()) {
       for (const cell of row) {
         // Crates belong to no family, so they unlock nothing.
-        if (cell && cell.kind !== 'locked-item' && cell.kind !== 'crate' && cell.kind !== 'splitter' && cell.kind !== 'resource-producer' && cell.kind !== 'facility' && cell.typeId !== 'water' && !isCurrencyChain(cell.typeId)) unlocked.add(cell.typeId);
+        if (cell && cell.kind !== 'locked-item' && cell.kind !== 'crate' && cell.kind !== 'splitter' && cell.kind !== 'resource-producer' && cell.kind !== 'facility' && cell.kind !== 'event-token' && cell.typeId !== 'water' && !isCurrencyChain(cell.typeId)) unlocked.add(cell.typeId);
       }
     }
     for (const pending of this.forcedSpawnVault) {
@@ -2867,6 +2888,83 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
   }
 
   /**
+   * THE EVENT TOKEN, and everything that decides whether one appears.
+   *
+   * Dropped alongside ordinary play rather than instead of it: a token never
+   * costs a tap, an item or a cell the player was about to use, and on a full
+   * board it is simply not dropped. An event that can block the board would
+   * be worse than no event.
+   */
+  placeEventToken(pos: GridPosition, animateIn: boolean): EventTokenView {
+    const world = this.cellToWorld(pos);
+    const view = new EventTokenView(this, world.x, world.y, this.cellSize, pos);
+    this.grid.set(pos, { kind: 'event-token' });
+    this.views.set(this.keyOf(pos), view);
+    if (animateIn) view.playSpawnPulse();
+    return view;
+  }
+
+  /**
+   * Rolls for a token. `chance` may exceed 1, which drops that many outright
+   * plus a roll for the remainder - an order completion is worth a whole one.
+   */
+  maybeDropEventToken(chance: number): void {
+    const event = activeEvent(Date.now());
+    if (!event) return;
+    let owed = Math.floor(chance);
+    if (Math.random() < chance - owed) owed++;
+    for (let i = 0; i < owed; i++) {
+      const spot = this.firstFreeCellInReadingOrder();
+      // Refused, not queued. A token in the vault would be a reward the
+      // player has to make room for, and this one is meant to cost nothing.
+      if (!spot) return;
+      this.placeEventToken(spot, true);
+    }
+    if (owed > 0) this.saveState();
+  }
+
+  /** Collects a token into the open event's meter. */
+  collectEventToken(view: EventTokenView): void {
+    const event = activeEvent(Date.now());
+    const key = this.keyOf(view.gridPos);
+    this.grid.set(view.gridPos, null);
+    this.views.delete(key);
+    if (this.selectedItemKey === key) this.selectedItemKey = null;
+
+    const to = this.crateRingCentre();
+    void view.collectTo(to.cx, to.cy).then(() => view.destroy());
+    // A token outliving its window still clears off the board - it just pays
+    // nothing, which is the honest outcome rather than crediting a closed
+    // event.
+    if (event) {
+      addEventProgress(this.timedEvents, event, 1, Date.now());
+      this.refreshEventChip();
+      this.refreshActionTray(
+        `${event.title.toUpperCase()}  ·  ${eventProgress(this.timedEvents, event)}/${event.goal}`
+      );
+    }
+    this.saveState();
+    this.checkDeadlock();
+  }
+
+  /**
+   * Clears every token off the board once no event is open.
+   *
+   * Called on load and whenever a window is checked. Without it a token from a
+   * finished event sits on a cell for ever, uncollectable and unmergeable -
+   * the exact failure the Decagon's temporary family had to avoid.
+   */
+  sweepExpiredEventTokens(): void {
+    if (activeEvent(Date.now())) return;
+    for (const [key, view] of [...this.views.entries()]) {
+      if (!(view instanceof EventTokenView)) continue;
+      this.grid.set(view.gridPos, null);
+      this.views.delete(key);
+      view.destroy();
+    }
+  }
+
+  /**
    * Puts a facility on the board. Its meter comes from RewardsState, not from
    * the cell, so storing one in the briefcase and taking it out again keeps
    * whatever was banked in it.
@@ -3133,6 +3231,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     this.dispenserCollectCount++;
     // The output meter advances on the action the player already does most.
     addMeterCollect(this.rewards);
+    this.maybeDropEventToken(EVENT_TOKENS_PER_TAP);
     this.tryDeliverMeterGold();
     this.refreshCrateMeter();
     this.updateEnergyText();
@@ -3306,6 +3405,21 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
   updateLevelBadge(): void {
     this.refreshCollectMultiplier(); updateLevelBadgeExt(this); }
   buildShopIconButton(cx: number, cy: number, onTap: () => void): void { buildShopIconButtonExt(this, cx, cy, onTap); }
+  buildEventChip(): void { buildEventChipExt(this); }
+  refreshEventChip(now = Date.now()): void { refreshEventChipExt(this, now); }
+  openEventTrack(): void { openEventTrackExt(this); }
+
+  /** Pays one milestone. The claim itself is already recorded by the track. */
+  payEventMilestone(milestone: EventMilestone): void {
+    if (milestone.kind === 'crate') {
+      this.awardCrate(milestone.tier, 'EVENT');
+      return;
+    }
+    addGems(this.economy, milestone.amount);
+    this.updateCurrencyText();
+    this.updateLevelBadge();
+  }
+
   buildProjectButton(): void { buildProjectButtonExt(this); }
   refreshProjectButton(): void { refreshProjectButtonExt(this); }
   buildInventoryButton(): void { buildInventoryButtonExt(this); }

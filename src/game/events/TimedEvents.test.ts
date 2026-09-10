@@ -24,9 +24,23 @@ const evt = (over: Partial<TimedEventDef> = {}): TimedEventDef => ({
 });
 
 describe('timed events', () => {
-  it('ships with no event authored, so merging it starts nothing', () => {
-    expect(EVENTS).toHaveLength(0);
-    expect(activeEvent(Date.now())).toBeNull();
+  it('authors every event with a window that opens before it shuts', () => {
+    // Reversed or zero-length windows are the authoring slip that would make
+    // an event silently never happen, and nothing else would catch it.
+    for (const event of EVENTS) {
+      expect(event.endsAt).toBeGreaterThan(event.startsAt);
+      expect(event.goal).toBeGreaterThan(0);
+      const ats = event.milestones.map((m) => m.at);
+      expect([...ats].sort((a, b) => a - b)).toEqual(ats);
+      expect(Math.max(...ats)).toBeLessThanOrEqual(event.goal);
+    }
+  });
+
+  it('never opens two windows across each other', () => {
+    const sorted = [...EVENTS].sort((a, b) => a.startsAt - b.startsAt);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i].startsAt).toBeGreaterThanOrEqual(sorted[i - 1].endsAt);
+    }
   });
 
   it('opens on its start and is over AT its end, not after', () => {
