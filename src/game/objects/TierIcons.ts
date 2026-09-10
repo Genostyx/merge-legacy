@@ -4008,43 +4008,126 @@ function drawCondenserCoil(g: Phaser.GameObjects.Graphics, s: number, p: Palette
 }
 
 /**
- * 08 - the still: a body with a swan neck running off it.
+ * 08 - the alembic: a copper pot still.
  *
- * The only closed VESSEL in the family, and the only tier with a curve that
- * is not a tube - which is what makes the top of the chain look like the end
- * of a process rather than one more fitting.
+ * The only closed VESSEL in the family and the only tier without a visible
+ * bore, which is what makes the top of the chain look like the end of a
+ * process rather than one more fitting. Its silhouette is a gourd under an
+ * onion under a column - three stacked curves and a straight line, unlike
+ * anything else here or on the main board.
+ *
+ * Hammered, because that is what copper of this kind actually is, and because
+ * a plain sphere at cell size is a ball. The dimples are placed rather than
+ * rolled: a handful in the lit quarter reads as a beaten surface, where a
+ * regular grid reads as a pattern printed on one.
  */
 function drawAlembic(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const cx = -s * 0.06, cy = s * 0.08, r = s * 0.19;
-
-  // Swan neck first, so the body sits over its root.
-  copperTube(g, [
-    [cx, cy - r * 0.9], [cx + s * 0.04, cy - r * 1.5],
-    [cx + s * 0.18, cy - r * 1.55], [cx + s * 0.25, cy - r * 0.7],
-    [cx + s * 0.26, cy + s * 0.06]
-  ], s * 0.085, p);
-  copperMouth(g, cx + s * 0.26, cy + s * 0.06, s * 0.05, p);
+  const bodyCy = s * 0.15;
+  const bodyRx = s * 0.23;
+  const bodyRy = s * 0.2;
+  const domeCy = -s * 0.08;
+  const domeRx = s * 0.135;
 
   g.fillStyle(p.shadow, 0.35);
-  g.fillEllipse(cx + s * 0.02, cy + r * 0.95, r * 2.1, r * 0.55);
+  g.fillEllipse(s * 0.02, bodyCy + bodyRy * 0.92, bodyRx * 2.05, bodyRy * 0.5);
 
-  // The body: a squat gourd, lit from the upper left like everything else.
+  // THE COLUMN, first, so everything below overlaps its foot.
+  const colW = s * 0.055;
   g.fillStyle(p.dark, 1);
-  g.fillEllipse(cx, cy, r * 2, r * 1.9);
+  g.fillRect(-colW / 2, -s * 0.42, colW, s * 0.2);
+  g.fillStyle(p.light, 1);
+  g.fillRect(-colW / 2, -s * 0.42, colW * 0.42, s * 0.2);
   g.fillStyle(p.base, 1);
-  g.fillEllipse(cx - r * 0.06, cy - r * 0.04, r * 1.82, r * 1.72);
-  g.fillStyle(p.light, 0.9);
-  g.fillEllipse(cx - r * 0.34, cy - r * 0.4, r * 0.9, r * 0.72);
-  g.fillStyle(p.highlight, 0.75);
-  g.fillEllipse(cx - r * 0.44, cy - r * 0.52, r * 0.34, r * 0.26);
+  g.fillEllipse(0, -s * 0.42, colW * 1.5, colW * 0.5);
 
-  // A riveted band around its waist - the one straight line on a round form,
-  // which is what stops it reading as a ball.
-  const band = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
-  g.fillStyle(band.base, 1);
-  g.fillRect(cx - r * 0.92, cy + r * 0.34, r * 1.84, r * 0.3);
-  g.fillStyle(band.highlight, 0.9);
-  g.fillRect(cx - r * 0.92, cy + r * 0.34, r * 1.84, r * 0.1);
+  // TWO HANDLES, one either side, drawn behind the body so they read as
+  // fixed to its far edge rather than floating over it.
+  for (const side of [-1, 1]) {
+    const hx = side * bodyRx * 0.94;
+    g.lineStyle(s * 0.032, p.dark, 1);
+    g.beginPath();
+    g.moveTo(hx, bodyCy - s * 0.06);
+    g.lineTo(hx + side * s * 0.075, bodyCy - s * 0.04);
+    g.lineTo(hx + side * s * 0.07, bodyCy + s * 0.03);
+    g.lineTo(hx, bodyCy + s * 0.045);
+    g.strokePath();
+    g.lineStyle(s * 0.014, p.highlight, 0.75);
+    g.beginPath();
+    g.moveTo(hx + side * s * 0.02, bodyCy - s * 0.055);
+    g.lineTo(hx + side * s * 0.072, bodyCy - s * 0.035);
+    g.strokePath();
+  }
+
+  // THE ONION DOME - a bulb that tapers to the column.
+  g.fillStyle(p.dark, 1);
+  g.fillEllipse(0, domeCy, domeRx * 2, domeRx * 2.05);
+  g.fillStyle(p.base, 1);
+  g.fillEllipse(-domeRx * 0.06, domeCy - domeRx * 0.06, domeRx * 1.82, domeRx * 1.86);
+  g.fillStyle(p.light, 0.85);
+  g.fillEllipse(-domeRx * 0.36, domeCy - domeRx * 0.4, domeRx * 0.8, domeRx * 0.78);
+  // Its shoulder, running up into the column.
+  g.fillStyle(p.base, 1);
+  g.beginPath();
+  g.moveTo(-domeRx * 0.86, domeCy - domeRx * 0.5);
+  g.lineTo(-colW * 0.62, -s * 0.29);
+  g.lineTo(colW * 0.62, -s * 0.29);
+  g.lineTo(domeRx * 0.86, domeCy - domeRx * 0.5);
+  g.closePath();
+  g.fillPath();
+  g.fillStyle(p.light, 0.55);
+  g.beginPath();
+  g.moveTo(-domeRx * 0.86, domeCy - domeRx * 0.5);
+  g.lineTo(-colW * 0.62, -s * 0.29);
+  g.lineTo(-colW * 0.1, -s * 0.29);
+  g.lineTo(-domeRx * 0.3, domeCy - domeRx * 0.62);
+  g.closePath();
+  g.fillPath();
+
+  // THE BODY.
+  g.fillStyle(p.dark, 1);
+  g.fillEllipse(0, bodyCy, bodyRx * 2, bodyRy * 2);
+  g.fillStyle(p.base, 1);
+  g.fillEllipse(-bodyRx * 0.05, bodyCy - bodyRy * 0.05, bodyRx * 1.86, bodyRy * 1.86);
+  g.fillStyle(p.light, 0.8);
+  g.fillEllipse(-bodyRx * 0.34, bodyCy - bodyRy * 0.36, bodyRx * 0.86, bodyRy * 0.78);
+  g.fillStyle(p.highlight, 0.6);
+  g.fillEllipse(-bodyRx * 0.44, bodyCy - bodyRy * 0.48, bodyRx * 0.34, bodyRy * 0.26);
+
+  // HAMMERED DIMPLES, in the lit quarter only - that is where beaten copper
+  // shows them, and scattering them evenly would flatten the form back out.
+  const dimples: [number, number, number][] = [
+    [-0.5, -0.42, 0.15], [-0.18, -0.55, 0.13], [-0.62, -0.05, 0.13],
+    [-0.28, -0.2, 0.12], [0.1, -0.38, 0.11], [-0.5, 0.28, 0.12],
+    [-0.1, 0.12, 0.11], [0.3, -0.05, 0.1]
+  ];
+  for (const [dx, dy, dr] of dimples) {
+    g.fillStyle(p.dark, 0.28);
+    g.fillEllipse(bodyRx * dx, bodyCy + bodyRy * dy, bodyRx * dr, bodyRy * dr);
+    g.fillStyle(p.highlight, 0.28);
+    g.fillEllipse(
+      bodyRx * dx - bodyRx * dr * 0.22, bodyCy + bodyRy * dy - bodyRy * dr * 0.24,
+      bodyRx * dr * 0.6, bodyRy * dr * 0.58
+    );
+  }
+
+  // THE GAUGE, on the waist where the dome meets the body. A bright disc on
+  // a copper form, and the one thing here that is not copper at all - which
+  // is why the eye lands on it and the whole shape reads as an instrument.
+  const gy = s * 0.005;
+  const gr = s * 0.072;
+  g.fillStyle(p.highlight, 1);
+  g.fillCircle(0, gy, gr);
+  g.fillStyle(p.shadow, 0.85);
+  g.fillCircle(0, gy, gr * 0.76);
+  g.fillStyle(0xe8e4da, 1);
+  g.fillCircle(0, gy, gr * 0.62);
+  g.fillStyle(p.shadow, 0.9);
+  g.fillCircle(0, gy, gr * 0.1);
+  g.lineStyle(Math.max(1, s * 0.012), p.shadow, 0.9);
+  g.beginPath();
+  g.moveTo(0, gy);
+  g.lineTo(gr * 0.4, gy - gr * 0.34);
+  g.strokePath();
 }
 
 /**

@@ -448,7 +448,12 @@ function buildChrome(
       const slot = card.slot;
       const tier = asking[slot];
       const def = eventTierDef(tier);
-      const top = tier >= EVENT_MAX_TIER;
+      // The top tier used to light the card on its own, on the reasoning that
+      // the auto-order is worth pointing at. It was a lie: the outline means
+      // "you can fill this", and a tier-8 card wore it whether or not the
+      // player held one. The auto-order needs no help - it only ever appears
+      // BECAUSE a top-tier piece is on the board, so `canFill` is already
+      // true whenever it does.
       // A card LIGHTS UP the moment the board can actually fill it. Reading
       // a card and then discovering you cannot pay it is the difference
       // between a board that answers you and one you have to interrogate.
@@ -458,8 +463,8 @@ function buildChrome(
       card.bg.fillRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
       card.bg.lineStyle(
         canFill ? Theme.borderWidthStrong : Theme.borderWidth,
-        canFill || top ? EVENT_TOKEN_COLOR : Theme.borderOnDark,
-        canFill ? 1 : (top ? 0.9 : 0.6)
+        canFill ? EVENT_TOKEN_COLOR : Theme.borderOnDark,
+        canFill ? 1 : 0.6
       );
       card.bg.strokeRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
       card.pay.setColor(hex(canFill ? EVENT_TOKEN_COLOR : Theme.textOnDarkMuted));
