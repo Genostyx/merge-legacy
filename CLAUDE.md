@@ -22,14 +22,14 @@ if one is edited, mirror the change into the other.
 
 This rule applies to Codex, Claude, and any other coding agent working in this project.
 
-## No automatic visual verification
+## Visual verification: only when it tells you something
 
-- For visual changes, make only the requested edit and then stop.
+- Do not screenshot the game to confirm a change the project owner can simply see. A colour, a size, a position, a label - make the edit and stop.
 - Give no extra explanation unless the project owner explicitly asks for it.
-- Do not open, reload, inspect, screenshot, or otherwise visually verify the game after a visual change when the project owner can see the result themselves.
-- Do not run browser automation or compare rendered output unless the project owner explicitly asks for visual verification.
-- This restriction remains in effect even when visual verification would normally be considered good practice.
-- Non-visual checks are also unnecessary for a small, isolated visual-value edit unless there is a concrete technical risk or the project owner explicitly requests them.
+- DO open the game when looking is the only way to know whether something WORKS, or when a change is large enough that a crash is plausible: new interactive code, a new panel or screen, an input path, layout maths that has to hold at a real screen size. Finding a crash yourself is better than shipping it.
+- Prefer the cheapest tool that answers the question. `tools/debug/icon-sheet.ts` renders a family's icons to SVG with no GPU and no game; reading the drawn colour values beats squinting at a screenshot, and the browser preview's WebGL context dies after a handful of reloads.
+- Do not run browser automation to re-check work that already passed, to admire a result, or to produce a screenshot for the project owner - they are looking at the game already.
+- Non-visual checks are unnecessary for a small, isolated visual-value edit unless there is a concrete technical risk.
 
 ## Show, don't tell - the art speaks for itself
 
