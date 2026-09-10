@@ -49,6 +49,37 @@
     },
     backups: () => Object.keys(localStorage).filter((k) => k.includes(`${KEY}.`)),
 
+    // ---- player level ----
+    /**
+     * Jumps the player to a level. `__dbg.level(5)`, then it reloads.
+     *
+     * XP is the only thing that defines level (`xpForLevel` is
+     * `100 * level * (level - 1)`), so this sets the exact threshold rather
+     * than nudging XP until the badge changes. Reads the level back off the
+     * same formula the game uses, so a wrong answer here means the formula
+     * moved and this needs updating with it.
+     *
+     * Anything gated on level reacts on the next load - the event's own
+     * level-5 gate is what this was written for. LEVEL REWARDS FOR THE LEVELS
+     * YOU SKIP ARE DELIVERED on that load, which is the honest consequence of
+     * arriving at a level rather than climbing to it: expect crates.
+     *
+     * Pass no argument to just read the current level.
+     */
+    level(n) {
+      const xpFor = (L) => 100 * L * (L - 1);
+      const s = read();
+      if (!s) return 'no save';
+      if (n == null) return { level: levelFor(s.orderState?.totalXp ?? 0), xp: s.orderState?.totalXp ?? 0 };
+      const target = Math.max(1, Math.floor(n));
+      s.orderState = s.orderState ?? {};
+      s.orderState.totalXp = xpFor(target);
+      if (levelFor(s.orderState.totalXp) !== target) {
+        return `formula mismatch: ${xpFor(target)} xp reads as level ${levelFor(s.orderState.totalXp)}`;
+      }
+      return commit(s);
+    },
+
     // ---- board setup ----
     /**
      * board({ clear:true, spawners:[['decagon',1,3,3]], items:[['decagon',1,9]], fill:'wood' })

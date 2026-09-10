@@ -52,6 +52,7 @@ await __dbg.health()          // fps AND the flags that gate input
 __dbg.watch()                 // start capturing; the LIST outlives reloads
 __dbg.errors()                // what it caught
 
+__dbg.level(5)                // jump to a level (reloads); no arg = read it
 __dbg.tokens()                // event token drop rate, measured not assumed
 __dbg.tokens(true)            // reset the count
 
@@ -75,7 +76,14 @@ Three traps it removes:
    seen once is still readable afterwards. Honest limit: the listener is not
    part of the bundle, so re-eval `devtools.js` after each reload to keep
    capturing; anything thrown before that eval is missed.
-3. **`health()` reports `inputLocked`, not just fps.** A locked game still
+3. **`level(n)` arrives at a level instead of climbing to one.** Anything
+   gated on level - the event's level-5 gate, order slots, shop rows - can be
+   reached in one call after a reset. It sets the exact XP threshold rather
+   than nudging, and refuses if the level it reads back is not the one asked
+   for, which is what catches the XP formula moving underneath it. Level
+   rewards for the skipped levels are delivered on the next load; that is the
+   honest consequence of arriving rather than climbing.
+4. **`health()` reports `inputLocked`, not just fps.** A locked game still
    renders at 60fps. A stuck `inputLocked` is what a "frozen screen" usually
    is - the board draws fine and ignores every tap.
 
