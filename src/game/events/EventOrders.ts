@@ -6,11 +6,11 @@ import type { EventBoardState } from './EventBoard';
 /**
  * EVENT ORDERS - the only thing on the event board that pays points.
  *
- * Three slots, always full, each pinned to a band of the chain: something you
- * can fill now, something worth working toward, and something that needs most
- * of the window. A single order queue would either be trivial for a player who
- * had merged high or impossible for one who had not, and the same three bands
- * are what let one board serve both.
+ * Three slots, always full, each drawing from a band of the chain: something
+ * you can fill now, something worth working toward, and something that needs
+ * most of the window. A single order queue would either be trivial for a
+ * player who had merged high or impossible for one who had not, and the three
+ * bands are what let one board serve both.
  *
  * Filling one REMOVES the item and rerolls that slot. Points come from nowhere
  * else - not from merging, not from tapping - so the loop is always
@@ -18,13 +18,22 @@ import type { EventBoardState } from './EventBoard';
  */
 
 /**
- * The band each slot draws from. Tier 1 is deliberately absent: it is what
- * the booth hands out, so an order for one would pay points for doing nothing.
+ * The band each slot draws from.
+ *
+ * Between them the three bands cover the WHOLE chain, tier one to tier eight,
+ * and nothing here consults what the player has built. An order for a piece
+ * you have not made yet is a target, not a locked door - it tells you what to
+ * climb toward, which is the only instruction this board ever gives.
+ *
+ * The bands overlap on purpose. Hard edges would make the middle slot's two
+ * tiers the entire mid-game; sharing tiers 3 and 5 between neighbours means
+ * the row can ask for the same piece in more than one way and the three slots
+ * stay distinguishable without being three separate games.
  */
 export const EVENT_ORDER_BANDS: readonly (readonly number[])[] = [
-  [2, 3],
-  [4, 5],
-  [6, 7]
+  [1, 2, 3],
+  [3, 4, 5],
+  [5, 6, 7, 8]
 ];
 
 export const EVENT_ORDER_SLOTS = EVENT_ORDER_BANDS.length;
@@ -32,10 +41,11 @@ export const EVENT_ORDER_SLOTS = EVENT_ORDER_BANDS.length;
 /**
  * What the top of the chain pays when it is handed in.
  *
- * DOUBLE its own tier value. Reaching tier 8 costs 128 tier-1 items and no
- * ordinary slot ever asks for one, so without a bonus the top merge would be
- * worth exactly as much as the two tier-7s that went into it - a jackpot that
- * pays nothing extra is not a jackpot.
+ * DOUBLE its own tier value. Reaching tier 8 costs 128 tier-1 items, so on the
+ * flat two-a-tier scale it would otherwise be worth barely more than the two
+ * tier-7s that went into it - a jackpot that pays nothing extra is not a
+ * jackpot. The hard slot can roll tier 8 by itself, and the auto-order still
+ * puts it there the moment one exists; both pay this.
  */
 export function topTierPayout(): number {
   return eventPointsForTier(EVENT_MAX_TIER) * 2;

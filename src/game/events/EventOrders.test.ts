@@ -23,9 +23,13 @@ const put = (grid: Grid, col: number, row: number, tier: number, locked = false)
 const stateWith = (orders: number[]) => ({ ...createDefaultEventBoardState(), orders });
 
 describe('event orders', () => {
-  it('never asks for the item the booth hands out', () => {
-    // A tier-1 order would pay points for spending one energy and nothing else.
-    for (const band of EVENT_ORDER_BANDS) expect(band).not.toContain(1);
+  it('can ask for every tier in the chain, unlocked or not', () => {
+    // Nothing here consults what the player has built: an order for a piece
+    // they have not made yet is a target, not a locked door.
+    const askable = new Set(EVENT_ORDER_BANDS.flat());
+    for (let tier = 1; tier <= EVENT_MAX_TIER; tier++) {
+      expect(askable.has(tier)).toBe(true);
+    }
   });
 
   it('rolls every slot inside its own band', () => {
