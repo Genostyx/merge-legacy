@@ -157,6 +157,7 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
   // no longer has to be re-centred against a price glyph every tick - it
   // just re-reads its own text.
   const shopCountdownRows: Array<{ key: ShopRowKey; text: Phaser.GameObjects.Text }> = [];
+  const shopCrateTimers: Array<{ tier: string; text: Phaser.GameObjects.Text; cooling: boolean }> = [];
   const REROLL_GLYPH = 17;
 
   /**
@@ -290,6 +291,10 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
    * offers - the store has ONE card, and what changes between shelves is
    * what is drawn on it, never the shape of it.
    */
+  // The most recent card's subtitle, so a caller that needs to keep writing to
+  // it can pick it up straight after building the card.
+  let lastSubText: Phaser.GameObjects.Text | null = null;
+
   const shelfCard = (
     cx: number,
     w: number,
@@ -325,17 +330,20 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
     content.add(artObj);
 
     if (sub) {
+      // Captured, so a caller with a live value can keep writing to it.
       // Bottom-anchored and WRAPPED. It used to be a single centred line at a
       // fixed y with no wrap width, so `RESTOCKING  ·  1:23:45` - wider than a
       // third of the panel - simply ran past both edges of its own card and
       // collided with the countdowns either side of it. Anchoring the bottom
       // means a second line grows upward into the gap under the art instead
       // of downward into the price chip.
-      content.add(scene.add.text(cx, top + h - SHOP_CARD_FOOTER + 2, sub, {
+      const subText = scene.add.text(cx, top + h - SHOP_CARD_FOOTER + 2, sub, {
         resolution: textResolution,
         fontFamily: Theme.fontMono, fontSize: '10px', color: hex(Theme.textOnDarkMuted),
         align: 'center', wordWrap: { width: w - 8 }, lineSpacing: 2
-      }).setOrigin(0.5, 1));
+      }).setOrigin(0.5, 1);
+      content.add(subText);
+      lastSubText = subText;
     }
 
     const priceColor = enabled ? price.color : Theme.textOnDarkMuted;
@@ -474,6 +482,10 @@ ${formatCrateWait(offer.cooldownMs)}`,
           else reopenShop(scene, null);
         }
       );
+      // LIVE, not a snapshot. The card used to print the wait as it stood
+      // when the shop was opened and then sit there frozen, so a player
+      // watching a crate come back saw a stopped clock.
+      if (lastSubText) shopCrateTimers.push({ tier: offer.tier, text: lastSubText, cooling: cooling > 0 });
     });
   };
 
@@ -668,6 +680,17 @@ ${formatCrateWait(offer.cooldownMs)}`,
       const remaining = msUntilShopRefresh(scene.shopState, row.key);
       row.text.setText(`REFRESH IN ${formatCountdown(remaining)}`);
       if (remaining <= 0) refreshDue = true;
+    }
+    for (const row of shopCrateTimers) {
+      const remaining = supplyCooldownRemaining(scene.supplyTierCooldown(row.tier), Date.now());
+      // A crate finishing its restock changes the CARD, not just the text -
+      // it stops being dimmed and starts taking taps - so that one needs a
+      // rebuild rather than a new string.
+      if (row.cooling && remaining <= 0) { refreshDue = true; continue; }
+      row.text.setText(remaining > 0
+        ? `RESTOCKING
+${formatCrateWait(remaining)}`
+        : row.text.text);
     }
     if (refreshDue) {
       refreshIfDue(
