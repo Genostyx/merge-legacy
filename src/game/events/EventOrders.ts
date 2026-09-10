@@ -38,19 +38,6 @@ export const EVENT_ORDER_BANDS: readonly (readonly number[])[] = [
 
 export const EVENT_ORDER_SLOTS = EVENT_ORDER_BANDS.length;
 
-/**
- * What the top of the chain pays when it is handed in.
- *
- * DOUBLE its own tier value. Reaching tier 8 costs 128 tier-1 items, so on the
- * flat two-a-tier scale it would otherwise be worth barely more than the two
- * tier-7s that went into it - a jackpot that pays nothing extra is not a
- * jackpot. The hard slot can roll tier 8 by itself, and the auto-order still
- * puts it there the moment one exists; both pay this.
- */
-export function topTierPayout(): number {
-  return eventPointsForTier(EVENT_MAX_TIER) * 2;
-}
-
 /** Rolls one slot's tier from its own band. */
 export function rollEventOrder(slot: number, roll: number = Math.random()): number {
   const band = EVENT_ORDER_BANDS[slot] ?? EVENT_ORDER_BANDS[0];
@@ -76,9 +63,16 @@ export function visibleEventOrders(state: EventBoardState, grid: Grid): number[]
   return slots;
 }
 
-/** What a slot pays if filled now. */
+/**
+ * What a slot pays if filled now. The tier's own value, always.
+ *
+ * The top tier used to pay double here, which broke the linear scale at the
+ * exact end where it is most visible. The auto-order remains worth chasing
+ * for what it is - the hard slot retargeting to a piece you already hold, so
+ * it can be handed in at once instead of waiting for a matching roll.
+ */
 export function eventOrderPayout(tier: number): number {
-  return tier >= EVENT_MAX_TIER ? topTierPayout() : eventPointsForTier(tier);
+  return eventPointsForTier(tier);
 }
 
 /** The first cell holding an event item of exactly `tier`, or null. */

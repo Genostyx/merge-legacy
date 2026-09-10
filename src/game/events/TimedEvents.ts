@@ -72,17 +72,15 @@ export const EVENTS: readonly TimedEventDef[] = [
     startsAt: Date.UTC(2026, 8, 10),
     endsAt: Date.UTC(2026, 8, 13),
     minLevel: 5,
-    // 140 points, against a LINEAR payout of two a tier.
+    // 140 points, against a payout of one point per tier.
     //
-    // Three days of ordinary main-board play buys roughly 70 taps of event
-    // energy, and the opening crust is worth about 60 items more once
-    // cleared. Spread across the three order bands that lands a little over
-    // 140, so the last rung is reachable without playing unusually hard.
-    //
-    // Stated plainly because it is a real consequence: a player who only ever
-    // fills the easy slot beats that comfortably, since the payout does not
-    // keep pace with the doubling merge cost. The bands cap how much of the
-    // board that strategy can use, they do not forbid it.
+    // Tier N pays N, so the cheapest piece is also the most efficient one per
+    // unit of raw material: a tier 1 is a point for one energy, a tier 8 is
+    // eight points for a hundred and twenty-eight. A player filling nothing
+    // but the easy slot therefore needs about 140 hut taps to clear the
+    // track; one climbing the chain needs considerably more. Only one of the
+    // three bands reaches the bottom of the chain, which is what stops the
+    // cheap route being the whole board.
     goal: 140,
     // Five rungs, front-loaded. The first lands inside a single session, so a
     // player learns what the board is for before deciding whether to chase

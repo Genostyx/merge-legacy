@@ -37,17 +37,26 @@ export { EVENT_CHAIN, EVENT_MAX_TIER, eventTierDef, isEventTypeId } from './Even
 import { EVENT_CHAIN, EVENT_MAX_TIER } from './EventChain';
 
 /**
- * Points an event order pays, by the tier it asked for. LINEAR.
+ * Points an event order pays, by the tier it asked for. LINEAR, and with no
+ * exceptions anywhere: tier N pays N.
  *
- * Two points a tier, flat. It does not track the merge cost, which doubles -
- * so per unit of raw material the easy slot is the efficient one, and a
- * player who only ever fills that slot clears the track faster than one who
- * climbs. The three order BANDS are what hold that in check: only one slot
- * ever asks for the cheap end, so the cheap strategy is capped at a third of
- * the board's throughput rather than being the whole game.
+ * It deliberately does NOT track the merge cost, which doubles. That makes
+ * the cheapest piece the most efficient one per unit of raw material - a
+ * tier 1 pays a point for one energy, where a tier 8 pays eight for a hundred
+ * and twenty-eight. That is a known and accepted trade, not an oversight:
+ *
+ *  - The slots cannot be dismissed or re-rolled at will, so a player cannot
+ *    hold three cheap orders. Only one band reaches the bottom of the chain,
+ *    which caps the cheap strategy at a third of the row.
+ *  - A payout that doubled with the merge cost would make the top of the
+ *    chain worth so much that nothing below it mattered, which is the
+ *    opposite failure and a worse one.
+ *
+ * Anything that pays a bonus on top of this - a top-tier jackpot, say - makes
+ * the scale non-linear again, so there is nothing of the sort.
  */
 export function eventPointsForTier(tier: number): number {
-  return Math.max(1, tier * 2);
+  return Math.max(1, Math.floor(tier));
 }
 
 export interface EventBoardState {

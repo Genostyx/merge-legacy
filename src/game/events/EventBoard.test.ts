@@ -71,7 +71,8 @@ describe('event board', () => {
       steps.push(eventPointsForTier(tier + 1) - eventPointsForTier(tier));
     }
     expect(new Set(steps).size).toBe(1);
-    expect(steps[0]).toBeGreaterThan(0);
+    expect(steps[0]).toBe(1);
+    expect(eventPointsForTier(1)).toBe(1);
   });
 
   it('pays an overflow crate every step past the last rung, once each', () => {

@@ -6,7 +6,6 @@ import {
   findEventItem,
   rollEventOrders,
   submitEventOrder,
-  topTierPayout,
   visibleEventOrders
 } from './EventOrders';
 import {
@@ -81,10 +80,12 @@ describe('event orders', () => {
     expect(state.orders[EVENT_ORDER_SLOTS - 1]).toBe(6);
   });
 
-  it('pays double for the top tier, so the last merge is worth making', () => {
-    expect(topTierPayout()).toBe(eventPointsForTier(EVENT_MAX_TIER) * 2);
-    expect(eventOrderPayout(EVENT_MAX_TIER)).toBe(topTierPayout());
-    expect(eventOrderPayout(EVENT_MAX_TIER)).toBeGreaterThan(eventPointsForTier(EVENT_MAX_TIER - 1) * 2);
+  it('pays a tier its own value, with no exception at the top', () => {
+    // The scale is linear end to end. A jackpot on the last tier would break
+    // it at the exact place a player is most likely to check the arithmetic.
+    for (let tier = 1; tier <= EVENT_MAX_TIER; tier++) {
+      expect(eventOrderPayout(tier)).toBe(tier);
+    }
   });
 
   it('ignores a slot index that does not exist', () => {
