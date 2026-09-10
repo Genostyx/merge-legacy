@@ -61,13 +61,17 @@ export const EVENTS: readonly TimedEventDef[] = [
     // it, short enough that the track still reads as something to finish.
     startsAt: Date.UTC(2026, 8, 10),
     endsAt: Date.UTC(2026, 8, 13),
-    // 140 points. Points equal the TIER-1 EQUIVALENTS a player hands in -
-    // the payout doubles per tier exactly as the merge cost does - so this
-    // number is really "how much raw material clears the track". Three days
-    // of ordinary main-board play buys roughly 70 taps of event energy, the
-    // opening crust is worth about 60 more once cleared, and the last rung
-    // sits just under that total: reachable without playing unusually hard,
-    // and not before the third day.
+    // 140 points, against a LINEAR payout of two a tier.
+    //
+    // Three days of ordinary main-board play buys roughly 70 taps of event
+    // energy, and the opening crust is worth about 60 items more once
+    // cleared. Spread across the three order bands that lands a little over
+    // 140, so the last rung is reachable without playing unusually hard.
+    //
+    // Stated plainly because it is a real consequence: a player who only ever
+    // fills the easy slot beats that comfortably, since the payout does not
+    // keep pace with the doubling merge cost. The bands cap how much of the
+    // board that strategy can use, they do not forbid it.
     goal: 140,
     // Five rungs, front-loaded. The first lands inside a single session, so a
     // player learns what the board is for before deciding whether to chase

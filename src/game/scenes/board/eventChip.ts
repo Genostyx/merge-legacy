@@ -1,14 +1,15 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
-import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
+import { Theme, hex, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
-import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
+import { EVENT_TOKEN_COLOR } from '../../objects/EventTokenView';
 import { drawCrate } from '../../objects/TierIcons';
 import { ORDER_CARD_H } from './config';
 import {
   activeEvent, claimMilestone, eventMsRemaining, eventProgress,
   isMilestoneClaimed, unclaimedMilestones
 } from '../../events/TimedEvents';
+import type { TimedEventDef } from '../../events/TimedEvents';
 
 /** Narrow, so it costs the orders beside it as little width as possible. */
 export const EVENT_CHIP_W = 46;
@@ -35,8 +36,13 @@ export function buildEventChip(scene: BoardScene): void {
   scene.eventChip = chip;
 
   const bg = scene.add.graphics();
-  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2, 19);
-  drawEventToken(token, 30, materialLighting(EVENT_TOKEN_COLOR, 5));
+  // A METER, not the medallion.
+  //
+  // This used to draw the event token, which was the whole confusion: the
+  // thing you pick up off the board is ENERGY, and this counts POINTS. Two
+  // different quantities wearing one piece of art read as one currency that
+  // did not add up. A dial cannot be mistaken for something you collect.
+  const meter = scene.add.graphics().setPosition(EVENT_CHIP_W / 2, 20);
   const count = scene.add.text(EVENT_CHIP_W / 2, 34, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '10px', fontStyle: 'bold',
@@ -61,9 +67,10 @@ export function buildEventChip(scene: BoardScene): void {
   });
 
   scene.eventChipBg = bg;
+  scene.eventChipMeter = meter;
   scene.eventChipCount = count;
   scene.eventChipClock = clock;
-  chip.add([bg, token, count, clock, zone]);
+  chip.add([bg, meter, count, clock, zone]);
 }
 
 /**
@@ -83,6 +90,7 @@ export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
   scene.eventChipClock?.setText(formatRemaining(eventMsRemaining(event, now)));
 
   const owed = unclaimedMilestones(scene.timedEvents, event).length;
+  drawChipMeter(scene, event, points, owed);
   const bg = scene.eventChipBg;
   if (!bg) return;
   bg.clear();
@@ -96,6 +104,52 @@ export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
     owed > 0 ? 1 : 0.85
   );
   bg.strokeRoundedRect(0, 0, EVENT_CHIP_W, ORDER_CARD_H, Theme.radiusChip);
+}
+
+/**
+ * The dial: an open ring that fills clockwise with the track, ticked at each
+ * rung. It says three things at a glance - how far along, how many rungs are
+ * left, and whether one is waiting - without a word of text.
+ */
+function drawChipMeter(
+  scene: BoardScene, event: TimedEventDef, points: number, owed: number
+): void {
+  const g = scene.eventChipMeter;
+  if (!g) return;
+  const r = 11;
+  g.clear();
+
+  g.lineStyle(3, Theme.borderOnDark, 0.55);
+  g.strokeCircle(0, 0, r);
+
+  const filled = Math.min(1, event.goal > 0 ? points / event.goal : 0);
+  if (filled > 0) {
+    const pts: Phaser.Geom.Point[] = [];
+    const from = -Math.PI / 2;
+    for (let i = 0; i <= 40; i++) {
+      const a = from + Math.PI * 2 * filled * (i / 40);
+      pts.push(new Phaser.Geom.Point(Math.cos(a) * r, Math.sin(a) * r));
+    }
+    g.lineStyle(3, EVENT_TOKEN_COLOR, 1);
+    g.strokePoints(pts, false, false);
+  }
+
+  // Rung ticks, outside the ring so they never eat into the fill.
+  for (const milestone of event.milestones) {
+    const a = -Math.PI / 2 + Math.PI * 2 * Math.min(1, milestone.at / event.goal);
+    const reached = points >= milestone.at;
+    g.lineStyle(1.5, reached ? EVENT_TOKEN_COLOR : Theme.borderOnDark, reached ? 1 : 0.8);
+    g.beginPath();
+    g.moveTo(Math.cos(a) * (r + 2.5), Math.sin(a) * (r + 2.5));
+    g.lineTo(Math.cos(a) * (r + 5), Math.sin(a) * (r + 5));
+    g.strokePath();
+  }
+
+  // A rung waiting to be taken fills the middle. Nothing else does.
+  if (owed > 0) {
+    g.fillStyle(EVENT_TOKEN_COLOR, 0.9);
+    g.fillCircle(0, 0, r * 0.42);
+  }
 }
 
 /** Days once past a day, hours and minutes below that. */

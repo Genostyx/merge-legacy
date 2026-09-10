@@ -37,15 +37,17 @@ export { EVENT_CHAIN, EVENT_MAX_TIER, eventTierDef, isEventTypeId } from './Even
 import { EVENT_CHAIN, EVENT_MAX_TIER } from './EventChain';
 
 /**
- * Points an event order pays, by the tier it asked for.
+ * Points an event order pays, by the tier it asked for. LINEAR.
  *
- * Superlinear on purpose: merging two tier-4s into a tier-5 has to be worth
- * more than handing in the two tier-4s separately, or the whole board becomes
- * a tier-1 tapping exercise. Doubling per tier is the simplest rule that
- * guarantees it.
+ * Two points a tier, flat. It does not track the merge cost, which doubles -
+ * so per unit of raw material the easy slot is the efficient one, and a
+ * player who only ever fills that slot clears the track faster than one who
+ * climbs. The three order BANDS are what hold that in check: only one slot
+ * ever asks for the cheap end, so the cheap strategy is capped at a third of
+ * the board's throughput rather than being the whole game.
  */
 export function eventPointsForTier(tier: number): number {
-  return Math.max(1, 2 ** (tier - 1));
+  return Math.max(1, tier * 2);
 }
 
 export interface EventBoardState {

@@ -580,6 +580,7 @@ export class BoardScene extends Phaser.Scene {
   eventBoard: EventBoardState = createDefaultEventBoardState();
   eventChip: Phaser.GameObjects.Container | null = null;
   eventChipBg: Phaser.GameObjects.Graphics | null = null;
+  eventChipMeter: Phaser.GameObjects.Graphics | null = null;
   eventChipCount: Phaser.GameObjects.Text | null = null;
   eventChipClock: Phaser.GameObjects.Text | null = null;
   eventChipZone: Phaser.GameObjects.Zone | null = null;

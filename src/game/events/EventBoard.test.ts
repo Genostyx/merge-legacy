@@ -70,12 +70,16 @@ describe('event board', () => {
     expect(state.energy).toBe(0);
   });
 
-  it('pays more for a merged item than for its two halves', () => {
-    // The rule the whole board depends on: if handing in two tier-4s beat one
-    // tier-5, nobody would ever merge past the cheapest item.
+  it('pays a flat step per tier', () => {
+    // Linear by decision, not by oversight: the payout does NOT keep pace
+    // with the merge cost, and the order bands are what stop the cheap end
+    // being the whole game. See eventPointsForTier.
+    const steps = [];
     for (let tier = 1; tier < 8; tier++) {
-      expect(eventPointsForTier(tier + 1)).toBeGreaterThanOrEqual(eventPointsForTier(tier) * 2);
+      steps.push(eventPointsForTier(tier + 1) - eventPointsForTier(tier));
     }
+    expect(new Set(steps).size).toBe(1);
+    expect(steps[0]).toBeGreaterThan(0);
   });
 
   it('pays an overflow crate every step past the last rung, once each', () => {
