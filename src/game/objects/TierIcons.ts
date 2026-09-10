@@ -3787,6 +3787,87 @@ function drawWaterSourceIsometric(
  * what makes that read as corrosion rather than as a hue shift.
  */
 
+/**
+ * TWO ACCENTS, MIXED INTO THE RAMP - never painted on top of it.
+ *
+ * The chain is teal and stays teal; that is what makes it read as one
+ * material. But the bottom of any ramp is dark by definition, and three
+ * near-black greens in a row are three near-identical silhouettes at cell
+ * size. So a few faces get their whole five-stop lighting bent partway toward
+ * a second hue: the same gradient the rest of the object has, in another key.
+ *
+ * That is the difference from the first attempt, which flat-filled marks in
+ * these colours. A flat mark sits ON the object; a tinted ramp IS the object,
+ * lit the same way, so it still turns with the light and still reads as
+ * copper. Nothing is left unpainted - a tinted face is a fully shaded face.
+ *
+ * Both hues are real to the material rather than decoration: copper runs
+ * sulphur yellow where it is raw or freshly struck, and cuprite magenta where
+ * the oxide is thickest. Yellow means bare metal, magenta means corrosion,
+ * everywhere, and they never share a face.
+ */
+const VERDIGRIS_HOT = 0xffc23d;
+const VERDIGRIS_BLOOM = 0xd8489b;
+
+/**
+ * The same palette, pulled `amount` of the way toward `accent`.
+ *
+ * Every stop moves together, so the face keeps its highlight-to-shadow
+ * spread - it is the same material under the same light, in another hue.
+ * Tinting only the base and leaving the ends alone is what would make a face
+ * look painted on.
+ */
+/**
+ * How much to mix depends on HOW MUCH OF THE ICON the face covers.
+ *
+ * A saturated yellow at 25% into a dark desaturated green comes out khaki -
+ * so a broad face has to stay low to avoid muddying the family, while a
+ * rivet or a finial can take twice that and still be a speck. Reading the
+ * mixed values rather than eyeballing them is what caught this: every accent
+ * was landing olive.
+ */
+const TINT_BROAD = 0.22;
+const TINT_SMALL = 0.62;
+
+function tintPalette(p: Palette, accent: number, amount: number): Palette {
+  const ar = (accent >> 16) & 0xff, ag = (accent >> 8) & 0xff, ab = accent & 0xff;
+  const mix = (c: number): number => {
+    const r = Math.round((((c >> 16) & 0xff) * (1 - amount)) + ar * amount);
+    const g = Math.round((((c >> 8) & 0xff) * (1 - amount)) + ag * amount);
+    const b = Math.round(((c & 0xff) * (1 - amount)) + ab * amount);
+    return (r << 16) | (g << 8) | b;
+  };
+  return {
+    highlight: mix(p.highlight), light: mix(p.light), base: mix(p.base),
+    dark: mix(p.dark), shadow: mix(p.shadow)
+  };
+}
+
+/**
+ * Redraws a few of a shape's fan facets in a tinted palette.
+ *
+ * Facets rather than a region: the wedges are already how this shape is lit,
+ * so recolouring whole ones leaves every edge exactly where it was, and the
+ * change reads as the light finding a different metal rather than as a shape
+ * drawn over the top.
+ */
+function tintFacets(
+  g: Phaser.GameObjects.Graphics, pts: [number, number][], tinted: Palette, indices: number[]
+): void {
+  for (const i of indices) {
+    const [x1, y1] = pts[i % pts.length];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    const midAngle = Math.atan2((y1 + y2) / 2, (x1 + x2) / 2);
+    g.fillStyle(toneForNormal(tinted, midAngle), 0.92);
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.lineTo(x1, y1);
+    g.lineTo(x2, y2);
+    g.closePath();
+    g.fillPath();
+  }
+}
+
 /** Corrosion pits - dark holes, each with its far rim catching the key. */
 function copperPits(g: Phaser.GameObjects.Graphics, p: Palette, pits: [number, number, number][]): void {
   for (const [x, y, r] of pits) {
@@ -3814,11 +3895,16 @@ function copperPits(g: Phaser.GameObjects.Graphics, p: Palette, pits: [number, n
 function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
   // Rounded lobes, not broken planes: this is metal that cooled as it ran, so
   // its outline is surface tension. Stone's tier 1 is a break; this is a pour.
-  drawIrregularChip(g, [
+  const lobes: [number, number][] = [
     [-s * 0.24, s * 0.1], [-s * 0.2, -s * 0.08], [-s * 0.05, -s * 0.16],
     [s * 0.12, -s * 0.11], [s * 0.22, s * 0.02], [s * 0.14, s * 0.16],
     [-s * 0.08, s * 0.18]
-  ], p);
+  ];
+  drawIrregularChip(g, lobes, p);
+  // Two lobes are still hot from the pour. The darkest tier in the chain
+  // needs somewhere for the eye to land, and heat inside a cooling lump is
+  // where it would actually be.
+  tintFacets(g, lobes, tintPalette(p, VERDIGRIS_HOT, 0.38), [4]);
   // Small, and none of them near the middle: two large centred pits read as
   // a face, which is the one thing a lump of slag must not do.
   copperPits(g, p, [
@@ -3837,10 +3923,22 @@ function drawOxideShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   // THE PEEL - a lifted corner showing bright metal still under the skin.
   // Two materials in one piece is the tier's whole idea, and it is what
   // separates a shard of copper from a shard of anything else on this board.
-  g.fillStyle(p.highlight, 0.6);
+  // THE PEEL, in raw copper - the one warm face in the family, and what makes
+  // it legible as a peel rather than as another lit facet. Two tones off a
+  // tinted ramp, so it is lit like everything around it.
+  const raw = tintPalette(p, VERDIGRIS_HOT, TINT_BROAD);
+  g.fillStyle(raw.light, 1);
   g.beginPath();
   g.moveTo(-s * 0.12, -s * 0.18);
   g.lineTo(s * 0.16, -s * 0.14);
+  g.lineTo(s * 0.04, -s * 0.04);
+  g.lineTo(-s * 0.1, -s * 0.08);
+  g.closePath();
+  g.fillPath();
+  g.fillStyle(raw.base, 1);
+  g.beginPath();
+  g.moveTo(-s * 0.11, -s * 0.1);
+  g.lineTo(s * 0.05, -s * 0.06);
   g.lineTo(s * 0.04, -s * 0.04);
   g.lineTo(-s * 0.1, -s * 0.08);
   g.closePath();
@@ -3859,7 +3957,14 @@ function drawCutCathode(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
 
   g.fillStyle(p.shadow, 1);
   g.fillRect(x + d, y + dropOffset(s), w, h);
-  g.fillGradientStyle(p.light, p.base, p.dark, p.shadow, 1);
+  // The plate's own top-to-bottom gradient, except its BOTTOM two stops are
+  // pulled toward cuprite - so the staining arrives as part of the shading
+  // rather than as a patch laid over it. This is the flattest shape in the
+  // chain and the one with the most room for it.
+  const stained = tintPalette(p, VERDIGRIS_BLOOM, 0.45);
+  // Only the LAST stop is tinted. Tinting the bottom two put cuprite across
+  // half the plate and the tier stopped reading as copper at all.
+  g.fillGradientStyle(p.light, p.base, p.dark, stained.shadow, 1);
   g.fillRect(x, y, w, h);
   // The thin right edge is what says "sheet" instead of "card".
   g.fillStyle(p.dark, 1);
@@ -3872,7 +3977,10 @@ function drawCutCathode(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   g.fillPath();
 
   // The lug, off-centre so the plate reads as hung rather than as a tile.
-  g.fillStyle(p.light, 1);
+  // The lug is what the plate hangs by, so it is handled and worn back to
+  // bare metal - given its own gradient rather than a flat fill.
+  const lug = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
+  g.fillGradientStyle(lug.highlight, lug.light, lug.base, lug.dark, 1);
   g.fillRect(x + w * 0.18, y - s * 0.07, w * 0.28, s * 0.08);
   g.lineStyle(1, p.highlight, 0.7);
   g.beginPath();
@@ -3888,11 +3996,15 @@ function drawBronzeBillet(g: Phaser.GameObjects.Graphics, s: number, p: Palette)
   // The stamped boss. A cast bar carries a maker's mark, and it is the one
   // detail that says "made" rather than "found" - which IS the step from a
   // cut plate to a cast solid.
+  // Struck through the patina to bare metal, which is what a stamp does. Its
+  // three circles run down a tinted ramp, so the boss reads as a raised disc
+  // catching the light rather than a printed dot.
+  const struck = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
   g.fillStyle(p.shadow, 0.85);
   g.fillCircle(-s * 0.11, s * 0.05, s * 0.055);
-  g.fillStyle(p.light, 0.9);
+  g.fillStyle(struck.light, 1);
   g.fillCircle(-s * 0.115, s * 0.043, s * 0.04);
-  g.fillStyle(p.dark, 0.9);
+  g.fillStyle(struck.dark, 1);
   g.fillCircle(-s * 0.11, s * 0.05, s * 0.016);
 }
 
@@ -4003,8 +4115,13 @@ function drawPatinaSpire(g: Phaser.GameObjects.Graphics, s: number, p: Palette):
     g.lineTo(r, y);
     g.strokePath();
   }
-  g.fillStyle(p.highlight, 0.95);
+  // Gilt finial - one warm point at the top of a tall cold form, which is the
+  // whole reason the eye travels up it. Two tones, so it is a ball.
+  const gilt = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
+  g.fillStyle(gilt.base, 1);
   g.fillCircle(0, apexY - s * 0.015, s * 0.035);
+  g.fillStyle(gilt.highlight, 1);
+  g.fillCircle(-s * 0.011, apexY - s * 0.026, s * 0.017);
 }
 
 /**
@@ -4022,12 +4139,17 @@ function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Pale
   const len = s * 0.66, w = s * 0.155;
   const angles = [Math.PI * 0.08, Math.PI * 0.75, Math.PI * 0.42];
 
-  for (const angle of angles) {
+  // The band laid down FIRST is the one the other two cross over, so it sits
+  // in the damp and takes the cuprite. Its own five stops are tinted, so it
+  // is the same strap under the same light in another key.
+  const corroded = tintPalette(p, VERDIGRIS_BLOOM, 0.3);
+  const brass = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
+  angles.forEach((angle, band) => {
     const cos = Math.cos(angle), sin = Math.sin(angle);
     const pts: [number, number][] = ([
       [-len / 2, -w / 2], [len / 2, -w / 2], [len / 2, w / 2], [-len / 2, w / 2]
     ] as [number, number][]).map(([px, py]) => [px * cos - py * sin, px * sin + py * cos] as [number, number]);
-    g.fillStyle(toneForNormal(p, angle), 1);
+    g.fillStyle(toneForNormal(band === 0 ? corroded : p, angle), 1);
     g.beginPath();
     pts.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py) : g.lineTo(px, py)));
     g.closePath();
@@ -4036,12 +4158,12 @@ function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Pale
     g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
     for (const t of [-0.36, 0.36]) {
       const rx = len * t * cos, ry = len * t * sin;
-      g.fillStyle(p.highlight, 0.8);
+      g.fillStyle(brass.highlight, 0.95);
       g.fillCircle(rx, ry, s * 0.016);
-      g.fillStyle(p.shadow, 0.5);
+      g.fillStyle(brass.dark, 0.8);
       g.fillCircle(rx + s * 0.006, ry + s * 0.006, s * 0.008);
     }
-  }
+  });
 }
 
 /**

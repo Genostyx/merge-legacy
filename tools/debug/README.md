@@ -75,3 +75,32 @@ Three traps it removes:
 3. **`health()` reports `inputLocked`, not just fps.** A locked game still
    renders at 60fps. A stuck `inputLocked` is what a "frozen screen" usually
    is - the board draws fine and ignores every tap.
+
+## `icon-sheet.ts` - look at the art without running the game
+
+```bash
+npx vitest run --config vitest.tools.config.ts
+```
+
+Writes `tools/debug/out/icon-sheet-<family>.svg`: every tier of a chain, on
+the board's own ground, at the size and offset `iconPresentation` gives it.
+
+It replays the SAME `drawTierIcon` calls the renderer receives into an SVG
+recorder, so what it shows is what the board draws - no GPU, no canvas, no
+game. That matters because the only way to see an icon used to be running the
+preview, and the preview's WebGL context dies after a handful of reloads; the
+Verdigris art pass spent several rounds on "change a colour and hope".
+
+It also makes the mixed colours READABLE. Grepping the fills is what caught
+every accent on that chain landing khaki - a saturated yellow at 25% into a
+dark desaturated green is olive, which no amount of squinting at a screenshot
+would have named.
+
+It is kept OUT of the main suite by `vitest.config.ts`, which is `src/` only:
+it writes files, and `npm run check` regenerating artefacts as a side effect
+is not something anyone should have to know about.
+
+One difference to keep in mind: `fillGradientStyle` flattens to its first
+stop, because Phaser's four corner colours do not map onto one SVG gradient.
+Anything drawn as a gradient shows here as its top-left tone.
+

@@ -22,3 +22,6 @@ android/local.properties
 Thumbs.db
 *.log
 *.tmp
+
+# Icon contact sheets from tools/debug/icon-sheet.ts - regenerated on demand.
+tools/debug/out/
