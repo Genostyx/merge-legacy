@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import type { GridPosition } from '../../types';
 import { Grid } from '../../Grid';
+import { ORDER_REORDER_MS } from './config';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { TileView } from '../../objects/TileView';
 import { SpawnerView } from '../../objects/SpawnerView';
@@ -310,18 +311,25 @@ function buildChrome(
 
   // --- order cards ---
   const cardW = Math.floor((W - PAD * 2 - 12) / EVENT_ORDER_SLOTS);
+  const slotX = (index: number): number => PAD + index * (cardW + 6);
+
   const cards = Array.from({ length: EVENT_ORDER_SLOTS }, (_, slot) => {
-    const x = PAD + slot * (cardW + 6);
+    // A CONTAINER per card, so a card can be moved as one thing. The main
+    // board learned this the hard way: cards that are drawn at absolute
+    // coordinates cannot slide, and a row that rearranges by jumping is
+    // harder to follow than one that does not rearrange at all.
+    const root = scene.add.container(slotX(slot), ordersY);
     const bg = scene.add.graphics();
     const icon = scene.add.graphics();
-    const pay = scene.add.text(x + cardW / 2, ordersY + ORDER_CARD_H - 8, '', {
+    const pay = scene.add.text(cardW / 2, ORDER_CARD_H - 8, '', {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric, fontSize: '10px', fontStyle: 'bold',
       color: hex(EVENT_TOKEN_COLOR)
     }).setOrigin(0.5, 1);
-    const hit = scene.add.zone(x + cardW / 2, ordersY + ORDER_CARD_H / 2, cardW, ORDER_CARD_H)
+    const hit = scene.add.zone(cardW / 2, ORDER_CARD_H / 2, cardW, ORDER_CARD_H)
       .setInteractive({ useHandCursor: true });
-    layer.add([bg, icon, pay, hit]);
+    root.add([bg, icon, pay, hit]);
+    layer.add(root);
 
     hit.on('pointerup', () => {
       const asking = visibleEventOrders(scene.eventBoard, state.grid)[slot];
@@ -346,12 +354,12 @@ function buildChrome(
       if (!result) return;
       state.views.delete(keyOf(from));
       if (view instanceof TileView) {
-        void view.playDeliverTo(x + cardW / 2, ordersY + ORDER_CARD_H / 2);
+        void view.playDeliverTo(root.x + cardW / 2, ordersY + ORDER_CARD_H / 2);
       } else {
         view?.destroy();
       }
 
-      floatPayout(scene, layer, x + cardW / 2, ordersY + 8, result.points);
+      floatPayout(scene, layer, root.x + cardW / 2, ordersY + 8, result.points);
       const finished = payEventPoints(scene, result.points);
       opts.onSave();
       refresh();
@@ -359,7 +367,7 @@ function buildChrome(
       // call that crosses the goal and never again.
       if (finished) track.celebrate();
     });
-    return { x, bg, icon, pay, lit: false };
+    return { slot, root, bg, icon, pay, lit: false, showing: 0 };
   });
 
   // ONLY the clock. Called every second, so it must not repaint the cards -
@@ -386,25 +394,44 @@ function buildChrome(
 
     track.refresh();
 
-    // Order cards.
+    // Order cards. FILLABLE ONES SORT TO THE FRONT, the same rule the main
+    // board's bar uses for completable orders: the cards you can act on are
+    // the ones nearest to hand, and moving them there is what makes a full
+    // slot feel like it did something.
     const asking = visibleEventOrders(scene.eventBoard, state.grid);
-    cards.forEach((card, slot) => {
+    const fillable = cards.map((c) => !!findEventItem(state.grid, asking[c.slot]));
+    const order = [
+      ...cards.filter((c) => fillable[c.slot]),
+      ...cards.filter((c) => !fillable[c.slot])
+    ];
+    order.forEach((card, position) => {
+      const targetX = slotX(position);
+      if (Math.abs(card.root.x - targetX) > 0.5) {
+        scene.tweens.killTweensOf(card.root);
+        scene.tweens.add({
+          targets: card.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out'
+        });
+      }
+    });
+
+    cards.forEach((card) => {
+      const slot = card.slot;
       const tier = asking[slot];
       const def = eventTierDef(tier);
       const top = tier >= EVENT_MAX_TIER;
       // A card LIGHTS UP the moment the board can actually fill it. Reading
       // a card and then discovering you cannot pay it is the difference
       // between a board that answers you and one you have to interrogate.
-      const canFill = !!findEventItem(state.grid, tier);
+      const canFill = fillable[slot];
       card.bg.clear();
       card.bg.fillStyle(canFill ? Theme.bg : Theme.bgElevated, 1);
-      card.bg.fillRoundedRect(card.x, ordersY, cardW, ORDER_CARD_H, Theme.radiusChip);
+      card.bg.fillRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
       card.bg.lineStyle(
         canFill ? Theme.borderWidthStrong : Theme.borderWidth,
         canFill || top ? EVENT_TOKEN_COLOR : Theme.borderOnDark,
         canFill ? 1 : (top ? 0.9 : 0.6)
       );
-      card.bg.strokeRoundedRect(card.x, ordersY, cardW, ORDER_CARD_H, Theme.radiusChip);
+      card.bg.strokeRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
       card.pay.setColor(hex(canFill ? EVENT_TOKEN_COLOR : Theme.textOnDarkMuted));
 
       // ...and breathes while it stays fillable, the same signal the track's
@@ -431,9 +458,24 @@ function buildChrome(
         card.icon.setAlpha(render.materialAlpha)
           .setScale(card.lit ? card.icon.scaleX : present.scale)
           .setPosition(
-            card.x + cardW / 2 + present.offsetX,
-            ordersY + ORDER_CARD_H * 0.42 + present.offsetY
+            cardW / 2 + present.offsetX,
+            ORDER_CARD_H * 0.42 + present.offsetY
           );
+
+        // A REROLLED SLOT arrives rather than appearing. Without this, filling
+        // an order swapped one picture for another between frames and the
+        // card you just emptied looked like it had always been asking for the
+        // new thing.
+        if (card.showing !== tier) {
+          card.showing = tier;
+          scene.tweens.killTweensOf(card.icon);
+          card.lit = false;
+          card.icon.setScale(present.scale * 0.55).setAlpha(0);
+          scene.tweens.add({
+            targets: card.icon, scale: present.scale, alpha: render.materialAlpha,
+            duration: 180, ease: 'Back.Out'
+          });
+        }
       }
       card.pay.setText(`+${eventOrderPayout(tier)}`);
     });
