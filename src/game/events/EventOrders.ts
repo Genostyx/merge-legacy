@@ -25,15 +25,22 @@ import type { EventBoardState } from './EventBoard';
  * you have not made yet is a target, not a locked door - it tells you what to
  * climb toward, which is the only instruction this board ever gives.
  *
- * The bands overlap on purpose. Hard edges would make the middle slot's two
- * tiers the entire mid-game; sharing tiers 3 and 5 between neighbours means
- * the row can ask for the same piece in more than one way and the three slots
- * stay distinguishable without being three separate games.
+ * THEY MUST NOT OVERLAP, and there is a test that says so. An earlier version
+ * shared tiers 3 and 5 between neighbouring bands for variety, and the cost
+ * was two cards asking for the same piece a fifth of the time: a row of three
+ * that was really a row of two. Dodging it after the fact was tried and only
+ * got that to 13% - the bags are three or four items long, so by the time a
+ * collision is spotted there is often nothing left to swap with, and swapping
+ * harder would have biased which tiers get dealt at all.
+ *
+ * Disjoint bands make the duplicate impossible by construction instead, which
+ * needs no logic, cannot be got subtly wrong, and leaves the bag's fairness
+ * exactly as it was.
  */
 export const EVENT_ORDER_BANDS: readonly (readonly number[])[] = [
-  [1, 2, 3],
+  [1, 2],
   [3, 4, 5],
-  [5, 6, 7, 8]
+  [6, 7, 8]
 ];
 
 export const EVENT_ORDER_SLOTS = EVENT_ORDER_BANDS.length;
@@ -56,9 +63,14 @@ export function rollEventOrder(slot: number, roll: number = Math.random()): numb
  *
  * Refilled when it empties, so a band is walked in one shuffled pass, then
  * another.
+ *
+ * It does not need to know what the other slots are showing: the bands are
+ * disjoint, so no two slots can ever ask for the same tier.
  */
 export function drawEventOrder(
-  state: EventBoardState, slot: number, roll: () => number = Math.random
+  state: EventBoardState,
+  slot: number,
+  roll: () => number = Math.random
 ): number {
   const band = EVENT_ORDER_BANDS[slot] ?? EVENT_ORDER_BANDS[0];
   while (state.orderBags.length <= slot) state.orderBags.push([]);
@@ -70,6 +82,7 @@ export function drawEventOrder(
     bag = shuffle([...band], roll);
     state.orderBags[slot] = bag;
   }
+
   return bag.pop() ?? band[0];
 }
 

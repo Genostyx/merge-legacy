@@ -59,6 +59,28 @@ describe('event orders', () => {
     }
   });
 
+  it('gives the slots disjoint bands, so two cards can never ask alike', () => {
+    // THE GUARANTEE, by construction rather than by logic. Overlapping bands
+    // put the same piece on two cards a fifth of the time, and dodging it
+    // afterwards only reached 13% because the bags are too short to always
+    // have a swap partner.
+    const seen = new Set<number>();
+    for (const band of EVENT_ORDER_BANDS) {
+      for (const tier of band) {
+        expect(seen.has(tier)).toBe(false);
+        seen.add(tier);
+      }
+    }
+  });
+
+  it('never deals the same tier to two slots at once', () => {
+    const state = createDefaultEventBoardState();
+    for (let i = 0; i < 300; i++) {
+      const dealt = rollEventOrders(state);
+      expect(new Set(dealt).size).toBe(dealt.length);
+    }
+  });
+
   it('rebuilds a bag left over from different bands', () => {
     // A save written before the bands changed would otherwise deal a tier the
     // slot can no longer ask for.
