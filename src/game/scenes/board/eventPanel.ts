@@ -695,7 +695,29 @@ function attachPanelInput(
 
     const targetCell = state.grid.get(target);
     const fromCellData = state.grid.get(from);
-    if (!fromCellData || fromCellData.kind !== 'item') {
+    if (!fromCellData) {
+      view.setPosition(home.x, home.y);
+      return;
+    }
+
+    // THE HUT MOVES. It is the one fixed thing on the board and it stands in
+    // the corner the player reaches over most, so being unable to shift it
+    // turns the best cell on the board into the worst. It cannot merge with
+    // anything, so it only ever moves or trades places.
+    if (fromCellData.kind === 'spawner') {
+      if (targetCell && targetCell.kind !== 'item') {
+        view.setPosition(home.x, home.y);
+        return;
+      }
+      state.grid.set(from, targetCell ?? null);
+      state.grid.set(target, fromCellData);
+      rebuildCells(scene, state, opts, [from, target]);
+      opts.save();
+      opts.afterChange();
+      return;
+    }
+
+    if (fromCellData.kind !== 'item') {
       view.setPosition(home.x, home.y);
       return;
     }
@@ -1007,10 +1029,11 @@ function tapBooth(
     state.say(free
       ? 'NO EVENT ENERGY\nCOLLECT TOKENS ON THE MAIN BOARD'
       : 'BOARD FULL\nMERGE SOMETHING TO MAKE ROOM');
-    const booth = state.views.get(keyOf(EVENT_SPAWNER_AT));
+    const at = boothCell(state.grid);
+    const booth = state.views.get(keyOf(at));
     if (booth) {
       scene.tweens.killTweensOf(booth);
-      const home = opts.cellToWorld(EVENT_SPAWNER_AT);
+      const home = opts.cellToWorld(at);
       scene.tweens.add({
         targets: booth, x: home.x + 3, duration: 55, yoyo: true, repeat: 1,
         ease: 'Sine.InOut', onComplete: () => booth.setX(home.x)
@@ -1026,10 +1049,21 @@ function tapBooth(
   // Flies out of the booth, so a tap has an origin rather than an item
   // simply appearing somewhere else on the board.
   const spawned = state.views.get(keyOf(free));
-  const booth = opts.cellToWorld(EVENT_SPAWNER_AT);
+  // Where the hut IS, not where it was seeded - it can be dragged now.
+  const booth = opts.cellToWorld(boothCell(state.grid));
   if (spawned instanceof TileView) void spawned.playSpawnFrom(booth.x, booth.y);
   opts.save();
   opts.afterChange();
+}
+
+/** Where the hut is standing right now. */
+function boothCell(grid: Grid): GridPosition {
+  for (let row = 0; row < grid.rows; row++) {
+    for (let col = 0; col < grid.cols; col++) {
+      if (grid.get({ col, row })?.kind === 'spawner') return { col, row };
+    }
+  }
+  return EVENT_SPAWNER_AT;
 }
 
 function firstFreeCell(grid: Grid): GridPosition | null {

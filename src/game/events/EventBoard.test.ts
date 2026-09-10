@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   EVENT_BOARD_COLS,
   EVENT_BOARD_ROWS,
-  EVENT_CRUST_LAYOUT,
   EVENT_OVERFLOW_STEP,
   EVENT_SPAWNER_AT,
   addEventEnergy,
@@ -32,24 +31,17 @@ describe('event board', () => {
     expect(grid.rows).toBe(EVENT_BOARD_ROWS);
   });
 
-  it('seeds the authored crust, leaving the top row and the booth clear', () => {
+  it('opens with the hut and nothing else', () => {
+    // An empty board is the clearest statement of what this board is: one
+    // machine, thirty empty cells, exactly one thing to do. A board that
+    // opened two-thirds full of pieces the player cannot touch read as
+    // someone else's game already in progress.
     const grid = createEventGrid();
     seedEventBoard(grid);
 
     expect(grid.get(EVENT_SPAWNER_AT)?.kind).toBe('spawner');
-    for (const [col, row, tier] of EVENT_CRUST_LAYOUT) {
-      const cell = grid.get({ col, row });
-      // Crust IS `locked-item` - the main board's rule, not a second one.
-      expect(cell).toEqual({ kind: 'locked-item', typeId: 'verdigris', tier });
-    }
-    // Row 0 is the open sandbox: nothing crusted anywhere along it.
-    for (let col = 0; col < EVENT_BOARD_COLS; col++) {
-      expect(grid.get({ col, row: 0 })?.kind).not.toBe('locked-item');
-    }
-    // And the very first thing available is a merge, not a wait.
-    const loose = grid.serialize().flat()
-      .filter((cell) => cell?.kind === 'item' && cell.tier === 1);
-    expect(loose.length).toBeGreaterThanOrEqual(2);
+    const occupied = grid.serialize().flat().filter(Boolean);
+    expect(occupied).toHaveLength(1);
   });
 
   it('seeds the same board every time', () => {

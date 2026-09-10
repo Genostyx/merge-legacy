@@ -140,43 +140,23 @@ export function spendEventEnergy(state: EventBoardState, amount: number): boolea
 }
 
 /**
- * THE OPENING LAYOUT, as an explicit matrix rather than a roll.
+ * THE OPENING LAYOUT: the hut, and nothing else.
  *
- * Every player gets the same first board. A random crust can deal an opening
- * with nothing clearable in it, and on a 35-cell board that is the difference
- * between an event someone starts and one they close - so this is authored,
- * not rolled.
+ * This used to deal a crust of locked pieces across the lower rows - the
+ * sand-locked opening the genre uses, meant to hand the player mid-tier
+ * targets from minute one. It is gone, and the reason is worth keeping:
  *
- * The shape: the top-left is open, the crust is weighted to the bottom and
- * right, and its tiers RISE as it goes down the board. That gives an
- * immediate clearable target at tier 1 next to the open area, and a bottom
- * corner that stays as a goal for later - the board's own difficulty ramp,
- * without a single number needing to be tuned.
+ * An empty board is the clearest possible statement of what an event board
+ * IS. A player opening it for the first time sees one machine and thirty
+ * empty cells, and there is exactly one thing to do. A board that opens
+ * two-thirds full of pieces they cannot touch reads as someone else's game
+ * already in progress - and on a five-by-six grid it also means the first
+ * real merges have nowhere to happen.
  *
- * Crusted cells are ordinary `locked-item` cells: the main board's rule,
- * unchanged. They refuse every input and clear when a matching item is merged
- * onto them.
- *
- * Coordinates are [col, row] with row 0 at the TOP. Row 0 carries no crust at
- * all - it is the open sandbox - and the booth's own cell in the last row is
- * left clear.
+ * The `locked-item` handling in the panel stays, because the main board's
+ * rule is the main board's rule and this board simply no longer seeds any.
  */
-export const EVENT_CRUST_LAYOUT: readonly [number, number, number][] = [
-  // [col, row, tier]
-  [3, 1, 1], [4, 1, 1],
-  [3, 2, 1], [4, 2, 2],
-  [0, 3, 1], [4, 3, 2],
-  [0, 4, 2], [1, 4, 2], [3, 4, 3], [4, 4, 3],
-  // The booth stands in the middle of this last row, so the crust leaves that
-  // one cell open rather than the board carrying a whole row for it.
-  [0, 5, 3], [1, 5, 3], [3, 5, 4], [4, 5, 5]
-];
-
-/** Where the spawner stands. Bottom-centre: thumb reach, and never crusted. */
 export const EVENT_SPAWNER_AT = { col: 2, row: EVENT_BOARD_ROWS - 1 };
-
-/** The two loose tier-1s, in the open top-left, so the first act is a merge. */
-const EVENT_OPENING_ITEMS: readonly [number, number][] = [[0, 0], [1, 0]];
 
 export function seedEventBoard(grid: Grid): void {
   grid.clear();
@@ -186,17 +166,10 @@ export function seedEventBoard(grid: Grid): void {
     typeId: EVENT_CHAIN.typeId,
     tier: 1,
     readyAt: 0,
-    // The booth never runs dry: what gates a tap is event energy, and a
-    // second gate on top of it would only be a wait the player cannot see.
+    // The hut never runs dry: what gates a tap is event energy, and a second
+    // gate on top of it would only be a wait the player cannot see.
     charges: Number.MAX_SAFE_INTEGER
   });
-
-  for (const [col, row, tier] of EVENT_CRUST_LAYOUT) {
-    grid.set({ col, row }, { kind: 'locked-item', typeId: EVENT_CHAIN.typeId, tier });
-  }
-  for (const [col, row] of EVENT_OPENING_ITEMS) {
-    grid.set({ col, row }, { kind: 'item', typeId: EVENT_CHAIN.typeId, tier: 1 });
-  }
 }
 
 /**
