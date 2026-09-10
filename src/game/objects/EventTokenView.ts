@@ -119,6 +119,17 @@ function drawStruckCrown(
     g.lineTo(bx - px, by - py);
     g.closePath();
     g.fillPath();
+
+    // OUTLINED, exactly as the star it replaced was. A struck device is a
+    // raised shape, and the shadow along its edge is what says it stands off
+    // the face rather than being printed on it. Kept thin, since a ray is
+    // only a few pixels across at cell size and a heavy line would eat it.
+    g.lineStyle(Math.max(1, r * 0.035), p.shadow, 0.7);
+    g.beginPath();
+    g.moveTo(bx + px, by + py);
+    g.lineTo(cos * tip, cy + sin * tip);
+    g.lineTo(bx - px, by - py);
+    g.strokePath();
   }
 
   // THE HALF RING they stand on - open at the bottom, so it is a band around
@@ -128,6 +139,10 @@ function drawStruckCrown(
     const a = Math.PI * 1.02 + (Math.PI * 0.96 * i) / 26;
     band.push(new Phaser.Geom.Point(Math.cos(a) * bandR, cy + Math.sin(a) * bandR));
   }
+  // Drawn shadow-first and slightly fatter, so the band carries the same
+  // struck edge the rays do.
+  g.lineStyle(Math.max(1, r * 0.22), p.shadow, 0.7);
+  g.strokePoints(band, false, false);
   g.lineStyle(Math.max(1, r * 0.16), p.highlight, 1);
   g.strokePoints(band, false, false);
   g.lineStyle(Math.max(1, r * 0.06), p.light, 0.9);
