@@ -18,7 +18,7 @@ import type { TimedEventDef } from '../../events/TimedEvents';
 export const EVENT_CHIP_W = 64;
 
 /** Where the energy pill sits, and how big it is. */
-const ENERGY_PILL_W = 42;
+const ENERGY_PILL_W = 36;
 const ENERGY_PILL_H = 17;
 const ENERGY_PILL_CY = 12;
 
@@ -54,9 +54,9 @@ export function buildEventChip(scene: BoardScene): void {
   // up off the board, so it may only ever mark energy; the points below have
   // a bar instead, because two quantities wearing one piece of art was the
   // confusion this layout exists to end.
-  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2 - 10, ENERGY_PILL_CY);
+  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2 - 9, ENERGY_PILL_CY);
   drawEventToken(token, 17, materialLighting(EVENT_TOKEN_COLOR, 5));
-  const energy = scene.add.text(EVENT_CHIP_W / 2 - 1, ENERGY_PILL_CY, '', {
+  const energy = scene.add.text(EVENT_CHIP_W / 2 + 1, ENERGY_PILL_CY, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
@@ -66,12 +66,12 @@ export function buildEventChip(scene: BoardScene): void {
   // before it said anything; a bar is a distance along a line, which is the
   // shape a progress track already is everywhere else in this game.
   const meter = scene.add.graphics();
-  const count = scene.add.text(EVENT_CHIP_W / 2, 21, '', {
+  const count = scene.add.text(EVENT_CHIP_W / 2, 24, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '8px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
   }).setOrigin(0.5, 0);
-  const clock = scene.add.text(EVENT_CHIP_W / 2, 46, '', {
+  const clock = scene.add.text(EVENT_CHIP_W / 2, 49, '', {
     resolution: textResolution,
     fontFamily: Theme.fontMono, fontSize: '8px', color: hex(Theme.textOnDarkMuted)
   }).setOrigin(0.5, 0);
@@ -156,7 +156,7 @@ function drawChipMeter(
   if (!g) return;
   const left = 7;
   const width = EVENT_CHIP_W - left * 2;
-  const y = 33;
+  const y = 37;
   g.clear();
 
   g.fillStyle(Theme.borderOnDark, 0.55);
