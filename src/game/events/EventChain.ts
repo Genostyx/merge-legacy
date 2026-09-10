@@ -30,18 +30,25 @@ import type { ChainDef } from '../types';
  * docs/FAMILIES_ROADMAP.md) - rough chunk, shard, cut slab, squared solid,
  * faceted block, spire, interlocking lattice, smooth knot. The event does not
  * get its own grammar; only its material differs.
+ *
+ * SATURATION IS HELD ACROSS THE WHOLE RAMP; only lightness climbs. The first
+ * version darkened AND desaturated the bottom four tiers to say "raw", and
+ * they came out grey - the family only started reading as copper at tier 5,
+ * so half the chain looked like it belonged to a different game. Rawness is
+ * the shape's job here: a lump with gas pits already reads as unrefined
+ * without the colour draining out of it.
  */
 export const EVENT_CHAIN: ChainDef = {
   typeId: 'verdigris',
   tiers: [
-    { tier: 1, key: 'copper-slag', label: 'Copper Slag', color: 0x2b3a33 },
-    { tier: 2, key: 'oxide-shard', label: 'Oxide Shard', color: 0x334a3f },
-    { tier: 3, key: 'cut-cathode', label: 'Cut Cathode', color: 0x2f5c4c },
-    { tier: 4, key: 'bronze-billet', label: 'Bronze Billet', color: 0x2a7060 },
-    { tier: 5, key: 'faceted-bronze', label: 'Faceted Bronze', color: 0x268a74 },
-    { tier: 6, key: 'patina-spire', label: 'Patina Spire', color: 0x2fa88c },
-    { tier: 7, key: 'verdigris-lattice', label: 'Verdigris Lattice', color: 0x58c7a8 },
-    { tier: 8, key: 'verdigris-knot', label: 'Verdigris Knot', color: 0x8fe3c6 }
+    { tier: 1, key: 'copper-slag', label: 'Copper Slag', color: 0x2c6155 },
+    { tier: 2, key: 'oxide-shard', label: 'Oxide Shard', color: 0x2a7062 },
+    { tier: 3, key: 'cut-cathode', label: 'Cut Cathode', color: 0x27806e },
+    { tier: 4, key: 'bronze-billet', label: 'Bronze Billet', color: 0x24947e },
+    { tier: 5, key: 'faceted-bronze', label: 'Faceted Bronze', color: 0x22a88e },
+    { tier: 6, key: 'patina-spire', label: 'Patina Spire', color: 0x2fbda2 },
+    { tier: 7, key: 'verdigris-lattice', label: 'Verdigris Lattice', color: 0x58d3b8 },
+    { tier: 8, key: 'verdigris-knot', label: 'Verdigris Knot', color: 0x8fe7cd }
   ]
 };
 
