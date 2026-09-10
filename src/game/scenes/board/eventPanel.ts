@@ -86,7 +86,7 @@ export function openEventPanel(scene: BoardScene): void {
     scene.eventBoard.seeded = true;
   }
   if (scene.eventBoard.orders.length !== EVENT_ORDER_SLOTS) {
-    scene.eventBoard.orders = rollEventOrders();
+    scene.eventBoard.orders = rollEventOrders(scene.eventBoard);
   }
 
   const overlay = scene.add.container(0, 0).setDepth(3040);

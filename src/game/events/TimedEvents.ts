@@ -72,11 +72,10 @@ export const EVENTS: readonly TimedEventDef[] = [
     startsAt: Date.UTC(2026, 8, 10),
     endsAt: Date.UTC(2026, 8, 13),
     minLevel: 5,
-    // 140 points, and a point IS a hut tap - an order pays exactly the
-    // energy the piece it asked for cost to build. So the goal reads
-    // directly as "140 taps of raw material", however the player chooses to
-    // arrange them, and two players dealt completely different rows finish
-    // in the same time. See eventPointsForTier.
+    // 140 points, at a point per tier. What a player is DEALT cannot swing
+    // this: each slot walks a shuffled bag of its whole band, so two players
+    // filling at the same rate meet the same orders in the same number of
+    // fills. See `drawEventOrder`.
     goal: 140,
     // Five rungs, front-loaded. The first lands inside a single session, so a
     // player learns what the board is for before deciding whether to chase

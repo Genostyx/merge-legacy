@@ -37,24 +37,22 @@ export { EVENT_CHAIN, EVENT_MAX_TIER, eventTierDef, isEventTypeId } from './Even
 import { EVENT_CHAIN, EVENT_MAX_TIER } from './EventChain';
 
 /**
- * ONE POINT PER ENERGY. An order pays exactly what the piece cost to make.
+ * LINEAR: tier N pays N. No bonus anywhere, at either end.
  *
- * A tier-N piece is 2^(N-1) taps of the hut, so that is what tier N pays.
- * Every order is then worth the same amount of PLAYER TIME per point, and
- * which orders a player happens to be dealt stops deciding how long the event
- * takes them - two players who fill entirely different rows finish together.
+ * A flat scale makes the cheapest piece the most efficient per unit of raw
+ * material, which would matter enormously if a player could choose what to
+ * fill - but they cannot. Each slot deals from a SHUFFLED BAG of its band
+ * (see `drawEventOrder`), so a band is walked through completely before any
+ * of it comes round again: nobody farms tier ones, and nobody is stuck with a
+ * run of tier eights either.
  *
- * This is deliberately not a flat step per tier, and the two cannot both be
- * had. A flat scale makes the cheapest piece the most time-efficient by a
- * factor of sixteen at the top of the chain, so the row a player is dealt
- * decides their pace; matching the merge cost is the only curve that removes
- * that, because the merge cost is what the time actually is.
- *
- * The goal reads as taps because of this: 140 points is 140 hut taps of raw
- * material, arranged however the player likes.
+ * That is what makes a flat scale fair, and it is why the payout curve does
+ * not have to carry the fairness on its own. The alternative - paying 2^(N-1)
+ * so every order costs identical player time - is exactly balanced and reads
+ * absurd: 1 point beside 128 on the same row.
  */
 export function eventPointsForTier(tier: number): number {
-  return 2 ** Math.max(0, Math.floor(tier) - 1);
+  return Math.max(1, Math.floor(tier));
 }
 
 export interface EventBoardState {
@@ -74,6 +72,14 @@ export interface EventBoardState {
    */
   orders: number[];
   /**
+   * The undealt remainder of each slot's shuffled bag.
+   *
+   * Saved rather than rebuilt, or closing the panel would reshuffle and the
+   * guarantee the bag exists to make - that no tier repeats until its band
+   * has been round once - would only hold within a single sitting.
+   */
+  orderBags: number[][];
+  /**
    * The highest tier the player has actually MADE, which is what the ladder
    * reveals. Crusted pieces are excluded on purpose: seeing a tier sitting
    * under the crust is not the same as having built it, and a ladder that
@@ -89,7 +95,7 @@ export interface EventBoardState {
 }
 
 export function createDefaultEventBoardState(): EventBoardState {
-  return { energy: 0, grid: [], seeded: false, orders: [], seenTier: 0, overflowPaid: 0 };
+  return { energy: 0, grid: [], seeded: false, orders: [], orderBags: [], seenTier: 0, overflowPaid: 0 };
 }
 
 /**
@@ -106,6 +112,13 @@ export function normalizeEventBoardState(
   if (!raw) return state;
 
   if (Number.isFinite(raw.energy)) state.energy = Math.max(0, Math.floor(raw.energy as number));
+  if (Array.isArray(raw.orderBags)) {
+    state.orderBags = raw.orderBags
+      .filter((bag): bag is number[] => Array.isArray(bag))
+      .map((bag) => bag
+        .filter((tier): tier is number => Number.isFinite(tier))
+        .map((tier) => Math.min(EVENT_MAX_TIER, Math.max(1, Math.floor(tier)))));
+  }
   if (Number.isFinite(raw.seenTier)) {
     state.seenTier = Math.min(EVENT_MAX_TIER, Math.max(0, Math.floor(raw.seenTier as number)));
   }

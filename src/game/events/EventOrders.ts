@@ -38,14 +38,55 @@ export const EVENT_ORDER_BANDS: readonly (readonly number[])[] = [
 
 export const EVENT_ORDER_SLOTS = EVENT_ORDER_BANDS.length;
 
-/** Rolls one slot's tier from its own band. */
+/** Rolls one slot's tier from its own band, ignoring the bag. */
 export function rollEventOrder(slot: number, roll: number = Math.random()): number {
   const band = EVENT_ORDER_BANDS[slot] ?? EVENT_ORDER_BANDS[0];
   return band[Math.min(band.length - 1, Math.floor(roll * band.length))];
 }
 
-export function rollEventOrders(roll: () => number = Math.random): number[] {
-  return EVENT_ORDER_BANDS.map((_, slot) => rollEventOrder(slot, roll()));
+/**
+ * A SHUFFLED BAG per slot, not an independent roll each time.
+ *
+ * Independent rolls let one player be dealt the dear end of a band over and
+ * over while another gets the cheap end - and with material set aside, that
+ * is a straight advantage nobody earned. A bag deals every tier in the band
+ * once before any of them comes round again, so two players filling orders at
+ * the same rate see the same set in the same number of fills. The ORDER
+ * inside a cycle is still random; only the streaks are gone.
+ *
+ * Refilled when it empties, so a band is walked in one shuffled pass, then
+ * another.
+ */
+export function drawEventOrder(
+  state: EventBoardState, slot: number, roll: () => number = Math.random
+): number {
+  const band = EVENT_ORDER_BANDS[slot] ?? EVENT_ORDER_BANDS[0];
+  while (state.orderBags.length <= slot) state.orderBags.push([]);
+
+  let bag = state.orderBags[slot];
+  // A bag holding tiers that are not in this band any more is from an older
+  // build's bands; rebuilding beats dealing a tier the slot cannot ask for.
+  if (bag.length === 0 || bag.some((tier) => !band.includes(tier))) {
+    bag = shuffle([...band], roll);
+    state.orderBags[slot] = bag;
+  }
+  return bag.pop() ?? band[0];
+}
+
+/** Fisher-Yates, on the injected roll so a test can pin the deal. */
+function shuffle(items: number[], roll: () => number): number[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(roll() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items;
+}
+
+/** The opening deal: one draw per slot. */
+export function rollEventOrders(
+  state: EventBoardState, roll: () => number = Math.random
+): number[] {
+  return EVENT_ORDER_BANDS.map((_, slot) => drawEventOrder(state, slot, roll));
 }
 
 /**
@@ -118,7 +159,7 @@ export function submitEventOrder(
   if (!from) return null;
 
   grid.set(from, null);
-  const rerolledTo = rollEventOrder(slot, roll());
+  const rerolledTo = drawEventOrder(state, slot, roll);
   state.orders[slot] = rerolledTo;
   return { from, points: eventOrderPayout(asking), rerolledTo };
 }

@@ -62,21 +62,16 @@ describe('event board', () => {
     expect(state.energy).toBe(0);
   });
 
-  it('pays exactly the energy the piece cost to make', () => {
-    // THE BALANCE RULE: every order is worth the same player time per point,
-    // so which orders a player is dealt cannot decide how long the event
-    // takes them. A tier-N piece is 2^(N-1) hut taps.
+  it('pays a flat point per tier, starting at one', () => {
+    // Flat is only fair because the DEAL is fair - each slot walks a shuffled
+    // bag of its whole band, so nobody farms the cheap end and nobody is
+    // stuck with a run of the dear end. See drawEventOrder.
     expect(eventPointsForTier(1)).toBe(1);
+    const steps = [];
     for (let tier = 1; tier < 8; tier++) {
-      expect(eventPointsForTier(tier + 1)).toBe(eventPointsForTier(tier) * 2);
+      steps.push(eventPointsForTier(tier + 1) - eventPointsForTier(tier));
     }
-
-    // Stated the other way round, which is the way it will be read in a
-    // balance argument: two pieces of one tier cost and pay what one of the
-    // next tier does.
-    for (let tier = 1; tier < 8; tier++) {
-      expect(eventPointsForTier(tier) * 2).toBe(eventPointsForTier(tier + 1));
-    }
+    expect(new Set(steps)).toEqual(new Set([1]));
   });
 
   it('pays an overflow crate every step past the last rung, once each', () => {

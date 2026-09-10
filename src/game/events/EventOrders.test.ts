@@ -3,6 +3,7 @@ import {
   EVENT_ORDER_BANDS,
   EVENT_ORDER_SLOTS,
   eventOrderPayout,
+  drawEventOrder,
   findEventItem,
   rollEventOrders,
   submitEventOrder,
@@ -31,12 +32,38 @@ describe('event orders', () => {
     }
   });
 
-  it('rolls every slot inside its own band', () => {
+  it('deals every slot from inside its own band', () => {
     for (const roll of [() => 0, () => 0.5, () => 0.999]) {
-      rollEventOrders(roll).forEach((tier, slot) => {
+      rollEventOrders(createDefaultEventBoardState(), roll).forEach((tier, slot) => {
         expect(EVENT_ORDER_BANDS[slot]).toContain(tier);
       });
     }
+  });
+
+  it('deals a whole band before repeating any of it', () => {
+    // THE FAIRNESS RULE. Independent rolls let one player be dealt the dear
+    // end of a band over and over while another gets the cheap end, which
+    // with material set aside is an advantage nobody earned. Two players
+    // filling at the same rate now see the same set in the same number of
+    // fills; only the order inside a cycle is luck.
+    for (let slot = 0; slot < EVENT_ORDER_SLOTS; slot++) {
+      const band = EVENT_ORDER_BANDS[slot];
+      const state = createDefaultEventBoardState();
+      const cycle = band.map(() => drawEventOrder(state, slot));
+      expect([...cycle].sort()).toEqual([...band].sort());
+
+      // ...and the next cycle is a fresh pass over the same band, not a
+      // continuation of the last one.
+      const next = band.map(() => drawEventOrder(state, slot));
+      expect([...next].sort()).toEqual([...band].sort());
+    }
+  });
+
+  it('rebuilds a bag left over from different bands', () => {
+    // A save written before the bands changed would otherwise deal a tier the
+    // slot can no longer ask for.
+    const state = { ...createDefaultEventBoardState(), orderBags: [[99]] };
+    expect(EVENT_ORDER_BANDS[0]).toContain(drawEventOrder(state, 0));
   });
 
   it('refuses, and changes nothing, when the board cannot pay', () => {
