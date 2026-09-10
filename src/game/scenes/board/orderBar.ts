@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { EVENT_TOKENS_PER_ORDER } from '../../events/TimedEvents';
+import { EVENT_CHIP_W } from './eventChip';
 import type { BoardScene } from '../BoardScene';
 import {
   COLS,
@@ -170,6 +171,11 @@ export function destroyOrderBar(scene: BoardScene): void {
   if (scene.crateMeterContainer?.parentContainer === scene.orderBarContainer) {
     scene.orderBarContainer?.remove(scene.crateMeterContainer);
     scene.add.existing(scene.crateMeterContainer);
+  }
+  // Same for the event chip, which rides at the head of that container.
+  if (scene.eventChip?.parentContainer === scene.orderBarContainer) {
+    scene.orderBarContainer?.remove(scene.eventChip);
+    scene.add.existing(scene.eventChip);
   }
   scene.orderScrollTween?.stop();
   scene.orderScrollTween = null;
@@ -683,7 +689,19 @@ export function refreshOrderBar(scene: BoardScene): void {
 
   // PASS 2 - size, paint and place. A running cursor rather than
   // `position * cardW`, since cards no longer share a width.
+  // THE EVENT CHIP takes the head of the strip, ahead of every card and
+  // behind the crate meter's fixed lane. Inside the scroll container, so it
+  // travels with the orders and is clipped by the same mask.
+  scene.refreshEventChip();
+  const chip = scene.eventChip;
   let cursor = laneX;
+  if (chip && scene.orderBarContainer) {
+    if (chip.parentContainer !== scene.orderBarContainer) scene.orderBarContainer.add(chip);
+    if (chip.visible) {
+      chip.setScale(scene.chromeScale).setPosition(cursor, y);
+      cursor += EVENT_CHIP_W * scene.chromeScale + ORDER_CARD_GAP;
+    }
+  }
   // Walked in DISPLAY order while the cards themselves stay bound to their
   // queue slots - which is what turns a reorder into a change of x, and
   // therefore into something that can be animated.
@@ -813,6 +831,9 @@ export function refreshOrderBar(scene: BoardScene): void {
     // number makes them equal by construction at every size.
     const delta = (scene.boardOriginY - scene.boardToTrayGap) - Math.max(...drawn);
     for (const card of scene.orderCards) card.root.y += delta;
+    // Anchored WITH the cards, not separately, or it drifts against the row
+    // it is meant to be part of.
+    if (chip?.visible) chip.y += delta;
   }
 
   if (cooling && scene.orderBarContainer && scene.crateMeterContainer) {

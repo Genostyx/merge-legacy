@@ -482,6 +482,8 @@ export class BoardScene extends Phaser.Scene {
     moved: number;
     /** Set when the press landed on a requirement icon rather than the card. */
     describe: { typeId: string; tier: number } | null;
+    /** Set when the press landed on the event chip at the head of the row. */
+    openEvent?: boolean;
   } =
     { active: false, slot: -1, startX: 0, startScroll: 0, moved: 0, describe: null };
   dispenserCollectCount = 0;
@@ -925,6 +927,14 @@ export class BoardScene extends Phaser.Scene {
           }
         }
         this.refreshCrateWaits();
+        // Keeps the countdown live, and takes the chip away the moment its
+        // window shuts rather than at the next reload. A window opening or
+        // closing changes the row's width, so THAT relays the whole row -
+        // the tick alone would leave a gap where the chip used to be.
+        const chipWas = this.eventChip?.visible ?? false;
+        this.refreshEventChip();
+        if ((this.eventChip?.visible ?? false) !== chipWas) this.refreshOrderBar();
+        this.sweepExpiredEventTokens();
         for (const view of this.views.values()) {
           if (view instanceof SpawnerView) view.refresh();
         }

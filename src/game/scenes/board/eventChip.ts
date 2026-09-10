@@ -4,69 +4,79 @@ import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
 import { drawCrate } from '../../objects/TierIcons';
+import { ORDER_CARD_H } from './config';
 import {
   activeEvent, claimMilestone, eventMsRemaining, eventProgress,
   isMilestoneClaimed, unclaimedMilestones
 } from '../../events/TimedEvents';
 
+/** Narrow, so it costs the orders beside it as little width as possible. */
+export const EVENT_CHIP_W = 46;
+
 /**
- * THE EVENT CHIP - the only permanent surface an event gets.
+ * THE EVENT CHIP - a card at the head of the order row.
  *
- * It sits in the RIGHT margin beside the board, mirroring the crate meter in
- * the left one, and it exists only while a window is open. Nothing above or
- * below the board moves to make room for it: the board's framing was settled
- * to hold four things the same distance from the board at every screen size,
- * and an element that appeared for three days and then vanished would break
- * that spacing twice per event.
+ * It rides INSIDE the order strip rather than in a margin of its own, which
+ * settles two things at once: it scrolls with the orders, and it cannot
+ * change the row's height or its distance from the board. Those distances
+ * were hard won, and a chip that appeared for three days and then vanished
+ * would otherwise disturb them twice per event.
  *
- * It shows a count and a countdown, which are exactly the two things the
- * show-don't-tell rule allows as text - the medallion says what is counted.
+ * It is the leftmost thing in the strip, except that the crate meter's own
+ * lane still comes first - the meter is fixed furniture and the chip is not.
+ * When the meter is cooling it leaves that lane to ride the strip's far end,
+ * and the chip inherits the head of the row.
+ *
+ * Its text is a count and a countdown, which is exactly what show-don't-tell
+ * allows: the medallion says what is being counted.
  */
 export function buildEventChip(scene: BoardScene): void {
-  scene.eventChip = scene.add.container(0, 0).setDepth(8).setVisible(false);
+  const chip = scene.add.container(0, 0).setVisible(false);
+  scene.eventChip = chip;
 
   const bg = scene.add.graphics();
-  const token = scene.add.graphics().setPosition(0, -4);
-  drawEventToken(token, 34, materialLighting(EVENT_TOKEN_COLOR, 5));
-  const count = scene.add.text(0, 14, '', {
+  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2, 19);
+  drawEventToken(token, 30, materialLighting(EVENT_TOKEN_COLOR, 5));
+  const count = scene.add.text(EVENT_CHIP_W / 2, 34, '', {
     resolution: textResolution,
-    fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
+    fontFamily: Theme.fontNumeric, fontSize: '10px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
-  }).setOrigin(0.5);
-  const clock = scene.add.text(0, 27, '', {
+  }).setOrigin(0.5, 0);
+  const clock = scene.add.text(EVENT_CHIP_W / 2, 47, '', {
     resolution: textResolution,
-    fontFamily: Theme.fontMono, fontSize: '9px', color: hex(Theme.textOnDarkMuted)
-  }).setOrigin(0.5);
+    fontFamily: Theme.fontMono, fontSize: '8px', color: hex(Theme.textOnDarkMuted)
+  }).setOrigin(0.5, 0);
+
+  // A CHILD of the chip, so it travels with the strip's scroll instead of
+  // needing to be repositioned in world space every time the row moves.
+  const zone = scene.add.zone(EVENT_CHIP_W / 2, ORDER_CARD_H / 2, EVENT_CHIP_W, ORDER_CARD_H)
+    .setInteractive({ useHandCursor: true });
+  // Tap vs. flick, on the same rule the order cards use: a press here must
+  // not open the track when the player was swiping the row sideways.
+  zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    scene.orderDrag = {
+      active: true, slot: -1, startX: pointer.x,
+      startScroll: scene.orderScroll, moved: 0, describe: null, openEvent: true
+    };
+  });
 
   scene.eventChipBg = bg;
   scene.eventChipCount = count;
   scene.eventChipClock = clock;
-  scene.eventChip.add([bg, token, count, clock]);
-
-  scene.eventChipZone = scene.add.zone(0, 0, 48, 64).setDepth(9);
-  scene.eventChipZone.on('pointerup', () => scene.openEventTrack());
+  chip.add([bg, token, count, clock, zone]);
 }
 
-/** Position, contents and visibility, all driven off the clock. */
+/**
+ * Contents and visibility. POSITION is the order row's business - see
+ * `refreshOrderBar`, which puts this at the head of the strip and then
+ * bottom-anchors it alongside the cards.
+ */
 export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
-  if (!scene.eventChip) return;
+  const chip = scene.eventChip;
+  if (!chip) return;
   const event = activeEvent(now);
-  scene.eventChip.setVisible(!!event);
-  if (!event) {
-    scene.eventChipZone?.disableInteractive();
-    return;
-  }
-  scene.eventChipZone?.setInteractive({ useHandCursor: true });
-
-  const { cy } = scene.crateRingCentre();
-  // Mirrored off the crate meter's own margin, so the two sit at the same
-  // height on opposite sides of the board however wide the screen is.
-  const x = Math.min(
-    scene.scale.width - 26,
-    scene.boardOriginX + scene.cellSize * COLS_ACROSS + 26
-  );
-  scene.eventChip.setPosition(x, cy);
-  scene.eventChipZone?.setPosition(x, cy + 6);
+  chip.setVisible(!!event);
+  if (!event) return;
 
   const points = eventProgress(scene.timedEvents, event);
   scene.eventChipCount?.setText(`${points}/${event.goal}`);
@@ -77,15 +87,16 @@ export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
   if (!bg) return;
   bg.clear();
   bg.fillStyle(Theme.bg, 0.9);
-  bg.fillRoundedRect(-24, -24, 48, 60, Theme.radiusChip);
+  bg.fillRoundedRect(0, 0, EVENT_CHIP_W, ORDER_CARD_H, Theme.radiusChip);
   // Lit ONLY when a rung is actually owed. A permanently glowing chip stops
   // meaning anything within a day.
-  bg.lineStyle(1, owed > 0 ? EVENT_TOKEN_COLOR : Theme.borderOnDark, owed > 0 ? 1 : 0.6);
-  bg.strokeRoundedRect(-24, -24, 48, 60, Theme.radiusChip);
+  bg.lineStyle(
+    Theme.borderWidth,
+    owed > 0 ? EVENT_TOKEN_COLOR : Theme.borderOnDark,
+    owed > 0 ? 1 : 0.85
+  );
+  bg.strokeRoundedRect(0, 0, EVENT_CHIP_W, ORDER_CARD_H, Theme.radiusChip);
 }
-
-/** Board columns. Local so the chip does not import the whole board config. */
-const COLS_ACROSS = 7;
 
 /** Days once past a day, hours and minutes below that. */
 function formatRemaining(ms: number): string {
