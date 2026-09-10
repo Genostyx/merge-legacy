@@ -26,83 +26,57 @@ export const EVENT_TOKEN_COLOR = 0x2fb59a;
  * six-point burst it replaced was a generic sparkle.
  */
 export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: MaterialLighting): void {
-  // 0.38 of the box, not 0.3.
-  //
-  // The struck device is the whole point of the coin and at the old size it
-  // was about twenty pixels across on a phone - the rays and the relief were
-  // there and simply could not be seen. Every other board piece fills far
-  // more of its cell than this was, so it also read as a small thing rather
-  // than as something worth crossing the board for.
   const r = s * 0.38;
 
-  // Rim, then the sunken face inside it - a coin reads as struck because its
-  // edge stands proud of its middle, not because of what is printed on it.
-  g.fillStyle(p.dark, 1);
-  g.fillCircle(0, 0, r);
-  g.fillStyle(p.base, 1);
-  g.fillCircle(0, 0, r * 0.88);
-  // Lit crescent, upper left, matching every other object's single light.
-  g.fillStyle(p.light, 0.55);
-  g.beginPath();
-  g.arc(0, 0, r * 0.88, Math.PI * 0.75, Math.PI * 1.75);
-  g.fillPath();
-  g.fillStyle(p.base, 1);
-  g.fillCircle(r * 0.06, r * 0.06, r * 0.8);
-
-  // THE SHEEN: a graded falloff across the face, not a flat fill under the
-  // device.
+  // A RIM, not milling.
   //
-  // Phaser's gradient fill only applies to rectangles and triangles, so a
-  // disc has to be built as rings - shrinking ellipses drawn toward the light
-  // and stepped along the material's own ramp. Enough of them that the bands
-  // stop being countable, and each is soft enough to blend into the last.
-  const SHEEN = 7;
+  // This used to draw sixteen ticks around the edge. At a 74px cell each was
+  // under a pixel: invisible at best, a grey fringe at worst. Fewer and
+  // bigger is the whole rule for icon-size art - one thick ring reads as a
+  // struck edge where sixteen ticks read as nothing.
+  g.fillStyle(p.shadow, 1);
+  g.fillCircle(0, 0, r);
+  g.fillStyle(p.dark, 1);
+  g.fillCircle(0, 0, r * 0.97);
+  // The rim catches the key along its upper-left, which is what gives the
+  // coin an edge rather than an outline.
+  g.lineStyle(r * 0.13, p.highlight, 0.85);
+  g.beginPath();
+  g.arc(0, 0, r * 0.9, Math.PI * 0.8, Math.PI * 1.7);
+  g.strokePath();
+  g.lineStyle(r * 0.1, p.shadow, 0.6);
+  g.beginPath();
+  g.arc(0, 0, r * 0.9, Math.PI * 1.75, Math.PI * 2.75);
+  g.strokePath();
+
+  // THE FACE, sunk inside the rim and a shade under the family colour, so
+  // the pale device on it has something to be pale against.
+  g.fillStyle(toneAt(p, 0.42), 1);
+  g.fillCircle(0, 0, r * 0.8);
+
+  // The sheen, as rings stepped along the material's ramp - Phaser gradients
+  // only fill rectangles and triangles, so a disc has to be built this way.
+  // FOUR rings at real strength rather than seven at a whisper: at cell size
+  // a 0.3-alpha step is not a step at all.
+  const SHEEN = 4;
   for (let i = 1; i <= SHEEN; i++) {
     const t = i / SHEEN;
-    const rad = r * 0.8 * (1 - t * 0.7);
-    // Drifts up and left as it tightens, so the brightest part of the face
-    // sits where the light is rather than in the middle of the coin.
-    const drift = -r * 0.16 * t;
-    g.fillStyle(toneAt(p, 0.5 + t * 0.34), 0.3);
-    g.fillEllipse(drift + r * 0.06, drift + r * 0.06, rad * 2, rad * 2);
+    const rad = r * 0.8 * (1 - t * 0.72);
+    const drift = -r * 0.15 * t;
+    g.fillStyle(toneAt(p, 0.5 + t * 0.4), 0.55);
+    g.fillCircle(drift, drift, rad);
   }
-
-  // Milled edge - short ticks around the rim. Cheap, and it is what stops the
-  // shape reading as a plain dot at cell size.
-  g.lineStyle(Math.max(1, s * 0.014), p.shadow, 0.8);
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    g.lineBetween(
-      Math.cos(a) * r * 0.9, Math.sin(a) * r * 0.9,
-      Math.cos(a) * r, Math.sin(a) * r
-    );
-  }
-  g.lineStyle(Math.max(1, s * 0.016), p.shadow, 0.9);
-  g.strokeCircle(0, 0, r);
 
   drawStruckCrown(g, r, p);
 }
 
-/**
- * The struck device on the face: SEVEN tapered rays standing on a half ring.
- *
- * Seven, and no face in the middle - a crown seen from the front, cut down to
- * the two things that survive at cell size. A six-point star was doing the
- * same job less specifically: at 20 pixels a six-pointed burst is a generic
- * sparkle, where seven rays over a band reads as one particular object even
- * when you cannot count them.
- *
- * The band is drawn as an ARC rather than a circle so the device sits on
- * something, which is what stops the rays reading as a starburst floating in
- * the middle of the coin.
- */
 /**
  * How far the relief is displaced, and how hard, as a fraction of the coin's
  * radius. Two passes rather than one: a single offset copy has a hard far
  * edge of its own, where two at falling strength read as the face curving
  * away. Down and right, because the light on every object here is upper-left.
  */
-const RELIEF: readonly (readonly [number, number])[] = [[0.05, 0.5], [0.026, 0.55]];
+const RELIEF: readonly (readonly [number, number])[] = [[0.085, 0.55], [0.045, 0.6]];
 
 function drawStruckCrown(
   g: Phaser.GameObjects.Graphics, r: number, p: MaterialLighting
@@ -110,7 +84,7 @@ function drawStruckCrown(
   // Pushed down a touch: rays are top-heavy, so a device centred on the
   // geometric middle sits visibly high on the face.
   const cy = r * 0.16;
-  const bandR = r * 0.34;
+  const bandR = r * 0.3;
 
   // SEVEN rays, fanned across the upper half. Each is a triangle whose base
   // sits on the band, so they read as fixed to it rather than laid over it.
@@ -123,14 +97,14 @@ function drawStruckCrown(
   // which is small - so at cell size every ray came out a sub-pixel sliver
   // and the device read as a bare arc. An angular width is only a width where
   // the radius is large, and here it never is.
-  const halfBase = r * 0.085;
+  const halfBase = r * 0.125;
   for (let i = 0; i < RAYS; i++) {
     const a = from + ((to - from) * i) / (RAYS - 1);
     const cos = Math.cos(a);
     const sin = Math.sin(a);
     // The centre ray is longest and they shorten toward the ends, which is
     // what makes seven spikes read as a crown rather than a cog.
-    const tip = r * (0.95 - Math.abs(i - 3) * 0.07);
+    const tip = r * (0.72 - Math.abs(i - 3) * 0.05);
     const bx = cos * bandR;
     const by = cy + sin * bandR;
     // Perpendicular to the ray.
@@ -158,14 +132,10 @@ function drawStruckCrown(
     g.lineTo(bx - px, by - py);
     g.closePath();
     g.fillPath();
-    // One shaded flank per ray, so seven of them do not flatten into a fan.
-    g.fillStyle(p.light, 0.9);
-    g.beginPath();
-    g.moveTo(bx, by);
-    g.lineTo(cos * tip, cy + sin * tip);
-    g.lineTo(bx - px, by - py);
-    g.closePath();
-    g.fillPath();
+    // The shaded flank each ray used to carry is gone. At cell size a ray is
+    // four pixels across, so splitting it into a lit half and a shaded half
+    // left two two-pixel slivers and the crown turned to mush. The relief
+    // under the whole device does that job now, at a size that survives.
 
   }
 
