@@ -3787,6 +3787,26 @@ function drawWaterSourceIsometric(
  * what makes that read as corrosion rather than as a hue shift.
  */
 
+/**
+ * TWO ACCENTS, and only where the form has somewhere to put them.
+ *
+ * The chain's own ramp is teal and stays that way - it is what makes the
+ * family read as one material. But the bottom of any ramp is dark by
+ * definition, and three near-black greens in a row are three near-identical
+ * silhouettes at cell size. These give the dark tiers something to separate
+ * them by that is NOT another shade of the same green.
+ *
+ * Both are real to the material rather than decoration: copper runs sulphur
+ * yellow where it is still raw or freshly struck, and cuprite magenta where
+ * the oxide is thickest. So the yellow marks metal and the magenta marks
+ * corrosion, consistently, and the two never appear on the same face.
+ *
+ * They are ACCENTS. Nothing here is more than a rim, a glint or a stamp - the
+ * moment one fills a facet the family stops reading as copper.
+ */
+const VERDIGRIS_HOT = 0xffc23d;
+const VERDIGRIS_BLOOM = 0xd8489b;
+
 /** Corrosion pits - dark holes, each with its far rim catching the key. */
 function copperPits(g: Phaser.GameObjects.Graphics, p: Palette, pits: [number, number, number][]): void {
   for (const [x, y, r] of pits) {
@@ -3826,6 +3846,16 @@ function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
     [s * 0.09, s * 0.08, s * 0.016],
     [s * 0.04, -s * 0.07, s * 0.014]
   ]);
+  // Heat still in the fractures. The darkest tier in the chain needs one
+  // thing that is not dark green, or it is a black lump.
+  g.lineStyle(Math.max(1, s * 0.014), VERDIGRIS_HOT, 0.9);
+  g.beginPath();
+  g.moveTo(-s * 0.13, -s * 0.02);
+  g.lineTo(-s * 0.02, s * 0.06);
+  g.lineTo(s * 0.09, -s * 0.01);
+  g.strokePath();
+  g.fillStyle(VERDIGRIS_HOT, 0.75);
+  g.fillCircle(-s * 0.02, s * 0.06, s * 0.018);
 }
 
 /** 02 - one flat shard, its rolled skin peeling off the metal underneath. */
@@ -3837,7 +3867,10 @@ function drawOxideShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   // THE PEEL - a lifted corner showing bright metal still under the skin.
   // Two materials in one piece is the tier's whole idea, and it is what
   // separates a shard of copper from a shard of anything else on this board.
-  g.fillStyle(p.highlight, 0.6);
+  // The metal under the skin is RAW copper, so it is the one warm face in the
+  // family - which is also what makes the peel legible as a peel rather than
+  // as another lit facet.
+  g.fillStyle(VERDIGRIS_HOT, 0.72);
   g.beginPath();
   g.moveTo(-s * 0.12, -s * 0.18);
   g.lineTo(s * 0.16, -s * 0.14);
@@ -3845,6 +3878,12 @@ function drawOxideShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   g.lineTo(-s * 0.1, -s * 0.08);
   g.closePath();
   g.fillPath();
+  // And the torn edge where the oxide is thickest.
+  g.lineStyle(Math.max(1, s * 0.014), VERDIGRIS_BLOOM, 0.8);
+  g.beginPath();
+  g.moveTo(-s * 0.1, -s * 0.08);
+  g.lineTo(s * 0.04, -s * 0.04);
+  g.strokePath();
   copperPits(g, p, [[s * 0.06, s * 0.09, s * 0.018]]);
 }
 
@@ -3872,7 +3911,14 @@ function drawCutCathode(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
   g.fillPath();
 
   // The lug, off-centre so the plate reads as hung rather than as a tile.
-  g.fillStyle(p.light, 1);
+  // Cuprite staining down the sheet - the plate is the flattest, dullest
+  // shape in the chain and needs the most help.
+  g.fillStyle(VERDIGRIS_BLOOM, 0.34);
+  g.fillRect(x + w * 0.12, y + h * 0.34, w * 0.5, h * 0.16);
+  g.fillStyle(VERDIGRIS_BLOOM, 0.2);
+  g.fillRect(x + w * 0.12, y + h * 0.5, w * 0.34, h * 0.1);
+  // The lug is handled, so it is worn back to bare metal.
+  g.fillStyle(VERDIGRIS_HOT, 0.85);
   g.fillRect(x + w * 0.18, y - s * 0.07, w * 0.28, s * 0.08);
   g.lineStyle(1, p.highlight, 0.7);
   g.beginPath();
@@ -3890,7 +3936,8 @@ function drawBronzeBillet(g: Phaser.GameObjects.Graphics, s: number, p: Palette)
   // cut plate to a cast solid.
   g.fillStyle(p.shadow, 0.85);
   g.fillCircle(-s * 0.11, s * 0.05, s * 0.055);
-  g.fillStyle(p.light, 0.9);
+  // Struck through to bare metal, which is exactly what a stamp does.
+  g.fillStyle(VERDIGRIS_HOT, 0.92);
   g.fillCircle(-s * 0.115, s * 0.043, s * 0.04);
   g.fillStyle(p.dark, 0.9);
   g.fillCircle(-s * 0.11, s * 0.05, s * 0.016);
@@ -4003,7 +4050,9 @@ function drawPatinaSpire(g: Phaser.GameObjects.Graphics, s: number, p: Palette):
     g.lineTo(r, y);
     g.strokePath();
   }
-  g.fillStyle(p.highlight, 0.95);
+  // Gilt finial. One warm point at the top of a tall cold form is the whole
+  // reason the eye goes there.
+  g.fillStyle(VERDIGRIS_HOT, 0.95);
   g.fillCircle(0, apexY - s * 0.015, s * 0.035);
 }
 
@@ -4036,7 +4085,7 @@ function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Pale
     g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
     for (const t of [-0.36, 0.36]) {
       const rx = len * t * cos, ry = len * t * sin;
-      g.fillStyle(p.highlight, 0.8);
+      g.fillStyle(VERDIGRIS_HOT, 0.85);
       g.fillCircle(rx, ry, s * 0.016);
       g.fillStyle(p.shadow, 0.5);
       g.fillCircle(rx + s * 0.006, ry + s * 0.006, s * 0.008);
