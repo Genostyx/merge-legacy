@@ -9,8 +9,8 @@ import { drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
 import {
   EVENT_BOARD_COLS, EVENT_BOARD_ROWS, EVENT_CHAIN, EVENT_MAX_TIER, EVENT_SPAWN_COST,
-  EVENT_SPAWNER_AT, createEventGrid, eventTierDef, markOverflowPaid, overflowCratesOwed,
-  seedEventBoard, spendEventEnergy
+  EVENT_SPAWNER_AT, createEventGrid, eventPointsForTier, eventTierDef,
+  markOverflowPaid, overflowCratesOwed, seedEventBoard, spendEventEnergy
 } from '../../events/EventBoard';
 import {
   EVENT_ORDER_SLOTS, eventOrderPayout, rollEventOrders, submitEventOrder, visibleEventOrders
@@ -44,6 +44,8 @@ import {
 const PAD = 12;
 const ORDER_CARD_H = 62;
 const TRACK_H = 46;
+/** The info box under the board, mirroring the main board's action tray. */
+const INFO_H = 46;
 
 interface PanelState {
   overlay: Phaser.GameObjects.Container;
@@ -55,6 +57,8 @@ interface PanelState {
   originY: number;
   redraw: () => void;
   refreshChrome: () => void;
+  /** Says what a tapped piece is. The board's only text surface. */
+  say: (text: string) => void;
 }
 
 const keyOf = (pos: GridPosition): string => `${pos.col},${pos.row}`;
@@ -97,7 +101,11 @@ export function openEventPanel(scene: BoardScene): void {
   const ordersY = headerH + 6;
   const trackY = ordersY + ORDER_CARD_H + 8;
   const boardTop = trackY + TRACK_H + 10;
-  const boardBottom = H - PAD - 34;
+  // The board stops above the info box rather than running to the floor. The
+  // main board reserves the same strip for the same reason: a player who taps
+  // a piece needs somewhere for the answer to appear that is not on top of
+  // the thing they just tapped.
+  const boardBottom = H - PAD - INFO_H - 8;
   const cellSize = Math.floor(Math.min(
     (W - PAD * 2) / EVENT_BOARD_COLS,
     (boardBottom - boardTop) / EVENT_BOARD_ROWS
@@ -107,8 +115,28 @@ export function openEventPanel(scene: BoardScene): void {
 
   const state: PanelState = {
     overlay, boardLayer, grid, views: new Map(), cellSize, originX, originY,
-    redraw: () => undefined, refreshChrome: () => undefined
+    redraw: () => undefined, refreshChrome: () => undefined, say: () => undefined
   };
+
+  // ---- the info box ----
+  const infoY = H - PAD - INFO_H;
+  const infoBg = scene.add.graphics();
+  infoBg.fillStyle(Theme.bgElevated, 1);
+  infoBg.fillRoundedRect(PAD, infoY, W - PAD * 2, INFO_H, Theme.radiusChip);
+  infoBg.lineStyle(Theme.borderWidth, Theme.borderOnDark, 0.8);
+  infoBg.strokeRoundedRect(PAD, infoY, W - PAD * 2, INFO_H, Theme.radiusChip);
+  const infoText = scene.add.text(PAD + 12, infoY + INFO_H / 2, '', {
+    resolution: textResolution,
+    fontFamily: Theme.fontMono, fontSize: '10px', color: hex(Theme.textOnDarkMuted),
+    lineSpacing: 3
+  }).setOrigin(0, 0.5);
+  chromeLayer.add([infoBg, infoText]);
+
+  const HINT = 'TAP THE BOOTH TO PRODUCE\nDRAG MATCHES TO MERGE';
+  state.say = (text: string): void => {
+    infoText.setText(text || HINT);
+  };
+  state.say('');
 
   const cellToWorld = (pos: GridPosition): { x: number; y: number } => ({
     x: originX + pos.col * cellSize + cellSize / 2,
@@ -467,7 +495,9 @@ function attachPanelInput(
     // A tap: the booth dispenses, anything else does nothing.
     if (!wasDragging || !target || (target.col === from.col && target.row === from.row)) {
       view.setPosition(home.x, home.y);
-      if (!wasDragging && view instanceof SpawnerView) tapBooth(scene, state, opts);
+      if (wasDragging) return;
+      if (view instanceof SpawnerView) tapBooth(scene, state, opts);
+      else state.say(describeEventCell(state.grid.get(from)));
       return;
     }
 
@@ -524,6 +554,28 @@ function attachPanelInput(
   };
 }
 
+/**
+ * What the info box says about one cell.
+ *
+ * The NAME is kept, which show-don't-tell allows: a player cannot deduce that
+ * a bent tube is called an elbow, and the orders ask for pieces by picture -
+ * so the one place to learn what you are holding is here.
+ */
+function describeEventCell(cell: ReturnType<Grid['get']>): string {
+  if (!cell) return '';
+  if (cell.kind === 'spawner') {
+    return 'CONDENSER HUT\nONE TAP, ONE ENERGY, ONE PIECE';
+  }
+  if (cell.kind === 'item' || cell.kind === 'locked-item') {
+    const def = eventTierDef(cell.tier);
+    const name = (def?.label ?? 'PIECE').toUpperCase();
+    return cell.kind === 'locked-item'
+      ? `CRUSTED ${name}\nMERGE A MATCH ONTO IT TO FREE IT`
+      : `${name}  \u00b7  TIER ${cell.tier}\nWORTH ${eventPointsForTier(cell.tier)} ON AN ORDER`;
+  }
+  return '';
+}
+
 /** Rebuilds just the cells that changed, rather than the whole board. */
 function rebuildCells(
   scene: BoardScene,
@@ -574,6 +626,9 @@ function tapBooth(
   // booth itself rather than doing nothing - a source that ignores a tap is
   // indistinguishable from a broken one.
   if (!free || !spendEventEnergy(scene.eventBoard, EVENT_SPAWN_COST)) {
+    state.say(free
+      ? 'NO EVENT ENERGY\nCOLLECT TOKENS ON THE MAIN BOARD'
+      : 'BOARD FULL\nMERGE SOMETHING TO MAKE ROOM');
     const booth = state.views.get(keyOf(EVENT_SPAWNER_AT));
     if (booth) {
       scene.tweens.killTweensOf(booth);

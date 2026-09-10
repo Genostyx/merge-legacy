@@ -28,7 +28,7 @@ import type { TimedEventDef } from './TimedEvents';
  */
 
 export const EVENT_BOARD_COLS = 5;
-export const EVENT_BOARD_ROWS = 7;
+export const EVENT_BOARD_ROWS = 6;
 
 /** What one tap of the event spawner costs. */
 export const EVENT_SPAWN_COST = 1;
@@ -146,9 +146,9 @@ export function spendEventEnergy(state: EventBoardState, amount: number): boolea
  * unchanged. They refuse every input and clear when a matching item is merged
  * onto them.
  *
- * Coordinates are [col, row] with row 0 at the TOP, which is how the layout
- * was specified. Rows 0 and 6 carry no crust: row 0 is the open sandbox, row
- * 6 holds the Ticket Booth.
+ * Coordinates are [col, row] with row 0 at the TOP. Row 0 carries no crust at
+ * all - it is the open sandbox - and the booth's own cell in the last row is
+ * left clear.
  */
 export const EVENT_CRUST_LAYOUT: readonly [number, number, number][] = [
   // [col, row, tier]
@@ -156,7 +156,9 @@ export const EVENT_CRUST_LAYOUT: readonly [number, number, number][] = [
   [3, 2, 1], [4, 2, 2],
   [0, 3, 1], [4, 3, 2],
   [0, 4, 2], [1, 4, 2], [3, 4, 3], [4, 4, 3],
-  [0, 5, 3], [1, 5, 3], [2, 5, 4], [3, 5, 4], [4, 5, 5]
+  // The booth stands in the middle of this last row, so the crust leaves that
+  // one cell open rather than the board carrying a whole row for it.
+  [0, 5, 3], [1, 5, 3], [3, 5, 4], [4, 5, 5]
 ];
 
 /** Where the spawner stands. Bottom-centre: thumb reach, and never crusted. */

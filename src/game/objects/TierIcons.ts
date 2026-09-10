@@ -3894,11 +3894,22 @@ function copperMouth(
   g.fillEllipse(cx, cy + r * squash * 0.22, r * 1.3, r * 0.8 * squash);
 }
 
-/** 01 - an offcut of wire: one short bend, and the smallest thing here. */
+/**
+ * 01 - a straight offcut, cut end toward you.
+ *
+ * STRAIGHT, and hollow. The first version was a bent squiggle, which at cell
+ * size read as a droplet - and Water is a real family on the main board, so
+ * the bottom of this chain was pointing at the wrong one. A straight rod with
+ * a visible bore cannot be mistaken for a drop of anything, and it introduces
+ * the hollow section that the whole ladder is built from.
+ */
 function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  copperTube(g, [
-    [-s * 0.17, s * 0.07], [-s * 0.02, -s * 0.03], [s * 0.06, s * 0.06], [s * 0.18, -s * 0.02]
-  ], s * 0.075, p);
+  const from: [number, number] = [-s * 0.19, s * 0.09];
+  const to: [number, number] = [s * 0.15, -s * 0.07];
+  copperTube(g, [from, to], s * 0.085, p);
+  // The cut end, squared off across the rod rather than drawn as a circle -
+  // an offcut is sawn, and the flat face is what says so.
+  copperMouth(g, to[0], to[1], s * 0.045, p, 1.5);
 }
 
 /** 02 - the wire coiled: a flat spiral, so tier 2 is a DISC where tier 1 was a line. */
