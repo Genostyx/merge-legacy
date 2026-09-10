@@ -123,6 +123,14 @@ class SvgRecorder {
     return this;
   }
 
+  lineBetween(x1: number, y1: number, x2: number, y2: number): this {
+    this.out.push(
+      `<line x1="${r(x1)}" y1="${r(y1)}" x2="${r(x2)}" y2="${r(y2)}" ` +
+      `stroke="${this.stroke}" stroke-opacity="${this.strokeAlpha}" stroke-width="${this.strokeWidth}"/>`
+    );
+    return this;
+  }
+
   strokeRect(x: number, y: number, w: number, h: number): this {
     this.out.push(
       `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" fill="none" ` +
@@ -166,6 +174,11 @@ class SvgRecorder {
 }
 
 const r = (n: number): number => Math.round(n * 100) / 100;
+
+/** A bare recorder, for drawing one thing rather than a whole ladder. */
+export function iconSheetRecorder(): SvgRecorder {
+  return new SvgRecorder();
+}
 
 /** Renders every tier of `typeId` onto one sheet. */
 export function iconSheet(typeId: string, cell = 120): string {

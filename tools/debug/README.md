@@ -113,6 +113,12 @@ It is kept OUT of the main suite by `vitest.config.ts`, which is `src/` only:
 it writes files, and `npm run check` regenerating artefacts as a side effect
 is not something anyone should have to know about.
 
+`token-sheet.ts` does the same for the event medallion on its own, large
+enough to check a struck device. That is what caught the crown's rays being
+drawn as sub-pixel slivers - their bases were spread by a fixed ANGLE at a
+small radius, which is a width only where the radius is large. On screen it
+looked like a bare arc and nothing said why.
+
 One difference to keep in mind: `fillGradientStyle` flattens to its first
 stop, because Phaser's four corner colours do not map onto one SVG gradient.
 Anything drawn as a gradient shows here as its top-left tone.

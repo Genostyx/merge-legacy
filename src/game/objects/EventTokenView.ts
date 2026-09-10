@@ -19,9 +19,11 @@ export const EVENT_TOKEN_COLOR = 0x2fb59a;
  * round thing on a board of cut solids and squared housings, which is the
  * whole silhouette cue.
  *
- * The face carries a six-point star burst rather than a number or letter -
- * show-don't-tell, and a glyph would need translating while a struck shape
- * does not.
+ * The face carries a struck CROWN - seven tapered rays on a half ring, no
+ * face inside it - rather than a number or a letter. Show-don't-tell, and a
+ * glyph would need translating where a struck shape does not. Seven rays over
+ * a band reads as one particular object even at cell size, where the
+ * six-point burst it replaced was a generic sparkle.
  */
 export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: MaterialLighting): void {
   const r = s * 0.3;
@@ -53,17 +55,83 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
   g.lineStyle(Math.max(1, s * 0.016), p.shadow, 0.9);
   g.strokeCircle(0, 0, r);
 
-  // The struck star on the face.
-  const points: Phaser.Geom.Point[] = [];
-  for (let i = 0; i < 12; i++) {
-    const a = -Math.PI / 2 + (i / 12) * Math.PI * 2;
-    const rad = i % 2 === 0 ? r * 0.56 : r * 0.22;
-    points.push(new Phaser.Geom.Point(Math.cos(a) * rad, Math.sin(a) * rad));
+  drawStruckCrown(g, r, p);
+}
+
+/**
+ * The struck device on the face: SEVEN tapered rays standing on a half ring.
+ *
+ * Seven, and no face in the middle - a crown seen from the front, cut down to
+ * the two things that survive at cell size. A six-point star was doing the
+ * same job less specifically: at 20 pixels a six-pointed burst is a generic
+ * sparkle, where seven rays over a band reads as one particular object even
+ * when you cannot count them.
+ *
+ * The band is drawn as an ARC rather than a circle so the device sits on
+ * something, which is what stops the rays reading as a starburst floating in
+ * the middle of the coin.
+ */
+function drawStruckCrown(
+  g: Phaser.GameObjects.Graphics, r: number, p: MaterialLighting
+): void {
+  // Pushed down a touch: rays are top-heavy, so a device centred on the
+  // geometric middle sits visibly high on the face.
+  const cy = r * 0.16;
+  const bandR = r * 0.34;
+
+  // SEVEN rays, fanned across the upper half. Each is a triangle whose base
+  // sits on the band, so they read as fixed to it rather than laid over it.
+  const RAYS = 7;
+  const from = Math.PI * 1.04;
+  const to = Math.PI * 1.96;
+  // Base width is measured PERPENDICULAR to each ray, not as an angle.
+  //
+  // The first version spread the base by a fixed angle at the band's radius,
+  // which is small - so at cell size every ray came out a sub-pixel sliver
+  // and the device read as a bare arc. An angular width is only a width where
+  // the radius is large, and here it never is.
+  const halfBase = r * 0.085;
+  for (let i = 0; i < RAYS; i++) {
+    const a = from + ((to - from) * i) / (RAYS - 1);
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    // The centre ray is longest and they shorten toward the ends, which is
+    // what makes seven spikes read as a crown rather than a cog.
+    const tip = r * (0.95 - Math.abs(i - 3) * 0.07);
+    const bx = cos * bandR;
+    const by = cy + sin * bandR;
+    // Perpendicular to the ray.
+    const px = -sin * halfBase;
+    const py = cos * halfBase;
+
+    g.fillStyle(p.highlight, 1);
+    g.beginPath();
+    g.moveTo(bx + px, by + py);
+    g.lineTo(cos * tip, cy + sin * tip);
+    g.lineTo(bx - px, by - py);
+    g.closePath();
+    g.fillPath();
+    // One shaded flank per ray, so seven of them do not flatten into a fan.
+    g.fillStyle(p.light, 0.9);
+    g.beginPath();
+    g.moveTo(bx, by);
+    g.lineTo(cos * tip, cy + sin * tip);
+    g.lineTo(bx - px, by - py);
+    g.closePath();
+    g.fillPath();
   }
-  g.fillStyle(p.highlight, 1);
-  g.fillPoints(points, true);
-  g.lineStyle(1, p.shadow, 0.7);
-  g.strokePoints(points, true);
+
+  // THE HALF RING they stand on - open at the bottom, so it is a band around
+  // a head that is not drawn rather than a closed hoop.
+  const band: Phaser.Geom.Point[] = [];
+  for (let i = 0; i <= 26; i++) {
+    const a = Math.PI * 1.02 + (Math.PI * 0.96 * i) / 26;
+    band.push(new Phaser.Geom.Point(Math.cos(a) * bandR, cy + Math.sin(a) * bandR));
+  }
+  g.lineStyle(Math.max(1, r * 0.16), p.highlight, 1);
+  g.strokePoints(band, false, false);
+  g.lineStyle(Math.max(1, r * 0.06), p.light, 0.9);
+  g.strokePoints(band, false, false);
 }
 
 /** One event token standing on the board, waiting to be tapped in. */
