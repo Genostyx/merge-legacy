@@ -9,7 +9,7 @@ import type { FacilityId } from '../Grid';
 import { FacilityView } from '../objects/FacilityView';
 import { EventTokenView } from '../objects/EventTokenView';
 import {
-  EVENT_TOKENS_PER_ORDER, EVENT_TOKENS_PER_TAP,
+  EVENT_TOKENS_PER_TAP,
   activeEventFor, addEventProgress, createDefaultTimedEventState
 } from '../events/TimedEvents';
 import type { EventMilestone } from '../events/TimedEvents';

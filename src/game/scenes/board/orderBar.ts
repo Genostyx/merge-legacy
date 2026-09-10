@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { EVENT_TOKENS_PER_ORDER } from '../../events/TimedEvents';
 import { EVENT_CHIP_W } from './eventChip';
 import type { BoardScene } from '../BoardScene';
 import {
@@ -1103,7 +1102,6 @@ export function completeOrder(scene: BoardScene, index: number, order: OrderDef,
     !scene.grid.serialize().flat().some((cell) => cell?.kind === 'locked-item')
   );
   const levelAfter = playerLevel(scene.orderState);
-  scene.maybeDropEventToken(EVENT_TOKENS_PER_ORDER);
   addCoins(scene.economy, order.rewardCoins);
   if (order.rewardEnergy) addEnergy(scene.energy, order.rewardEnergy);
   if (order.rewardGems) addGems(scene.economy, order.rewardGems);

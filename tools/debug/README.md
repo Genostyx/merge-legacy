@@ -52,6 +52,9 @@ await __dbg.health()          // fps AND the flags that gate input
 __dbg.watch()                 // start capturing; the LIST outlives reloads
 __dbg.errors()                // what it caught
 
+__dbg.tokens()                // event token drop rate, measured not assumed
+__dbg.tokens(true)            // reset the count
+
 __dbg.backup('mine')          // before wrecking the board
 __dbg.restore('mine')
 

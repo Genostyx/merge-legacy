@@ -138,6 +138,51 @@
     errors: () => { try { return JSON.parse(sessionStorage.getItem(ERRS)) ?? []; } catch { return []; } },
     clearErrors: () => (sessionStorage.removeItem(ERRS), 'cleared'),
 
+    // ---- event token rate ----
+    /**
+     * Counts what the event token roll ACTUALLY does, rather than what the
+     * constant says it should.
+     *
+     * Wraps the scene method at runtime, so nothing in the shipping code has
+     * to carry a counter. Survives reloads through sessionStorage the same
+     * way the error list does - a drop rate is only meaningful over a few
+     * hundred taps, which is more than one sitting.
+     *
+     * This exists because a felt rate and a coded rate disagreed: the taps
+     * were rolling 8% as written, but every completed order also paid a
+     * guaranteed token, so the two together read as "far too many" and the
+     * constant looked like it was lying.
+     */
+    tokens(reset = false) {
+      const KEYT = '__dbg_tokens';
+      const read = () => { try { return JSON.parse(sessionStorage.getItem(KEYT)) ?? { rolls: 0, dropped: 0, refused: 0 }; } catch { return { rolls: 0, dropped: 0, refused: 0 }; } };
+      if (reset) { sessionStorage.removeItem(KEYT); return 'reset'; }
+      const sc = scene();
+      if (!sc) return 'no scene';
+      if (!sc.__dbgTokenWrapped) {
+        sc.__dbgTokenWrapped = true;
+        const original = sc.maybeDropEventToken.bind(sc);
+        sc.maybeDropEventToken = (chance) => {
+          const before = [...sc.views.values()].filter((v) => v.constructor?.name === 'EventTokenView').length;
+          const full = !sc.firstFreeCellInReadingOrder();
+          original(chance);
+          const after = [...sc.views.values()].filter((v) => v.constructor?.name === 'EventTokenView').length;
+          const stats = read();
+          stats.rolls++;
+          if (after > before) stats.dropped += after - before;
+          else if (full) stats.refused++;
+          sessionStorage.setItem(KEYT, JSON.stringify(stats));
+        };
+      }
+      const s = read();
+      return {
+        ...s,
+        rate: s.rolls ? +(s.dropped / s.rolls).toFixed(3) : 0,
+        tapsPerToken: s.dropped ? +(s.rolls / s.dropped).toFixed(1) : null,
+        note: 'counting; re-eval devtools after a reload to keep counting'
+      };
+    },
+
     /** Reload without any save write, for testing load-path behaviour. */
     reload: () => (location.reload(), 'reloading')
   };

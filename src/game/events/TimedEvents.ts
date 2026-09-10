@@ -98,15 +98,23 @@ export const EVENTS: readonly TimedEventDef[] = [
 ];
 
 /**
- * Tokens per source tap, and per order completed.
+ * Tokens per source tap. THE ONLY SOURCE OF THEM.
  *
- * Aimed at a typical player reaching the top rung inside the window without
- * having to play unusually hard for it. At roughly 200 taps and 8 orders a day
- * that is around 18 tokens a day, so 100 lands late on the third day - which
- * is where a top rung should sit: reachable, but not before the event is over.
+ * Completing an order used to pay a guaranteed token as well, and it had to
+ * go: order difficulty swings enormously across the game - trivial at level
+ * two, substantial at level thirty - so a flat token per order cannot be
+ * balanced at both ends. Early on it flooded the event; late on it would
+ * barely register. The level gate hid the symptom without fixing the cause.
+ *
+ * A tap is the one unit of main-board play that means the same thing at every
+ * level: it costs energy. Paying against that keeps the two boards linked
+ * while making the rate predictable and independent of where the player is.
+ *
+ * 0.12 is one token per eight or nine taps. At roughly 200 taps a day that is
+ * about 24 a day - the same total the two sources used to add up to, now all
+ * from the half that behaves.
  */
-export const EVENT_TOKENS_PER_TAP = 0.08;
-export const EVENT_TOKENS_PER_ORDER = 1;
+export const EVENT_TOKENS_PER_TAP = 0.12;
 
 export interface TimedEventState {
   /** Progress by event id. Ids absent from EVENTS are pruned on normalize. */
