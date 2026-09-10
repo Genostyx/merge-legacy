@@ -3830,7 +3830,33 @@ const TINT_BROAD = 0.22;
 const TINT_SMALL = 0.62;
 
 function tintPalette(p: Palette, accent: number, amount: number): Palette {
-  const ar = (accent >> 16) & 0xff, ag = (accent >> 8) & 0xff, ab = accent & 0xff;
+  // FOLLOW THE PALETTE'S OWN SATURATION FIRST.
+  //
+  // A locked tile is handed a near-grey ramp on purpose - not being able to
+  // tell what it is made of is most of what makes it read as locked. An
+  // accent mixed from a fixed colour ignored that completely and painted tan
+  // flaps and pink plates onto silhouettes that were supposed to be flat, so
+  // the crust looked broken rather than dormant.
+  //
+  // Matching the accent's chroma to the palette's means a lit tile gets the
+  // full accent and a locked one gets a grey mark in the same place, without
+  // either drawing path having to know the other exists.
+  const chroma = (c: number): number => {
+    const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+    return Math.max(r, g, b) - Math.min(r, g, b);
+  };
+  // 45 is roughly the chroma of this family's own base tones; a locked ramp
+  // sits near zero.
+  const saturation = Math.min(1, chroma(p.base) / 45);
+  const luma = ((accent >> 16) & 0xff) * 0.3
+    + ((accent >> 8) & 0xff) * 0.59
+    + (accent & 0xff) * 0.11;
+  const toned = (channel: number): number =>
+    Math.round(luma + (channel - luma) * saturation);
+
+  const ar = toned((accent >> 16) & 0xff);
+  const ag = toned((accent >> 8) & 0xff);
+  const ab = toned(accent & 0xff);
   const mix = (c: number): number => {
     const r = Math.round((((c >> 16) & 0xff) * (1 - amount)) + ar * amount);
     const g = Math.round((((c >> 8) & 0xff) * (1 - amount)) + ag * amount);
