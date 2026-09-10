@@ -71,6 +71,14 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
  * something, which is what stops the rays reading as a starburst floating in
  * the middle of the coin.
  */
+/**
+ * How far the relief is displaced, and how hard, as a fraction of the coin's
+ * radius. Two passes rather than one: a single offset copy has a hard far
+ * edge of its own, where two at falling strength read as the face curving
+ * away. Down and right, because the light on every object here is upper-left.
+ */
+const RELIEF: readonly (readonly [number, number])[] = [[0.05, 0.5], [0.026, 0.55]];
+
 function drawStruckCrown(
   g: Phaser.GameObjects.Graphics, r: number, p: MaterialLighting
 ): void {
@@ -104,6 +112,20 @@ function drawStruckCrown(
     const px = -sin * halfBase;
     const py = cos * halfBase;
 
+    // RELIEF, not an outline. A struck coin's device is raised, so what you
+    // see under it is the face falling away on the side opposite the light -
+    // a displaced dark copy, softened over two passes. A tight line all the
+    // way round reads as a printed sticker, which is what this was.
+    for (const [d, alpha] of RELIEF) {
+      g.fillStyle(p.shadow, alpha);
+      g.beginPath();
+      g.moveTo(bx + px + d * r, by + py + d * r);
+      g.lineTo(cos * tip + d * r, cy + sin * tip + d * r);
+      g.lineTo(bx - px + d * r, by - py + d * r);
+      g.closePath();
+      g.fillPath();
+    }
+
     g.fillStyle(p.highlight, 1);
     g.beginPath();
     g.moveTo(bx + px, by + py);
@@ -120,16 +142,6 @@ function drawStruckCrown(
     g.closePath();
     g.fillPath();
 
-    // OUTLINED, exactly as the star it replaced was. A struck device is a
-    // raised shape, and the shadow along its edge is what says it stands off
-    // the face rather than being printed on it. Kept thin, since a ray is
-    // only a few pixels across at cell size and a heavy line would eat it.
-    g.lineStyle(Math.max(1, r * 0.035), p.shadow, 0.7);
-    g.beginPath();
-    g.moveTo(bx + px, by + py);
-    g.lineTo(cos * tip, cy + sin * tip);
-    g.lineTo(bx - px, by - py);
-    g.strokePath();
   }
 
   // THE HALF RING they stand on - open at the bottom, so it is a band around
@@ -139,10 +151,14 @@ function drawStruckCrown(
     const a = Math.PI * 1.02 + (Math.PI * 0.96 * i) / 26;
     band.push(new Phaser.Geom.Point(Math.cos(a) * bandR, cy + Math.sin(a) * bandR));
   }
-  // Drawn shadow-first and slightly fatter, so the band carries the same
-  // struck edge the rays do.
-  g.lineStyle(Math.max(1, r * 0.22), p.shadow, 0.7);
-  g.strokePoints(band, false, false);
+  // The same relief under the band, offset the same way, so the whole device
+  // is lit by one light rather than the ring and the rays disagreeing.
+  for (const [d, alpha] of RELIEF) {
+    g.lineStyle(Math.max(1, r * 0.16), p.shadow, alpha);
+    g.strokePoints(
+      band.map((pt) => new Phaser.Geom.Point(pt.x + d * r, pt.y + d * r)), false, false
+    );
+  }
   g.lineStyle(Math.max(1, r * 0.16), p.highlight, 1);
   g.strokePoints(band, false, false);
   g.lineStyle(Math.max(1, r * 0.06), p.light, 0.9);
