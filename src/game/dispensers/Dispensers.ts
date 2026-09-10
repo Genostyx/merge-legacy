@@ -342,6 +342,37 @@ export function maxCollectMultiplier(level: number): CollectMultiplier {
   return 1;
 }
 
+/**
+ * The lowest tier a collect at this multiplier is allowed to produce.
+ *
+ * A tier is worth exactly two of the tier below it, so a tier-N item costs
+ * 2^(N-1) energy to build by hand. Spending `multiplier` energy therefore has
+ * to return at least tier `1 + log2(multiplier)`: x2 must never hand back a
+ * tier 1, x4 must never hand back a tier 1 or a tier 2. Anything less and the
+ * multiplier is a worse deal than tapping normally, which is the one thing a
+ * convenience feature must never be.
+ */
+export function minOutputTier(multiplier: CollectMultiplier): number {
+  return 1 + Math.round(Math.log2(multiplier));
+}
+
+/** Tiers this chain actually has. Falls back to 9 for invented test families. */
+export function chainTierCount(typeId: string): number {
+  return CHAINS.find((c) => c.typeId === typeId)?.tiers.length ?? 9;
+}
+
+/**
+ * Whether a chain is long enough for a multiplier to be honoured.
+ *
+ * A one-tier chain - the Decagon - has nothing to hand back for two energy,
+ * so x2 cannot be offered on it at all. Without this the shift would push
+ * past the end of the chain, the cap would pull it back to tier 1, and the
+ * player would have paid double for the same item.
+ */
+export function multiplierFitsChain(typeId: string, multiplier: CollectMultiplier): boolean {
+  return chainTierCount(typeId) >= minOutputTier(multiplier);
+}
+
 export function collectDispenser(
   d: Dispenser,
   now: number = Date.now(),
@@ -352,8 +383,17 @@ export function collectDispenser(
   // A multiplier is a TIER SHIFT, not a separate roll: the same distribution,
   // moved up by log2(multiplier). It costs the charges it replaces, so the
   // reservoir empties at exactly the rate it always did.
-  const steps = Math.round(Math.log2(multiplier));
-  const spend = Math.min(d.charges, multiplier);
+  //
+  // DEGRADED to something this chain can honour, rather than trusted. The
+  // caller filters too, but the guarantee belongs here: this is the function
+  // that decides what comes out, and a rule enforced only at the call site is
+  // a rule the next call site will not know about.
+  let effective: CollectMultiplier = multiplier;
+  while (effective > 1 && !multiplierFitsChain(d.typeId, effective)) {
+    effective = (effective / 2) as CollectMultiplier;
+  }
+  const steps = Math.round(Math.log2(effective));
+  const spend = Math.min(d.charges, effective);
   const tierRoll = rollOutputTier(d.typeId, d.tier, roll) + steps;
   // The cap is the CHAIN'S OWN LENGTH, not a literal.
   //
@@ -366,8 +406,16 @@ export function collectDispenser(
   //
   // Falls back to 9 for a typeId with no chain so the pure-rules tests can
   // still drive this with invented families.
-  const chainCap = CHAINS.find((c) => c.typeId === d.typeId)?.tiers.length ?? 9;
-  const produced = { typeId: d.typeId, tier: Math.min(chainCap, tierRoll) };
+  const chainCap = chainTierCount(d.typeId);
+  // FLOORED as well as capped. The cap is what could break the guarantee: a
+  // roll pushed past the end of a chain used to be pulled back to whatever
+  // the chain's top was, which on a short chain is below what the player
+  // paid for. The floor makes "never worth less than you spent" true by
+  // construction rather than by the caller behaving.
+  const produced = {
+    typeId: d.typeId,
+    tier: Math.max(minOutputTier(effective), Math.min(chainCap, tierRoll))
+  };
   const wasFull = d.charges >= capacityForTier(d.typeId, d.tier);
   d.charges -= spend;
   if (wasFull || d.readyAt <= 0) d.readyAt = now + cooldownForTier(d.typeId, d.tier);

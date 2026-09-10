@@ -14,7 +14,9 @@ import {
   syncDispenser,
   outputTierDistribution,
   rollOutputTier,
-  maxCollectMultiplier
+  maxCollectMultiplier,
+  minOutputTier,
+  multiplierFitsChain
 } from './Dispensers';
 
 describe('reservoir capacity', () => {
@@ -242,6 +244,39 @@ describe('energy multiplier', () => {
     const d = makeDispenser('wood', 2, 0, 3);
     collectDispenser(d, 0, 0.99, 4);
     expect(d.charges).toBe(0);
+  });
+
+  it('never returns a tier worth less energy than the tap cost', () => {
+    // THE RULE, stated where it cannot drift: a tier-N item costs 2^(N-1)
+    // energy to build by hand, so spending 2 must return tier 2 or better and
+    // spending 4 must return tier 3 or better - at EVERY source tier and
+    // across the whole roll range, including the below-tier band that lets
+    // low tiers keep appearing.
+    for (const multiplier of [1, 2, 4] as const) {
+      for (let sourceTier = 1; sourceTier <= 5; sourceTier++) {
+        for (const roll of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1]) {
+          const d = makeDispenser('wood', sourceTier, 0, 30);
+          const out = collectDispenser(d, 0, roll, multiplier);
+          expect(out!.tier).toBeGreaterThanOrEqual(minOutputTier(multiplier));
+        }
+      }
+    }
+  });
+
+  it('will not apply a multiplier a chain is too short to pay back', () => {
+    // The Decagon's chain is ONE tier long. Shifting up two and then capping
+    // back to the chain's top handed out a tier 1 for four energy - the cap
+    // quietly undoing the shift that was paid for.
+    expect(multiplierFitsChain('decagon', 1)).toBe(true);
+    expect(multiplierFitsChain('decagon', 2)).toBe(false);
+    expect(multiplierFitsChain('wood', 4)).toBe(true);
+
+    const d = makeDispenser('decagon', 1, 0, 30);
+    const out = collectDispenser(d, 0, 0.99, 4);
+    expect(out!.tier).toBe(1);
+    // ...and it charges like the x1 it degraded to, rather than billing for
+    // four and delivering one.
+    expect(30 - d.charges).toBe(1);
   });
 
   it('gates the multiplier by level', () => {

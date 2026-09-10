@@ -181,6 +181,7 @@ import {
   MAX_DISPENSER_TIER,
   COLLECT_MULTIPLIERS,
   maxCollectMultiplier,
+  multiplierFitsChain,
   type CollectMultiplier
 } from '../dispensers/Dispensers';
 import type { DispenserState } from '../dispensers/Dispensers';
@@ -3245,6 +3246,9 @@ TAP THE EVENT CARD TO SPEND IT`
     const usable = COLLECT_MULTIPLIERS.filter(
       (m) => m <= ceiling && m <= view.spawner.charges
         && canSpendEnergy(this.energy, m * ENERGY_COST_PER_COLLECT)
+        // A chain too short to pay a multiplier back is not offered it, so
+        // the energy charged here always matches what the source returns.
+        && multiplierFitsChain(view.spawner.typeId, m)
     );
     const multiplier: CollectMultiplier = usable[usable.length - 1] ?? 1;
     const collectCost = multiplier * ENERGY_COST_PER_COLLECT;
