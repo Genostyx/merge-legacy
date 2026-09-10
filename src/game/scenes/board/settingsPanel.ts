@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
+import { playerLevel, syncOrderSlots, xpForLevel } from '../../levels/Orders';
 import {
   AUTO_MERGE_KEY,
   SAVE_KEY,
@@ -195,6 +196,65 @@ export function buildDevResetButton(scene: BoardScene): void {
   text.on('pointerover', () => text.setAlpha(1));
   text.on('pointerout', () => text.setAlpha(0.5));
   text.on('pointerdown', () => confirmReset(scene));
+}
+
+/**
+ * A DEV LEVEL STEPPER, in the same corner strip as `reset`.
+ *
+ * The console has `__dbg.level(n)`, which is no use on a phone - and a phone
+ * is where this game is actually played, so anything gated on level (the
+ * event's level-5 gate, order slots, shop rows) could only be tested by
+ * genuinely grinding there after every reset.
+ *
+ * Dev-only, and deliberately built like `reset`: absolute screen coordinates,
+ * its own tiny footprint, no other element's layout touching it, so the whole
+ * thing can be deleted in one line before release.
+ *
+ * It sets XP to the exact threshold for a level rather than adding some, so
+ * repeated taps cannot drift off the boundary. It does NOT hand out the level
+ * rewards for the levels it passes - that is a payout, and a tester jumping
+ * to level 20 wants the gate open, not twenty crates on the board.
+ */
+export function buildDevLevelStepper(scene: BoardScene): void {
+  const y = scene.scale.height - 8;
+  const style = {
+    resolution: textResolution,
+    fontFamily: Theme.fontMono,
+    fontSize: '10px',
+    color: hex(Theme.textOnDarkMuted)
+  };
+
+  const label = scene.add.text(30, y, '', style).setOrigin(0, 1).setAlpha(0.5);
+  const redraw = (): void => {
+    label.setText(`lv${playerLevel(scene.orderState)}`);
+  };
+
+  const step = (delta: number): void => {
+    const target = Math.max(1, playerLevel(scene.orderState) + delta);
+    scene.orderState.totalXp = xpForLevel(target);
+    // Order slots are earned by level, so they have to be re-derived or the
+    // bar keeps however many the old level had.
+    syncOrderSlots(scene.orderState, scene.dispenserCollectCount, scene.ownedDispenserTypeIds());
+    scene.updateLevelBadge();
+    scene.refreshOrderBar();
+    scene.refreshEventChip();
+    scene.saveState();
+    redraw();
+  };
+
+  const button = (x: number, text: string, onTap: () => void): void => {
+    const t = scene.add.text(x, y, text, style)
+      .setOrigin(0, 1).setAlpha(0.5).setInteractive({ useHandCursor: true });
+    // A generous hit box: these are 10px glyphs and the target is a thumb.
+    t.input!.hitArea = new Phaser.Geom.Rectangle(-8, -10, t.width + 16, t.height + 16);
+    t.on('pointerover', () => t.setAlpha(1));
+    t.on('pointerout', () => t.setAlpha(0.5));
+    t.on('pointerdown', onTap);
+  };
+
+  button(8, '-', () => step(-1));
+  button(58, '+', () => step(1));
+  redraw();
 }
 
 /** Wipes the save and starts over. Confirmed via confirmReset() before this runs. */

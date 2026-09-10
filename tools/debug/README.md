@@ -53,6 +53,8 @@ __dbg.watch()                 // start capturing; the LIST outlives reloads
 __dbg.errors()                // what it caught
 
 __dbg.level(5)                // jump to a level (reloads); no arg = read it
+                              // on a phone use the in-game `- lvN +` stepper
+                              // in the bottom-left dev strip instead
 __dbg.tokens()                // event token drop rate, measured not assumed
 __dbg.tokens(true)            // reset the count
 

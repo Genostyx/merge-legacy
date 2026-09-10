@@ -357,7 +357,8 @@ import {
   buildSettingsButton as buildSettingsButtonExt,
   confirmReset as confirmResetExt,
   resetGame as resetGameExt,
-  buildDevResetButton as buildDevResetButtonExt
+  buildDevResetButton as buildDevResetButtonExt,
+  buildDevLevelStepper as buildDevLevelStepperExt
 } from './board/settingsPanel';
 
 import {
@@ -879,6 +880,7 @@ export class BoardScene extends Phaser.Scene {
     // deleted in one line without touching any other header element's math.
     this.buildSettingsButton();
     this.buildDevResetButton();
+    this.buildDevLevelStepper();
     this.buildAutoMergeButton();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
@@ -3382,6 +3384,7 @@ TAP THE EVENT CARD TO SPEND IT`
   confirmReset(): void { confirmResetExt(this); }
   resetGame(): void { resetGameExt(this); }
   buildDevResetButton(): void { buildDevResetButtonExt(this); }
+  buildDevLevelStepper(): void { buildDevLevelStepperExt(this); }
 
   // Forwards to board/orderBar.ts, so the scene's own call sites
   // still read as methods.
