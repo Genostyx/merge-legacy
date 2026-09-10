@@ -362,12 +362,12 @@ function buildChrome(
       floatPayout(scene, layer, root.x + cardW / 2, ordersY + 8, result.points);
       const finished = payEventPoints(scene, result.points);
       opts.onSave();
-      refresh();
+      requeue(cards[slot]);
       // Only ever fires once - `addEventProgress` reports completion on the
       // call that crosses the goal and never again.
       if (finished) track.celebrate();
     });
-    return { slot, root, bg, icon, pay, lit: false, showing: 0 };
+    return { slot, root, bg, icon, pay, lit: false, showing: 0, leaving: false };
   });
 
   // ONLY the clock. Called every second, so it must not repaint the cards -
@@ -382,6 +382,51 @@ function buildChrome(
   const cardScale = new Map<object, number>();
   const present0 = (card: object): number => cardScale.get(card) ?? 1;
 
+  /**
+   * THE QUEUE, left to right. `deck` is the display order; a card's own
+   * `slot` stays with its data for ever, so shuffling what the player sees
+   * can never shuffle which order is being filled.
+   */
+  const deck = [...cards];
+
+  /**
+   * A filled card LEAVES, the queue closes up behind it, and the order that
+   * replaced it walks in from the right.
+   *
+   * The gap is the whole point. Repainting the card in place said "this slot
+   * now wants something else"; a card that departs and a row that closes ranks
+   * says "you finished that one" - which is the thing that actually happened.
+   */
+  const requeue = (card: (typeof cards)[number]): void => {
+    card.leaving = true;
+    scene.tweens.killTweensOf(card.root);
+    scene.tweens.add({
+      targets: card.root, y: ordersY - 14, alpha: 0, duration: 160, ease: 'Quad.In',
+      onComplete: () => {
+        deck.splice(deck.indexOf(card), 1);
+        deck.push(card);
+        card.leaving = false;
+        card.showing = 0;
+        // Enters from beyond the right edge, so the new order arrives from
+        // outside the row rather than fading in on top of it.
+        card.root.setY(ordersY).setAlpha(0).setX(slotX(deck.length - 1) + cardW * 0.8);
+        refresh();
+        scene.tweens.add({ targets: card.root, alpha: 1, duration: 200, ease: 'Quad.Out' });
+      }
+    });
+    // The cards to its right start closing up immediately rather than waiting
+    // for it to finish leaving - two motions that overlap read as one move.
+    deck.filter((c) => c !== card).forEach((c, position) => slideTo(c, slotX(position)));
+  };
+
+  const slideTo = (card: (typeof cards)[number], targetX: number): void => {
+    if (card.leaving || Math.abs(card.root.x - targetX) <= 0.5) return;
+    scene.tweens.killTweensOf(card.root);
+    scene.tweens.add({
+      targets: card.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out'
+    });
+  };
+
   const refresh = (): void => {
     const now = Date.now();
     clock.setText(formatEventCountdown(eventMsRemaining(event, now)));
@@ -394,25 +439,10 @@ function buildChrome(
 
     track.refresh();
 
-    // Order cards. FILLABLE ONES SORT TO THE FRONT, the same rule the main
-    // board's bar uses for completable orders: the cards you can act on are
-    // the ones nearest to hand, and moving them there is what makes a full
-    // slot feel like it did something.
+    // Order cards, laid out in queue order rather than by slot.
     const asking = visibleEventOrders(scene.eventBoard, state.grid);
     const fillable = cards.map((c) => !!findEventItem(state.grid, asking[c.slot]));
-    const order = [
-      ...cards.filter((c) => fillable[c.slot]),
-      ...cards.filter((c) => !fillable[c.slot])
-    ];
-    order.forEach((card, position) => {
-      const targetX = slotX(position);
-      if (Math.abs(card.root.x - targetX) > 0.5) {
-        scene.tweens.killTweensOf(card.root);
-        scene.tweens.add({
-          targets: card.root, x: targetX, duration: ORDER_REORDER_MS, ease: 'Quad.Out'
-        });
-      }
-    });
+    deck.forEach((card, position) => slideTo(card, slotX(position)));
 
     cards.forEach((card) => {
       const slot = card.slot;
