@@ -541,11 +541,14 @@ function buildTrack(
   const width = W - left * 2;
   layer.add(gfx);
 
-  const label = scene.add.text(W / 2, barY + 10, '', {
+  // The score carries more weight than a caption because it IS the event -
+  // everything else on this strip is a picture of a prize or a line.
+  const label = scene.add.text(W / 2, barY + 9, '', {
     resolution: textResolution,
-    fontFamily: Theme.fontNumeric, fontSize: '10px', fontStyle: 'bold',
+    fontFamily: Theme.fontNumeric, fontSize: '14px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
   }).setOrigin(0.5, 0);
+  label.setStroke(hex(Theme.bg), 3);
   layer.add(label);
 
   const prizes = event.milestones.map((milestone, index) => {
