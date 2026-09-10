@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
-import { materialLighting, type MaterialLighting } from '../ui/Theme';
+import { materialLighting, toneAt, type MaterialLighting } from '../ui/Theme';
 
 /**
  * The event token's own colour. Not borrowed from any family, and not one of
@@ -41,6 +41,24 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
   g.fillPath();
   g.fillStyle(p.base, 1);
   g.fillCircle(r * 0.06, r * 0.06, r * 0.8);
+
+  // THE SHEEN: a graded falloff across the face, not a flat fill under the
+  // device.
+  //
+  // Phaser's gradient fill only applies to rectangles and triangles, so a
+  // disc has to be built as rings - shrinking ellipses drawn toward the light
+  // and stepped along the material's own ramp. Enough of them that the bands
+  // stop being countable, and each is soft enough to blend into the last.
+  const SHEEN = 7;
+  for (let i = 1; i <= SHEEN; i++) {
+    const t = i / SHEEN;
+    const rad = r * 0.8 * (1 - t * 0.7);
+    // Drifts up and left as it tightens, so the brightest part of the face
+    // sits where the light is rather than in the middle of the coin.
+    const drift = -r * 0.16 * t;
+    g.fillStyle(toneAt(p, 0.5 + t * 0.34), 0.3);
+    g.fillEllipse(drift + r * 0.06, drift + r * 0.06, rad * 2, rad * 2);
+  }
 
   // Milled edge - short ticks around the rim. Cheap, and it is what stops the
   // shape reading as a plain dot at cell size.
