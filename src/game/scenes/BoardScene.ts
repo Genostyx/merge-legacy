@@ -13,13 +13,14 @@ import {
   activeEvent, addEventProgress, createDefaultTimedEventState, eventProgress
 } from '../events/TimedEvents';
 import type { EventMilestone } from '../events/TimedEvents';
+import { openEventPanel as openEventPanelExt } from './board/eventPanel';
 import {
   buildEventChip as buildEventChipExt,
   openEventTrack as openEventTrackExt,
   refreshEventChip as refreshEventChipExt
 } from './board/eventChip';
 import type { TimedEventState } from '../events/TimedEvents';
-import { createDefaultEventBoardState } from '../events/EventBoard';
+import { addEventEnergy, createDefaultEventBoardState } from '../events/EventBoard';
 import type { EventBoardState } from '../events/EventBoard';
 import { CRUCIBLE_METER_MAX, acceptsItem as crucibleAccepts, feedCrucible, rollCruciblePrize } from '../facility/Crucible';
 import { SHREDDER_METER_MAX, feedShredder, rollShredderPrize, shredderAccepts } from '../facility/Shredder';
@@ -2952,10 +2953,14 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // nothing, which is the honest outcome rather than crediting a closed
     // event.
     if (event) {
-      addEventProgress(this.timedEvents, event, 1, Date.now());
+      // A token is ENERGY, not score. Points come only from filling event
+      // orders - that is what makes the main board pay for the event board
+      // instead of being a second scoreboard beside it.
+      addEventEnergy(this.eventBoard, 1);
       this.refreshEventChip();
       this.refreshActionTray(
-        `${event.title.toUpperCase()}  ·  ${eventProgress(this.timedEvents, event)}/${event.goal}`
+        `${event.title.toUpperCase()}  ·  ${this.eventBoard.energy} ENERGY
+TAP THE EVENT CARD TO SPEND IT`
       );
     }
     this.saveState();
@@ -3444,8 +3449,13 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     this.refreshCollectMultiplier(); updateLevelBadgeExt(this); }
   buildShopIconButton(cx: number, cy: number, onTap: () => void): void { buildShopIconButtonExt(this, cx, cy, onTap); }
   buildEventChip(): void { buildEventChipExt(this); }
+  openEventPanel(): void { openEventPanelExt(this); }
   refreshEventChip(now = Date.now()): void { refreshEventChipExt(this, now); }
-  openEventTrack(): void { openEventTrackExt(this); }
+  openEventTrack(overPanel = false): void { openEventTrackExt(this, overPanel); }
+  /** Set by the event panel so a stacked track can refresh it on close. */
+  eventTrackClosed: (() => void) | null = null;
+  /** True while the track is stacked over the event board, which is inert then. */
+  eventTrackOpen = false;
 
   /** Pays one milestone. The claim itself is already recorded by the track. */
   payEventMilestone(milestone: EventMilestone): void {

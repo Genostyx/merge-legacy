@@ -61,15 +61,23 @@ export const EVENTS: readonly TimedEventDef[] = [
     // it, short enough that the track still reads as something to finish.
     startsAt: Date.UTC(2026, 8, 10),
     endsAt: Date.UTC(2026, 8, 13),
-    goal: 100,
-    // Four rungs, front-loaded. The first lands inside a single session, so a
-    // player learns what tokens are for before deciding whether to chase the
-    // rest; the last is the only one that needs the full window.
+    // 140 points. Points equal the TIER-1 EQUIVALENTS a player hands in -
+    // the payout doubles per tier exactly as the merge cost does - so this
+    // number is really "how much raw material clears the track". Three days
+    // of ordinary main-board play buys roughly 70 taps of event energy, the
+    // opening crust is worth about 60 more once cleared, and the last rung
+    // sits just under that total: reachable without playing unusually hard,
+    // and not before the third day.
+    goal: 140,
+    // Five rungs, front-loaded. The first lands inside a single session, so a
+    // player learns what the board is for before deciding whether to chase
+    // the rest; only the last needs the full window.
     milestones: [
       { at: 15, kind: 'crate', tier: 'bronze' },
-      { at: 35, kind: 'gems', amount: 15 },
+      { at: 35, kind: 'gems', amount: 10 },
       { at: 65, kind: 'crate', tier: 'silver' },
-      { at: 100, kind: 'crate', tier: 'gold' }
+      { at: 100, kind: 'gems', amount: 20 },
+      { at: 140, kind: 'crate', tier: 'gold' }
     ]
   }
 ];

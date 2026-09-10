@@ -132,7 +132,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     const { slot, moved, describe, openEvent } = scene.orderDrag;
     scene.orderDrag = { active: false, slot: -1, startX: 0, startScroll: 0, moved: 0, describe: null };
     if (moved > 6) return;
-    if (openEvent) { scene.openEventTrack(); return; }
+    if (openEvent) { scene.openEventPanel(); return; }
     // Tapping the ITEM on a card asks what it is; tapping the card asks to
     // deliver it. Same description the board gives for the same item, so
     // the card is a place to learn the ladder rather than only to read a

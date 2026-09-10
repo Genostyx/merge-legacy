@@ -114,19 +114,29 @@ function formatRemaining(ms: number): string {
  * A rung reached inside the window stays claimable after it shuts. That is
  * decided in TimedEvents; this only draws it.
  */
-export function openEventTrack(scene: BoardScene): void {
-  if (scene.modalOpen || scene.inputLocked) return;
+export function openEventTrack(scene: BoardScene, overPanel = false): void {
+  // `overPanel` is how the event board opens this on top of itself. The track
+  // is reachable from two places and the modal flag is owned by whichever one
+  // is underneath, so a stacked open must not claim it - or closing the track
+  // would leave the board beneath it inert.
+  if ((scene.modalOpen && !overPanel) || scene.inputLocked) return;
   const event = activeEvent(Date.now());
   if (!event) return;
-  scene.modalOpen = true;
+  if (!overPanel) scene.modalOpen = true;
+  else scene.eventTrackOpen = true;
 
-  const overlay = scene.add.container(0, 0).setDepth(3020);
-  scene.eventOverlay = overlay;
+  const overlay = scene.add.container(0, 0).setDepth(overPanel ? 3060 : 3020);
+  if (!overPanel) scene.eventOverlay = overlay;
   const close = (): void => {
-    scene.eventOverlay = null;
-    scene.modalOpen = false;
+    if (!overPanel) {
+      scene.eventOverlay = null;
+      scene.modalOpen = false;
+    } else {
+      scene.eventTrackOpen = false;
+    }
     overlay.destroy(true);
     refreshEventChip(scene);
+    onTrackClosed?.();
   };
 
   const shade = scene.add.rectangle(
@@ -176,6 +186,7 @@ export function openEventTrack(scene: BoardScene): void {
   xHit.on('pointerup', close);
   overlay.add([x, xHit]);
 
+  const onTrackClosed = overPanel ? scene.eventTrackClosed : null;
   event.milestones.forEach((milestone, index) => {
     const cy = top + headerH + index * rowH + rowH / 2;
     const reached = points >= milestone.at;

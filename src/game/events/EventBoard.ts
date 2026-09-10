@@ -104,6 +104,11 @@ export interface EventBoardState {
   /** False until the opening layout has been laid down once. */
   seeded: boolean;
   /**
+   * What each order slot is asking for, as a tier. Always as long as
+   * `EVENT_ORDER_BANDS`; see EventOrders.ts.
+   */
+  orders: number[];
+  /**
    * Overflow crates already paid. Points past the last rung keep paying, and
    * this is what stops a reload paying for the same points twice.
    */
@@ -111,7 +116,7 @@ export interface EventBoardState {
 }
 
 export function createDefaultEventBoardState(): EventBoardState {
-  return { energy: 0, grid: [], seeded: false, overflowPaid: 0 };
+  return { energy: 0, grid: [], seeded: false, orders: [], overflowPaid: 0 };
 }
 
 /**
@@ -130,6 +135,11 @@ export function normalizeEventBoardState(
   if (Number.isFinite(raw.energy)) state.energy = Math.max(0, Math.floor(raw.energy as number));
   if (Number.isFinite(raw.overflowPaid)) {
     state.overflowPaid = Math.max(0, Math.floor(raw.overflowPaid as number));
+  }
+  if (Array.isArray(raw.orders)) {
+    state.orders = raw.orders
+      .filter((tier): tier is number => Number.isFinite(tier))
+      .map((tier) => Math.min(EVENT_MAX_TIER, Math.max(1, Math.floor(tier))));
   }
   const grid = raw.grid;
   const rightShape = Array.isArray(grid)
