@@ -1,3 +1,4 @@
+import type { CrateTier } from '../rewards/Rewards';
 /**
  * TIMED EVENTS - the spine only.
  *
@@ -33,7 +34,17 @@ export interface TimedEventDef {
   endsAt: number;
   /** What finishing it takes. Meaning is the caller's; the spine only counts. */
   goal: number;
+  /**
+   * The reward rungs, in ascending order of `at`. Each is claimed on its own -
+   * a track of four small payouts keeps a player checking back, where one
+   * payout at the end only rewards finishing.
+   */
+  milestones: EventMilestone[];
 }
+
+export type EventMilestone =
+  | { at: number; kind: 'crate'; tier: CrateTier }
+  | { at: number; kind: 'gems'; amount: number };
 
 /**
  * The authored schedule. EMPTY ON PURPOSE - an event only exists once one is
@@ -41,10 +52,29 @@ export interface TimedEventDef {
  */
 export const EVENTS: readonly TimedEventDef[] = [];
 
+/**
+ * Tokens per source tap, and per order completed.
+ *
+ * Aimed at a typical player reaching the top rung inside the window without
+ * having to play unusually hard for it. At roughly 200 taps and 8 orders a day
+ * that is around 18 tokens a day, so 100 lands late on the third day - which
+ * is where a top rung should sit: reachable, but not before the event is over.
+ */
+export const EVENT_TOKENS_PER_TAP = 0.08;
+export const EVENT_TOKENS_PER_ORDER = 1;
+
 export interface TimedEventState {
   /** Progress by event id. Ids absent from EVENTS are pruned on normalize. */
   progress: Record<string, number>;
-  /** Ids whose reward has been taken, so it cannot be taken twice. */
+  /**
+   * Rungs already taken, as `<eventId>:<milestone index>`.
+   *
+   * Per RUNG rather than per event, because the track pays four times and a
+   * single flag could not tell which of them had been collected. Kept after
+   * the window shuts so a rung earned inside it can still be claimed - the
+   * player earned it, and losing it to the clock would be the version of this
+   * that people resent.
+   */
   claimed: string[];
 }
 
@@ -75,7 +105,8 @@ export function normalizeTimedEventState(
     }
   }
   if (Array.isArray(raw.claimed)) {
-    state.claimed = raw.claimed.filter((id): id is string => typeof id === 'string' && known.has(id));
+    state.claimed = raw.claimed.filter((key): key is string =>
+      typeof key === 'string' && known.has(key.split(':')[0]));
   }
   return state;
 }
@@ -120,19 +151,38 @@ export function isEventComplete(state: TimedEventState, event: TimedEventDef): b
   return eventProgress(state, event) >= event.goal;
 }
 
-export function isEventClaimed(state: TimedEventState, event: TimedEventDef): boolean {
-  return state.claimed.includes(event.id);
+/** Every rung the player has reached and not yet taken, lowest first. */
+export function unclaimedMilestones(
+  state: TimedEventState, event: TimedEventDef
+): { index: number; milestone: EventMilestone }[] {
+  const points = eventProgress(state, event);
+  return event.milestones
+    .map((milestone, index) => ({ index, milestone }))
+    .filter(({ index, milestone }) =>
+      points >= milestone.at && !isMilestoneClaimed(state, event, index));
+}
+
+export function isMilestoneClaimed(
+  state: TimedEventState, event: TimedEventDef, index: number
+): boolean {
+  return state.claimed.includes(`${event.id}:${index}`);
 }
 
 /**
- * Marks the reward taken. Refuses unless the event is complete, and refuses a
- * second time - the caller pays out only when this returns true.
+ * Marks one rung taken. Refuses a rung not yet reached, and refuses a second
+ * take - the caller pays out only when this returns true.
  *
- * Claiming is deliberately allowed AFTER the window closes: a player who
- * finished an event and shut the game before collecting should not lose it.
+ * Deliberately does NOT check the window. A rung reached inside it can still
+ * be collected afterwards: the player earned it, and losing it to the clock is
+ * the version of this that people resent.
  */
-export function claimEvent(state: TimedEventState, event: TimedEventDef): boolean {
-  if (!isEventComplete(state, event) || isEventClaimed(state, event)) return false;
-  state.claimed.push(event.id);
+export function claimMilestone(
+  state: TimedEventState, event: TimedEventDef, index: number
+): boolean {
+  const milestone = event.milestones[index];
+  if (!milestone) return false;
+  if (eventProgress(state, event) < milestone.at) return false;
+  if (isMilestoneClaimed(state, event, index)) return false;
+  state.claimed.push(`${event.id}:${index}`);
   return true;
 }

@@ -3,18 +3,24 @@ import {
   EVENTS,
   activeEvent,
   addEventProgress,
-  claimEvent,
+  claimMilestone,
   createDefaultTimedEventState,
   eventMsRemaining,
-  isEventClaimed,
+  isMilestoneClaimed,
   isEventComplete,
   normalizeTimedEventState,
+  unclaimedMilestones,
   type TimedEventDef
 } from './TimedEvents';
 
 const HOUR = 3_600_000;
 const evt = (over: Partial<TimedEventDef> = {}): TimedEventDef => ({
-  id: 'test-event', title: 'Test', startsAt: 1000, endsAt: 1000 + HOUR, goal: 3, ...over
+  id: 'test-event', title: 'Test', startsAt: 1000, endsAt: 1000 + HOUR, goal: 3,
+  milestones: [
+    { at: 1, kind: 'gems', amount: 5 },
+    { at: 3, kind: 'crate', tier: 'bronze' }
+  ],
+  ...over
 });
 
 describe('timed events', () => {
@@ -50,32 +56,43 @@ describe('timed events', () => {
     expect(state.progress[e.id]).toBe(e.goal);
   });
 
-  it('pays a finished event even after its window shuts, but only once', () => {
+  it('pays a rung after the window shuts, but only once', () => {
+    // A rung reached inside the window survives it. The player earned it, and
+    // losing it to the clock is the version of this that people resent.
     const e = evt();
     const state = createDefaultTimedEventState();
     addEventProgress(state, e, 3, 2000);
-    expect(isEventComplete(state, e)).toBe(true);
-    expect(claimEvent(state, e)).toBe(true);
-    expect(claimEvent(state, e)).toBe(false);
-    expect(isEventClaimed(state, e)).toBe(true);
+    expect(claimMilestone(state, e, 1)).toBe(true);
+    expect(claimMilestone(state, e, 1)).toBe(false);
+    expect(isMilestoneClaimed(state, e, 1)).toBe(true);
   });
 
-  it('will not pay an unfinished event', () => {
+  it('will not pay a rung that has not been reached', () => {
     const e = evt();
     const state = createDefaultTimedEventState();
     addEventProgress(state, e, 1, 2000);
-    expect(claimEvent(state, e)).toBe(false);
+    expect(claimMilestone(state, e, 0)).toBe(true);   // at 1, reached
+    expect(claimMilestone(state, e, 1)).toBe(false);  // at 3, not reached
+  });
+
+  it('lists every reached rung that is still owed', () => {
+    const e = evt();
+    const state = createDefaultTimedEventState();
+    addEventProgress(state, e, 3, 2000);
+    expect(unclaimedMilestones(state, e).map((m) => m.index)).toEqual([0, 1]);
+    claimMilestone(state, e, 0);
+    expect(unclaimedMilestones(state, e).map((m) => m.index)).toEqual([1]);
   });
 
   it('prunes ids that are no longer authored', () => {
     // Otherwise a finished event's progress rides in every save forever, and
     // an id reused later inherits it.
     const state = normalizeTimedEventState(
-      { progress: { 'test-event': 2, 'old-event': 9 }, claimed: ['old-event'] },
+      { progress: { 'test-event': 2, 'old-event': 9 }, claimed: ['old-event:0', 'test-event:1'] },
       [evt()]
     );
     expect(state.progress).toEqual({ 'test-event': 2 });
-    expect(state.claimed).toEqual([]);
+    expect(state.claimed).toEqual(['test-event:1']);
   });
 
   it('survives junk in a save', () => {
