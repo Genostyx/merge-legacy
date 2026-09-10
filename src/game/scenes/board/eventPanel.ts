@@ -19,7 +19,7 @@ import {
   visibleEventOrders
 } from '../../events/EventOrders';
 import {
-  activeEvent, addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
+  addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
   formatEventCountdown, isMilestoneClaimed
 } from '../../events/TimedEvents';
 import type { TimedEventDef } from '../../events/TimedEvents';
@@ -71,7 +71,7 @@ const keyOf = (pos: GridPosition): string => `${pos.col},${pos.row}`;
 
 export function openEventPanel(scene: BoardScene): void {
   if (scene.modalOpen || scene.inputLocked) return;
-  const event = activeEvent(Date.now());
+  const event = scene.currentEvent();
   if (!event) return;
   scene.modalOpen = true;
 
@@ -260,7 +260,7 @@ export function openEventPanel(scene: BoardScene): void {
 
 function buildChrome(
   scene: BoardScene,
-  event: ReturnType<typeof activeEvent> & object,
+  event: TimedEventDef,
   layer: Phaser.GameObjects.Container,
   state: PanelState,
   opts: {
@@ -608,7 +608,7 @@ function buildTrack(
  * because past the last rung there is no track left to claim from.
  */
 function payEventPoints(scene: BoardScene, points: number): boolean {
-  const event = activeEvent(Date.now());
+  const event = scene.currentEvent();
   if (!event) return false;
   const finished = addEventProgress(scene.timedEvents, event, points, Date.now());
   const total = eventProgress(scene.timedEvents, event);

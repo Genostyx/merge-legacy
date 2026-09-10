@@ -35,6 +35,16 @@ export interface TimedEventDef {
   /** What finishing it takes. Meaning is the caller's; the spine only counts. */
   goal: number;
   /**
+   * The player level this opens at.
+   *
+   * A gate rather than a difficulty knob. The early game hands out energy
+   * generously - the tutorial's free taps, the first level rewards, an
+   * un-upgraded board that costs little to work - so a brand-new player would
+   * clear an event faster than a settled one, which inverts the whole point
+   * of a reward track. Absent means level 1.
+   */
+  minLevel?: number;
+  /**
    * The reward rungs, in ascending order of `at`. Each is claimed on its own -
    * a track of four small payouts keeps a player checking back, where one
    * payout at the end only rewards finishing.
@@ -61,6 +71,7 @@ export const EVENTS: readonly TimedEventDef[] = [
     // it, short enough that the track still reads as something to finish.
     startsAt: Date.UTC(2026, 8, 10),
     endsAt: Date.UTC(2026, 8, 13),
+    minLevel: 5,
     // 140 points, against a LINEAR payout of two a tier.
     //
     // Three days of ordinary main-board play buys roughly 70 taps of event
@@ -151,6 +162,22 @@ export function activeEvent(
   events: readonly TimedEventDef[] = EVENTS
 ): TimedEventDef | null {
   return events.find((event) => now >= event.startsAt && now < event.endsAt) ?? null;
+}
+
+/**
+ * The event this PLAYER can see: open by the clock, and unlocked by level.
+ *
+ * Everything on the scene side goes through here rather than `activeEvent`,
+ * so the gate cannot be enforced in one place and forgotten in another - a
+ * chip that appeared for a level-2 player, or tokens that dropped for one,
+ * would each be their own bug.
+ */
+export function activeEventFor(
+  now: number, level: number, events: readonly TimedEventDef[] = EVENTS
+): TimedEventDef | null {
+  const event = activeEvent(now, events);
+  if (!event) return null;
+  return level >= (event.minLevel ?? 1) ? event : null;
 }
 
 /** Milliseconds until the event closes. 0 once it has. */

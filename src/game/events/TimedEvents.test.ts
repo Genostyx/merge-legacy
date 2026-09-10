@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EVENTS,
   activeEvent,
+  activeEventFor,
   addEventProgress,
   claimMilestone,
   createDefaultTimedEventState,
@@ -63,6 +64,20 @@ describe('timed events', () => {
     expect(activeEvent(1000 + HOUR - 1, list)).toBe(e);
     expect(activeEvent(1000 + HOUR, list)).toBeNull();
     expect(eventMsRemaining(e, 1000 + HOUR + 5)).toBe(0);
+  });
+
+  it('stays shut until the player is high enough level', () => {
+    // The early game hands out energy generously, so a brand-new player would
+    // clear an event faster than a settled one - which inverts the point of a
+    // reward track.
+    const e = evt({ minLevel: 5 });
+    const list = [e];
+    expect(activeEventFor(2000, 4, list)).toBeNull();
+    expect(activeEventFor(2000, 5, list)).toBe(e);
+    // The clock still has the final say.
+    expect(activeEventFor(999, 99, list)).toBeNull();
+    // An event without a gate opens for everyone.
+    expect(activeEventFor(2000, 1, [evt()])).not.toBeNull();
   });
 
   it('refuses progress outside the window', () => {

@@ -10,7 +10,7 @@ import { FacilityView } from '../objects/FacilityView';
 import { EventTokenView } from '../objects/EventTokenView';
 import {
   EVENT_TOKENS_PER_ORDER, EVENT_TOKENS_PER_TAP,
-  activeEvent, addEventProgress, createDefaultTimedEventState, eventProgress
+  activeEventFor, addEventProgress, createDefaultTimedEventState
 } from '../events/TimedEvents';
 import type { EventMilestone } from '../events/TimedEvents';
 import { openEventPanel as openEventPanelExt } from './board/eventPanel';
@@ -19,7 +19,7 @@ import {
   openEventTrack as openEventTrackExt,
   refreshEventChip as refreshEventChipExt
 } from './board/eventChip';
-import type { TimedEventState } from '../events/TimedEvents';
+import type { TimedEventDef, TimedEventState } from '../events/TimedEvents';
 import { addEventEnergy, createDefaultEventBoardState } from '../events/EventBoard';
 import type { EventBoardState } from '../events/EventBoard';
 import { CRUCIBLE_METER_MAX, acceptsItem as crucibleAccepts, feedCrucible, rollCruciblePrize } from '../facility/Crucible';
@@ -2927,7 +2927,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
    * plus a roll for the remainder - an order completion is worth a whole one.
    */
   maybeDropEventToken(chance: number): void {
-    const event = activeEvent(Date.now());
+    const event = this.currentEvent();
     if (!event) return;
     let owed = Math.floor(chance);
     if (Math.random() < chance - owed) owed++;
@@ -2943,7 +2943,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
 
   /** Collects a token into the open event's meter. */
   collectEventToken(view: EventTokenView): void {
-    const event = activeEvent(Date.now());
+    const event = this.currentEvent();
     const key = this.keyOf(view.gridPos);
     this.grid.set(view.gridPos, null);
     this.views.delete(key);
@@ -2981,7 +2981,7 @@ TAP THE EVENT CARD TO SPEND IT`
    * cleared, so it cannot pay twice.
    */
   settleExpiredEventBoard(): void {
-    if (activeEvent(Date.now())) return;
+    if (this.currentEvent()) return;
     const board = this.eventBoard;
     if (!board.seeded && board.energy <= 0 && board.overflowPaid === 0) return;
     if (board.energy > 0) {
@@ -3000,7 +3000,7 @@ TAP THE EVENT CARD TO SPEND IT`
    * the exact failure the Decagon's temporary family had to avoid.
    */
   sweepExpiredEventTokens(): void {
-    if (activeEvent(Date.now())) return;
+    if (this.currentEvent()) return;
     for (const [key, view] of [...this.views.entries()]) {
       if (!(view instanceof EventTokenView)) continue;
       this.grid.set(view.gridPos, null);
@@ -3452,6 +3452,14 @@ TAP THE EVENT CARD TO SPEND IT`
   buildShopIconButton(cx: number, cy: number, onTap: () => void): void { buildShopIconButtonExt(this, cx, cy, onTap); }
   buildEventChip(): void { buildEventChipExt(this); }
   openEventPanel(): void { openEventPanelExt(this); }
+
+  /**
+   * The event this player can see right now, or null. Gated by the clock AND
+   * by level - see `activeEventFor`.
+   */
+  currentEvent(): TimedEventDef | null {
+    return activeEventFor(Date.now(), playerLevel(this.orderState));
+  }
   refreshEventChip(now = Date.now()): void { refreshEventChipExt(this, now); }
   openEventTrack(overPanel = false): void { openEventTrackExt(this, overPanel); }
   /** Set by the event panel so a stacked track can refresh it on close. */

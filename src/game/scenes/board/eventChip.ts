@@ -6,7 +6,7 @@ import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView'
 import { drawCrate } from '../../objects/TierIcons';
 import { ORDER_CARD_H } from './config';
 import {
-  activeEvent, claimMilestone, eventMsRemaining, eventProgress,
+  claimMilestone, eventMsRemaining, eventProgress,
   formatEventCountdown, isMilestoneClaimed, unclaimedMilestones
 } from '../../events/TimedEvents';
 import type { TimedEventDef } from '../../events/TimedEvents';
@@ -105,7 +105,7 @@ export function buildEventChip(scene: BoardScene): void {
 export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
   const chip = scene.eventChip;
   if (!chip) return;
-  const event = activeEvent(now);
+  const event = scene.currentEvent();
   chip.setVisible(!!event);
   if (!event) return;
 
@@ -190,7 +190,7 @@ export function openEventTrack(scene: BoardScene, overPanel = false): void {
   // is underneath, so a stacked open must not claim it - or closing the track
   // would leave the board beneath it inert.
   if ((scene.modalOpen && !overPanel) || scene.inputLocked) return;
-  const event = activeEvent(Date.now());
+  const event = scene.currentEvent();
   if (!event) return;
   if (!overPanel) scene.modalOpen = true;
   else scene.eventTrackOpen = true;
