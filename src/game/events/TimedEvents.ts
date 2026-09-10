@@ -54,8 +54,8 @@ export type EventMilestone =
  */
 export const EVENTS: readonly TimedEventDef[] = [
   {
-    id: 'first-haul',
-    title: 'First Haul',
+    id: 'verdigris-1',
+    title: 'Verdigris',
     // Absolute, and deliberately short. A three-day window is the length the
     // genre has settled on: long enough that one missed evening does not lose
     // it, short enough that the track still reads as something to finish.

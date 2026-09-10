@@ -40,7 +40,7 @@ describe('event board', () => {
     for (const [col, row, tier] of EVENT_CRUST_LAYOUT) {
       const cell = grid.get({ col, row });
       // Crust IS `locked-item` - the main board's rule, not a second one.
-      expect(cell).toEqual({ kind: 'locked-item', typeId: 'relic', tier });
+      expect(cell).toEqual({ kind: 'locked-item', typeId: 'verdigris', tier });
     }
     // Row 0 is the open sandbox: nothing crusted anywhere along it.
     for (let col = 0; col < EVENT_BOARD_COLS; col++) {

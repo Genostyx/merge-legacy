@@ -35,24 +35,37 @@ export const EVENT_BOARD_ROWS = 7;
 export const EVENT_SPAWN_COST = 1;
 
 /**
- * The event's own eight-tier chain, kept OUT of `CHAINS` so it cannot leak
- * into the shop, the collection or order generation - all of which outlive
- * the window that this chain is supposed to die with.
+ * THE EVENT CHAIN - oxidised copper, raw ore up to a patinated knot.
  *
- * The ramp runs from the token's own teal, so the chain reads as belonging to
- * the event rather than to any main-board family.
+ * Kept OUT of `CHAINS` so it cannot leak into the shop, the collection or
+ * order generation, all of which outlive the window this chain dies with.
+ *
+ * Copper because none of the standing families own it - Wood runs amber,
+ * Stone warm neutral, Glass pale prismatic, Water cyan - and because it is
+ * the one common material whose refined state is a COLOUR CHANGE rather than
+ * a polish. That gives the ramp somewhere to go that no other family's does:
+ * it gets greener as it gets better, which is the opposite of every other
+ * chain here, and reads as foreign at a glance.
+ *
+ * It also lands on the token's own teal around tier 6, so the material and
+ * the currency of the event are visibly the same substance.
+ *
+ * The tiers walk the shared eight-stage shape grammar (see
+ * docs/FAMILIES_ROADMAP.md) - rough chunk, shard, cut slab, squared solid,
+ * faceted block, spire, interlocking lattice, smooth knot. The event does not
+ * get its own grammar; only its material differs.
  */
 export const EVENT_CHAIN: ChainDef = {
-  typeId: 'relic',
+  typeId: 'verdigris',
   tiers: [
-    { tier: 1, key: 'relic-shard', label: 'Shard', color: 0x1d4d48 },
-    { tier: 2, key: 'relic-fragment', label: 'Fragment', color: 0x22665e },
-    { tier: 3, key: 'relic-plate', label: 'Plate', color: 0x268073 },
-    { tier: 4, key: 'relic-seal', label: 'Seal', color: 0x2a9a88 },
-    { tier: 5, key: 'relic-medallion', label: 'Medallion', color: 0x2fb59a },
-    { tier: 6, key: 'relic-crown', label: 'Crown', color: 0x4fc9ae },
-    { tier: 7, key: 'relic-reliquary', label: 'Reliquary', color: 0x76dcc4 },
-    { tier: 8, key: 'relic-idol', label: 'Idol', color: 0xa2ecdb }
+    { tier: 1, key: 'copper-slag', label: 'Copper Slag', color: 0x2b3a33 },
+    { tier: 2, key: 'oxide-shard', label: 'Oxide Shard', color: 0x334a3f },
+    { tier: 3, key: 'cut-cathode', label: 'Cut Cathode', color: 0x2f5c4c },
+    { tier: 4, key: 'bronze-billet', label: 'Bronze Billet', color: 0x2a7060 },
+    { tier: 5, key: 'faceted-bronze', label: 'Faceted Bronze', color: 0x268a74 },
+    { tier: 6, key: 'patina-spire', label: 'Patina Spire', color: 0x2fa88c },
+    { tier: 7, key: 'verdigris-lattice', label: 'Verdigris Lattice', color: 0x58c7a8 },
+    { tier: 8, key: 'verdigris-knot', label: 'Verdigris Knot', color: 0x8fe3c6 }
   ]
 };
 
