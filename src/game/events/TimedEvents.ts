@@ -159,16 +159,17 @@ export function eventMsRemaining(event: TimedEventDef, now: number): number {
 }
 
 /**
- * The countdown, as a running clock.
+ * The countdown, as a running clock: `2D 4HR 31:18`.
  *
- * `2D 04:31:18` - days called out, then a plain 24-hour clock. The hours
- * field is DROPPED rather than shown as `00`, so the last hour of an event
- * reads `31:18` and the last day reads `2D 31:18`. A zero in the leading
- * position is the one digit that carries no information, and dropping it lets
- * the remaining figures grow as the window closes.
+ * Days and hours are LABELLED and the minutes:seconds are not, because those
+ * two are the part that moves - an unlabelled pair of digits ticking reads as
+ * a clock without being told. Labelling every field would make the whole
+ * thing read as a duration to parse rather than a timer to watch.
  *
- * Seconds are always shown. A clock that moves is the whole point: `2d 4h`
- * says nothing is happening and earns no second glance.
+ * A zero field is dropped rather than shown: no `0D`, no `0HR`. A leading
+ * zero is the one digit that carries no information, and dropping it lets the
+ * figures that remain grow as the window closes - the last hour of an event
+ * is simply `31:18`.
  */
 export function formatEventCountdown(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -178,10 +179,11 @@ export function formatEventCountdown(ms: number): string {
   const seconds = total % 60;
   const pad = (n: number): string => String(n).padStart(2, '0');
 
-  const clock = hours > 0
-    ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
-    : `${pad(minutes)}:${pad(seconds)}`;
-  return days > 0 ? `${days}D ${clock}` : clock;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}D`);
+  if (hours > 0) parts.push(`${hours}HR`);
+  parts.push(`${pad(minutes)}:${pad(seconds)}`);
+  return parts.join(' ');
 }
 
 /** Progress recorded so far, capped at the goal. */

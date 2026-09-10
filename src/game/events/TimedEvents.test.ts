@@ -48,11 +48,9 @@ describe('timed events', () => {
     expect(formatEventCountdown(0)).toBe('00:00');
     expect(formatEventCountdown(-5000)).toBe('00:00');
     expect(formatEventCountdown(9_000)).toBe('00:09');
-    expect(formatEventCountdown(HOUR + 61_000)).toBe('01:01:01');
-    // Days are called out; the clock beside them stays inside 24 hours.
-    expect(formatEventCountdown(HOUR * 52 + 90_000)).toBe('2D 04:01:30');
-    // The hours field is DROPPED at zero rather than shown as 00 - in the
-    // last hour of the event, and in the last hour of a whole day too.
+    expect(formatEventCountdown(HOUR * 52 + 90_000)).toBe('2D 4HR 01:30');
+    expect(formatEventCountdown(HOUR + 61_000)).toBe('1HR 01:01');
+    // Zero fields are DROPPED, never shown as 0D or 0HR.
     expect(formatEventCountdown(HOUR * 48 + 90_000)).toBe('2D 01:30');
     expect(formatEventCountdown(59 * 60_000 + 9_000)).toBe('59:09');
   });
