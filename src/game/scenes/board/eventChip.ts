@@ -11,8 +11,12 @@ import {
 } from '../../events/TimedEvents';
 import type { TimedEventDef } from '../../events/TimedEvents';
 
-/** Narrow, so it costs the orders beside it as little width as possible. */
-export const EVENT_CHIP_W = 46;
+/**
+ * As narrow as the countdown allows, since every pixel here is taken from
+ * the orders beside it. `2D 04:31:18` at 7px is what sets this: the dial and
+ * the score would both fit in less.
+ */
+export const EVENT_CHIP_W = 54;
 
 /**
  * THE EVENT CHIP - a card at the head of the order row.
@@ -50,7 +54,7 @@ export function buildEventChip(scene: BoardScene): void {
   }).setOrigin(0.5, 0);
   const clock = scene.add.text(EVENT_CHIP_W / 2, 47, '', {
     resolution: textResolution,
-    fontFamily: Theme.fontMono, fontSize: '8px', color: hex(Theme.textOnDarkMuted)
+    fontFamily: Theme.fontMono, fontSize: '7px', color: hex(Theme.textOnDarkMuted)
   }).setOrigin(0.5, 0);
 
   // A CHILD of the chip, so it travels with the strip's scroll instead of

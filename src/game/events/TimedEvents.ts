@@ -159,22 +159,29 @@ export function eventMsRemaining(event: TimedEventDef, now: number): number {
 }
 
 /**
- * The countdown, as a running clock: `HH:MM:SS`.
+ * The countdown, as a running clock.
  *
- * Days are rolled into the HOURS field rather than shown separately. A
- * "2d 4h" reading tells a player nothing is happening for hours and is worth
- * no second glance; a clock that moves every second says the window is
- * actually closing, which is the entire job of an event timer. Rolling the
- * days in also keeps it to eight characters, so the same string fits the chip
- * in the order row and the panel header without two formats to keep in step.
+ * `2D 04:31:18` - days called out, then a plain 24-hour clock. The hours
+ * field is DROPPED rather than shown as `00`, so the last hour of an event
+ * reads `31:18` and the last day reads `2D 31:18`. A zero in the leading
+ * position is the one digit that carries no information, and dropping it lets
+ * the remaining figures grow as the window closes.
+ *
+ * Seconds are always shown. A clock that moves is the whole point: `2d 4h`
+ * says nothing is happening and earns no second glance.
  */
 export function formatEventCountdown(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(total / 3600);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
   const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+  const clock = hours > 0
+    ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(minutes)}:${pad(seconds)}`;
+  return days > 0 ? `${days}D ${clock}` : clock;
 }
 
 /** Progress recorded so far, capped at the goal. */

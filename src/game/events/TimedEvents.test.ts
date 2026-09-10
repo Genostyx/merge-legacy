@@ -45,13 +45,16 @@ describe('timed events', () => {
   });
 
   it('counts down as a running clock, and stops at zero', () => {
-    expect(formatEventCountdown(0)).toBe('00:00:00');
-    expect(formatEventCountdown(-5000)).toBe('00:00:00');
-    expect(formatEventCountdown(9_000)).toBe('00:00:09');
+    expect(formatEventCountdown(0)).toBe('00:00');
+    expect(formatEventCountdown(-5000)).toBe('00:00');
+    expect(formatEventCountdown(9_000)).toBe('00:09');
     expect(formatEventCountdown(HOUR + 61_000)).toBe('01:01:01');
-    // Days roll into HOURS rather than getting a field of their own, so one
-    // eight-character string fits both the chip and the panel.
-    expect(formatEventCountdown(HOUR * 52 + 90_000)).toBe('52:01:30');
+    // Days are called out; the clock beside them stays inside 24 hours.
+    expect(formatEventCountdown(HOUR * 52 + 90_000)).toBe('2D 04:01:30');
+    // The hours field is DROPPED at zero rather than shown as 00 - in the
+    // last hour of the event, and in the last hour of a whole day too.
+    expect(formatEventCountdown(HOUR * 48 + 90_000)).toBe('2D 01:30');
+    expect(formatEventCountdown(59 * 60_000 + 9_000)).toBe('59:09');
   });
 
   it('opens on its start and is over AT its end, not after', () => {
