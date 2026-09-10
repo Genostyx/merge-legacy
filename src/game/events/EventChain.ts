@@ -26,29 +26,27 @@ import type { ChainDef } from '../types';
  * It also lands on the token's own teal around tier 6, so the material and
  * the currency of the event are visibly the same substance.
  *
- * The tiers walk the shared eight-stage shape grammar (see
- * docs/FAMILIES_ROADMAP.md) - rough chunk, shard, cut slab, squared solid,
- * faceted block, spire, interlocking lattice, smooth knot. The event does not
- * get its own grammar; only its material differs.
+ * THE RAMP RUNS THROUGH A HUE, not just through lightness. Raw copper is
+ * warm, oxidising copper goes brass then olive, and patina lands on the
+ * green-blue the event is named for. That is what copper actually does, and
+ * it means neighbouring tiers differ by more than a shade - which one hue
+ * across eight tiers could never manage, however carefully the lightness was
+ * stepped.
  *
- * SATURATION IS HELD ACROSS THE WHOLE RAMP; only lightness climbs. The first
- * version darkened AND desaturated the bottom four tiers to say "raw", and
- * they came out grey - the family only started reading as copper at tier 5,
- * so half the chain looked like it belonged to a different game. Rawness is
- * the shape's job here: a lump with gas pits already reads as unrefined
- * without the colour draining out of it.
+ * The SHAPES break the shared eight-stage grammar on purpose; see the
+ * Verdigris section of TierIcons.ts for why.
  */
 export const EVENT_CHAIN: ChainDef = {
   typeId: 'verdigris',
   tiers: [
-    { tier: 1, key: 'copper-slag', label: 'Copper Slag', color: 0x2c6155 },
-    { tier: 2, key: 'oxide-shard', label: 'Oxide Shard', color: 0x2a7062 },
-    { tier: 3, key: 'cut-cathode', label: 'Cut Cathode', color: 0x27806e },
-    { tier: 4, key: 'bronze-billet', label: 'Bronze Billet', color: 0x24947e },
-    { tier: 5, key: 'faceted-bronze', label: 'Faceted Bronze', color: 0x22a88e },
-    { tier: 6, key: 'patina-spire', label: 'Patina Spire', color: 0x2fbda2 },
-    { tier: 7, key: 'verdigris-lattice', label: 'Verdigris Lattice', color: 0x58d3b8 },
-    { tier: 8, key: 'verdigris-knot', label: 'Verdigris Knot', color: 0x8fe7cd }
+    { tier: 1, key: 'wire-offcut', label: 'Wire Offcut', color: 0x7a4326 },
+    { tier: 2, key: 'wire-coil', label: 'Wire Coil', color: 0xa15c2b },
+    { tier: 3, key: 'pipe-section', label: 'Pipe Section', color: 0xc08a3a },
+    { tier: 4, key: 'pipe-elbow', label: 'Pipe Elbow', color: 0x7e9440 },
+    { tier: 5, key: 'tee-fitting', label: 'Tee Fitting', color: 0x3f9c62 },
+    { tier: 6, key: 'manifold', label: 'Manifold', color: 0x22ac96 },
+    { tier: 7, key: 'condenser-coil', label: 'Condenser Coil', color: 0x35c8c4 },
+    { tier: 8, key: 'alembic', label: 'Alembic', color: 0x9ce8e6 }
   ]
 };
 

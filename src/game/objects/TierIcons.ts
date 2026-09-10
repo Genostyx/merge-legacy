@@ -140,13 +140,13 @@ function drawIconShape(g: Phaser.GameObjects.Graphics, typeId: string, tier: num
   } else if (typeId === EVENT_CHAIN.typeId) {
     switch (tier) {
       case 1: drawCopperSlag(g, s, palette); break;
-      case 2: drawOxideShard(g, s, palette); break;
-      case 3: drawCutCathode(g, s, palette); break;
-      case 4: drawBronzeBillet(g, s, palette); break;
-      case 5: drawFacetedBronze(g, s, palette); break;
-      case 6: drawPatinaSpire(g, s, palette); break;
-      case 7: drawVerdigrisLattice(g, s, palette); break;
-      default: drawVerdigrisKnot(g, s, palette); break;
+      case 2: drawWireCoil(g, s, palette); break;
+      case 3: drawPipeSection(g, s, palette); break;
+      case 4: drawPipeElbow(g, s, palette); break;
+      case 5: drawTeeFitting(g, s, palette); break;
+      case 6: drawManifold(g, s, palette); break;
+      case 7: drawCondenserCoil(g, s, palette); break;
+      default: drawAlembic(g, s, palette); break;
     }
   } else if (typeId === 'glass') {
     switch (tier) {
@@ -3768,65 +3768,28 @@ function drawWaterSourceIsometric(
 }
 
 /**
- * ---- Verdigris: copper's own sheet-and-casting language (the event chain) ----
- *
- * Wood ends in joinery, Glass in rings, Stone in lapidary cuts. Copper is
- * neither cut nor jointed: it is POURED, ROLLED, RIVETED and finally DRAWN
- * into bar. So this chain speaks in that vocabulary, and no tier here is one
- * of the shared helpers called with nudged arguments - which is the exact
- * failure the roadmap records for Wood 7/8, Stone 7-9 and Glass 8/9, where a
- * reused shape read as the same object twice in a row.
- *
- * It still walks the shared eight-stage grammar (rough chunk, shard, cut
- * slab, squared solid, faceted block, spire, interlocking form, smooth knot);
- * only the material's language differs, which is the rule the roadmap sets.
- *
- * The one signature no other family has is the PATINA: pitting low in the
- * chain, then a bloom of pale oxide creeping over the metal from tier 4 up.
- * The chain's colours already run greener as they refine, and the bloom is
- * what makes that read as corrosion rather than as a hue shift.
- */
-
-/**
  * TWO ACCENTS, MIXED INTO THE RAMP - never painted on top of it.
  *
- * The chain is teal and stays teal; that is what makes it read as one
- * material. But the bottom of any ramp is dark by definition, and three
- * near-black greens in a row are three near-identical silhouettes at cell
- * size. So a few faces get their whole five-stop lighting bent partway toward
- * a second hue: the same gradient the rest of the object has, in another key.
+ * The ramp now carries a real hue journey of its own (see EventChain.ts), so
+ * these do far less work than they did when every tier was one green. What is
+ * left is the pair of marks the material genuinely has: sulphur yellow where
+ * copper is raw or freshly struck, cuprite magenta where the oxide is
+ * thickest. Yellow means bare metal, magenta means corrosion, and they never
+ * share a face.
  *
- * That is the difference from the first attempt, which flat-filled marks in
- * these colours. A flat mark sits ON the object; a tinted ramp IS the object,
- * lit the same way, so it still turns with the light and still reads as
- * copper. Nothing is left unpainted - a tinted face is a fully shaded face.
- *
- * Both hues are real to the material rather than decoration: copper runs
- * sulphur yellow where it is raw or freshly struck, and cuprite magenta where
- * the oxide is thickest. Yellow means bare metal, magenta means corrosion,
- * everywhere, and they never share a face.
+ * A flat mark sits ON an object; a tinted ramp IS the object, lit the same
+ * way - so a marked face still turns with the light, and nothing is left
+ * unpainted.
  */
 const VERDIGRIS_HOT = 0xffc23d;
-const VERDIGRIS_BLOOM = 0xd8489b;
 
-/**
- * The same palette, pulled `amount` of the way toward `accent`.
- *
- * Every stop moves together, so the face keeps its highlight-to-shadow
- * spread - it is the same material under the same light, in another hue.
- * Tinting only the base and leaving the ends alone is what would make a face
- * look painted on.
- */
 /**
  * How much to mix depends on HOW MUCH OF THE ICON the face covers.
  *
- * A saturated yellow at 25% into a dark desaturated green comes out khaki -
- * so a broad face has to stay low to avoid muddying the family, while a
- * rivet or a finial can take twice that and still be a speck. Reading the
- * mixed values rather than eyeballing them is what caught this: every accent
- * was landing olive.
+ * A saturated yellow at 25% into a dark desaturated tone comes out khaki - so
+ * a broad face has to stay low to avoid muddying the family, while a band or
+ * a rivet can take three times that and still be a speck.
  */
-const TINT_BROAD = 0.22;
 const TINT_SMALL = 0.62;
 
 function tintPalette(p: Palette, accent: number, amount: number): Palette {
@@ -3834,19 +3797,13 @@ function tintPalette(p: Palette, accent: number, amount: number): Palette {
   //
   // A locked tile is handed a near-grey ramp on purpose - not being able to
   // tell what it is made of is most of what makes it read as locked. An
-  // accent mixed from a fixed colour ignored that completely and painted tan
-  // flaps and pink plates onto silhouettes that were supposed to be flat, so
-  // the crust looked broken rather than dormant.
-  //
-  // Matching the accent's chroma to the palette's means a lit tile gets the
-  // full accent and a locked one gets a grey mark in the same place, without
-  // either drawing path having to know the other exists.
+  // accent mixed from a fixed colour ignored that and painted marks onto
+  // silhouettes meant to be flat, so the event board's crust looked broken
+  // rather than dormant.
   const chroma = (c: number): number => {
     const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
     return Math.max(r, g, b) - Math.min(r, g, b);
   };
-  // 45 is roughly the chroma of this family's own base tones; a locked ramp
-  // sits near zero.
   const saturation = Math.min(1, chroma(p.base) / 45);
   const luma = ((accent >> 16) & 0xff) * 0.3
     + ((accent >> 8) & 0xff) * 0.59
@@ -3870,355 +3827,213 @@ function tintPalette(p: Palette, accent: number, amount: number): Palette {
 }
 
 /**
- * Redraws a few of a shape's fan facets in a tinted palette.
+ * ---- Verdigris: copper PLUMBING, and why it breaks the shared grammar ----
  *
- * Facets rather than a region: the wedges are already how this shape is lit,
- * so recolouring whole ones leaves every edge exactly where it was, and the
- * change reads as the light finding a different metal rather than as a shape
- * drawn over the top.
+ * Every standing family walks the same eight-stage shape ladder - rough
+ * chunk, shard, cut slab, squared solid, faceted block, spire, interlocking
+ * form, knot (see docs/FAMILIES_ROADMAP.md). This chain does NOT, and that is
+ * the point rather than an oversight.
+ *
+ * The first attempt did walk it, in copper's colours. It failed for a reason
+ * the grammar cannot fix: a chunk is a chunk and a block is a block, so tier
+ * for tier the event chain looked like Stone or Glass wearing a different
+ * hue, and its own tiers looked like each other. An event lasts three days
+ * and shares a screen with nothing else - it has to be legible on sight, and
+ * shapes borrowed from the permanent families are the opposite of that.
+ *
+ * So the ladder here is DRAWN AND FITTED COPPER: wire, coil, pipe, elbow,
+ * tee, manifold, condenser, still. Nothing on the main board is a tube, an
+ * open mouth or a helix, so no tier of this chain can be mistaken for one of
+ * theirs - and each stage is a visibly more engineered assembly than the one
+ * before, which is the merge-satisfaction test the grammar existed to pass.
+ *
+ * The silhouettes are deliberately spread apart from each other too: a
+ * squiggle, a flat disc, an upright cylinder, an L, a T, a comb, a tall
+ * helix, a bulb with a neck. No two share an outline at cell size.
  */
-function tintFacets(
-  g: Phaser.GameObjects.Graphics, pts: [number, number][], tinted: Palette, indices: number[]
+
+/**
+ * A length of round tube, drawn as a stroked path.
+ *
+ * Three passes down the same line - dark casing, lit body, a fine specular
+ * running along the top - which is what makes a stroke read as a round
+ * section rather than a flat ribbon. Every tier here is built from this, so
+ * the family reads as one material assembled different ways.
+ */
+function copperTube(
+  g: Phaser.GameObjects.Graphics, pts: [number, number][], width: number, p: Palette
 ): void {
-  for (const i of indices) {
-    const [x1, y1] = pts[i % pts.length];
-    const [x2, y2] = pts[(i + 1) % pts.length];
-    const midAngle = Math.atan2((y1 + y2) / 2, (x1 + x2) / 2);
-    g.fillStyle(toneForNormal(tinted, midAngle), 0.92);
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(x1, y1);
-    g.lineTo(x2, y2);
-    g.closePath();
-    g.fillPath();
-  }
-}
-
-/** Corrosion pits - dark holes, each with its far rim catching the key. */
-function copperPits(g: Phaser.GameObjects.Graphics, p: Palette, pits: [number, number, number][]): void {
-  for (const [x, y, r] of pits) {
-    g.fillStyle(p.shadow, 0.75);
-    g.fillCircle(x, y, r);
-    // A pit is a hole, so the inside of its FAR wall is lit where the flat
-    // surface around it is not. Without this they read as printed dots.
-    g.fillStyle(p.light, 0.35);
-    g.fillCircle(x + r * 0.25, y + r * 0.3, r * 0.55);
-  }
+  const path = pts.map(([x, y]) => new Phaser.Geom.Point(x, y));
+  g.lineStyle(width, p.shadow, 0.95);
+  g.strokePoints(path, false, false);
+  g.lineStyle(width * 0.76, p.base, 1);
+  g.strokePoints(path, false, false);
+  g.lineStyle(width * 0.26, p.highlight, 0.8);
+  g.strokePoints(
+    path.map((pt) => new Phaser.Geom.Point(pt.x - width * 0.12, pt.y - width * 0.16)),
+    false, false
+  );
 }
 
 /**
- * The patina bloom that used to live here is GONE, not tuned down.
+ * The open end of a pipe: a rim with a bore inside it.
  *
- * It drew pale blobs over the metal to say "corroding". At icon size they did
- * not read as oxide - they read as grey dirt sitting on top of the form, and
- * on the lattice they broke the woven straps into confetti. The chain's
- * colours already run greener with every tier, which says the same thing
- * without covering the silhouette, so the blobs were saying it twice and
- * costing the shape to do it.
+ * The BORE is what sells a tube as hollow, and hollow is what nothing on the
+ * main board is. Drawn as an ellipse so the mouth reads as a circle seen at
+ * the same angle everything else here is seen from.
  */
+function copperMouth(
+  g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, p: Palette, squash = 0.42
+): void {
+  g.fillStyle(p.light, 1);
+  g.fillEllipse(cx, cy, r * 2, r * 2 * squash);
+  g.fillStyle(p.shadow, 1);
+  g.fillEllipse(cx, cy, r * 1.3, r * 1.3 * squash);
+  // A crescent of reflected light inside the far wall of the bore.
+  g.fillStyle(p.dark, 1);
+  g.fillEllipse(cx, cy + r * squash * 0.22, r * 1.3, r * 0.8 * squash);
+}
 
-/** 01 - a poured blob of slag: lobed rather than fractured, and gas-pitted. */
+/** 01 - an offcut of wire: one short bend, and the smallest thing here. */
 function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Rounded lobes, not broken planes: this is metal that cooled as it ran, so
-  // its outline is surface tension. Stone's tier 1 is a break; this is a pour.
-  const lobes: [number, number][] = [
-    [-s * 0.24, s * 0.1], [-s * 0.2, -s * 0.08], [-s * 0.05, -s * 0.16],
-    [s * 0.12, -s * 0.11], [s * 0.22, s * 0.02], [s * 0.14, s * 0.16],
-    [-s * 0.08, s * 0.18]
-  ];
-  drawIrregularChip(g, lobes, p);
-  // Two lobes are still hot from the pour. The darkest tier in the chain
-  // needs somewhere for the eye to land, and heat inside a cooling lump is
-  // where it would actually be.
-  tintFacets(g, lobes, tintPalette(p, VERDIGRIS_HOT, 0.38), [4]);
-  // Small, and none of them near the middle: two large centred pits read as
-  // a face, which is the one thing a lump of slag must not do.
-  copperPits(g, p, [
-    [-s * 0.11, s * 0.05, s * 0.019],
-    [s * 0.09, s * 0.08, s * 0.016],
-    [s * 0.04, -s * 0.07, s * 0.014]
-  ]);
+  copperTube(g, [
+    [-s * 0.17, s * 0.07], [-s * 0.02, -s * 0.03], [s * 0.06, s * 0.06], [s * 0.18, -s * 0.02]
+  ], s * 0.075, p);
 }
 
-/** 02 - one flat shard, its rolled skin peeling off the metal underneath. */
-function drawOxideShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  drawIrregularChip(g, [
-    [-s * 0.26, s * 0.12], [-s * 0.12, -s * 0.18], [s * 0.16, -s * 0.14],
-    [s * 0.24, s * 0.04], [s * 0.02, s * 0.2]
-  ], p);
-  // THE PEEL - a lifted corner showing bright metal still under the skin.
-  // Two materials in one piece is the tier's whole idea, and it is what
-  // separates a shard of copper from a shard of anything else on this board.
-  // THE PEEL, in raw copper - the one warm face in the family, and what makes
-  // it legible as a peel rather than as another lit facet. Two tones off a
-  // tinted ramp, so it is lit like everything around it.
-  const raw = tintPalette(p, VERDIGRIS_HOT, TINT_BROAD);
-  g.fillStyle(raw.light, 1);
-  g.beginPath();
-  g.moveTo(-s * 0.12, -s * 0.18);
-  g.lineTo(s * 0.16, -s * 0.14);
-  g.lineTo(s * 0.04, -s * 0.04);
-  g.lineTo(-s * 0.1, -s * 0.08);
-  g.closePath();
-  g.fillPath();
-  g.fillStyle(raw.base, 1);
-  g.beginPath();
-  g.moveTo(-s * 0.11, -s * 0.1);
-  g.lineTo(s * 0.05, -s * 0.06);
-  g.lineTo(s * 0.04, -s * 0.04);
-  g.lineTo(-s * 0.1, -s * 0.08);
-  g.closePath();
-  g.fillPath();
-  copperPits(g, p, [[s * 0.06, s * 0.09, s * 0.018]]);
+/** 02 - the wire coiled: a flat spiral, so tier 2 is a DISC where tier 1 was a line. */
+function drawWireCoil(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const pts: [number, number][] = [];
+  const turns = 2.6;
+  const steps = 90;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = Math.PI * 2 * turns * t;
+    const r = s * 0.07 + s * 0.16 * t;
+    pts.push([Math.cos(a) * r, Math.sin(a) * r * 0.62]);
+  }
+  copperTube(g, pts, s * 0.07, p);
 }
 
-/**
- * 03 - a cathode plate: the grammar's first clean rectilinear form, in the
- * shape copper actually leaves a refinery in - a thin hanging sheet with a
- * lug over the bar.
- */
-function drawCutCathode(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const w = s * 0.34, h = s * 0.42, d = s * 0.05;
-  const x = -w / 2, y = -h / 2 + s * 0.03;
+/** 03 - a cut length of pipe, standing: the first HOLLOW form, and the first upright one. */
+function drawPipeSection(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const r = s * 0.13, h = s * 0.34;
+  const squash = 0.42;
 
-  g.fillStyle(p.shadow, 1);
-  g.fillRect(x + d, y + dropOffset(s), w, h);
-  // The plate's own top-to-bottom gradient, except its BOTTOM two stops are
-  // pulled toward cuprite - so the staining arrives as part of the shading
-  // rather than as a patch laid over it. This is the flattest shape in the
-  // chain and the one with the most room for it.
-  const stained = tintPalette(p, VERDIGRIS_BLOOM, 0.45);
-  // Only the LAST stop is tinted. Tinting the bottom two put cuprite across
-  // half the plate and the tier stopped reading as copper at all.
-  g.fillGradientStyle(p.light, p.base, p.dark, stained.shadow, 1);
-  g.fillRect(x, y, w, h);
-  // The thin right edge is what says "sheet" instead of "card".
-  g.fillStyle(p.dark, 1);
-  g.beginPath();
-  g.moveTo(x + w, y);
-  g.lineTo(x + w + d, y - d * 0.6);
-  g.lineTo(x + w + d, y + h - d * 0.6);
-  g.lineTo(x + w, y + h);
-  g.closePath();
-  g.fillPath();
+  g.fillStyle(p.shadow, 0.35);
+  g.fillEllipse(s * 0.03, h * 0.5 + s * 0.05, r * 2.4, r * 2.4 * squash);
 
-  // The lug, off-centre so the plate reads as hung rather than as a tile.
-  // The lug is what the plate hangs by, so it is handled and worn back to
-  // bare metal - given its own gradient rather than a flat fill.
-  const lug = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
-  g.fillGradientStyle(lug.highlight, lug.light, lug.base, lug.dark, 1);
-  g.fillRect(x + w * 0.18, y - s * 0.07, w * 0.28, s * 0.08);
-  g.lineStyle(1, p.highlight, 0.7);
-  g.beginPath();
-  g.moveTo(x, y);
-  g.lineTo(x + w, y);
-  g.strokePath();
-  copperPits(g, p, [[x + w * 0.62, y + h * 0.6, s * 0.02]]);
-}
-
-/** 04 - a cast billet: squared, and struck with the mark of whoever poured it. */
-function drawBronzeBillet(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  drawBlock(g, s * 0.46, s * 0.3, s * 0.13, -s * 0.1, p);
-  // The stamped boss. A cast bar carries a maker's mark, and it is the one
-  // detail that says "made" rather than "found" - which IS the step from a
-  // cut plate to a cast solid.
-  // Struck through the patina to bare metal, which is what a stamp does. Its
-  // three circles run down a tinted ramp, so the boss reads as a raised disc
-  // catching the light rather than a printed dot.
-  const struck = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
-  g.fillStyle(p.shadow, 0.85);
-  g.fillCircle(-s * 0.11, s * 0.05, s * 0.055);
-  g.fillStyle(struck.light, 1);
-  g.fillCircle(-s * 0.115, s * 0.043, s * 0.04);
-  g.fillStyle(struck.dark, 1);
-  g.fillCircle(-s * 0.11, s * 0.05, s * 0.016);
-}
-
-/**
- * 05 - the billet chamfered.
- *
- * A SOLID with three planes, not a flat outline. The first version filled a
- * chamfered rectangle with fan facets and read as a soft cushion - which made
- * tier 5 look like a downgrade from tier 4's crisp box, exactly the merge that
- * has to read as better. Keeping tier 4's block and cutting its corners is
- * what says "the same bar, one operation further on".
- */
-function drawFacetedBronze(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const w = s * 0.44, h = s * 0.26, d = s * 0.12, c = s * 0.07;
-  const x = -w / 2, y = -s * 0.06;
-
-  g.fillStyle(p.shadow, 1);
-  g.fillRect(x + d * 0.5, y + dropOffset(s), w, h);
-
-  // FRONT, with its corners taken off.
-  const front: [number, number][] = [
-    [x + c, y], [x + w - c, y], [x + w, y + c], [x + w, y + h - c],
-    [x + w - c, y + h], [x + c, y + h], [x, y + h - c], [x, y + c]
-  ];
+  // Barrel, lit down its left flank the way every solid here is.
   g.fillGradientStyle(p.light, p.base, p.dark, p.shadow, 1);
-  g.beginPath();
-  front.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py) : g.lineTo(px, py)));
-  g.closePath();
-  g.fillPath();
-
-  // TOP, pushed back along the same isometric offset the block above uses.
-  g.fillStyle(p.highlight, 0.9);
-  g.beginPath();
-  g.moveTo(x + c, y);
-  g.lineTo(x + w - c, y);
-  g.lineTo(x + w - c + d, y - d * 0.62);
-  g.lineTo(x + c + d, y - d * 0.62);
-  g.closePath();
-  g.fillPath();
-
-  // RIGHT.
+  g.fillRect(-r, -h * 0.5, r * 2, h);
   g.fillStyle(p.dark, 1);
-  g.beginPath();
-  g.moveTo(x + w, y + c);
-  g.lineTo(x + w + d, y + c - d * 0.62);
-  g.lineTo(x + w + d, y + h - c - d * 0.62);
-  g.lineTo(x + w, y + h - c);
-  g.closePath();
-  g.fillPath();
+  g.fillEllipse(0, h * 0.5, r * 2, r * 2 * squash);
+  copperMouth(g, 0, -h * 0.5, r, p, squash);
+}
 
-  // The chamfers catch the key hardest - a bright short edge at each corner is
-  // the whole difference between a cut corner and a rounded one.
-  g.lineStyle(Math.max(1, s * 0.016), p.highlight, 0.8);
-  for (const [ax, ay, bx, by] of [
-    [x, y + c, x + c, y],
-    [x + w - c, y + h, x + w, y + h - c]
-  ] as [number, number, number, number][]) {
-    g.beginPath();
-    g.moveTo(ax, ay);
-    g.lineTo(bx, by);
-    g.strokePath();
+/** 04 - an elbow: two runs of pipe at a right angle. An L, unmistakably. */
+function drawPipeElbow(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const w = s * 0.15;
+  copperTube(g, [
+    [-s * 0.22, -s * 0.16], [s * 0.02, -s * 0.16], [s * 0.02, s * 0.18]
+  ], w, p);
+  copperMouth(g, -s * 0.22, -s * 0.16, w * 0.52, p, 1.6);
+  copperMouth(g, s * 0.02, s * 0.18, w * 0.52, p);
+}
+
+/** 05 - a tee: three ways instead of two, so the silhouette gains an arm. */
+function drawTeeFitting(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const w = s * 0.15;
+  copperTube(g, [[-s * 0.24, s * 0.04], [s * 0.24, s * 0.04]], w, p);
+  copperTube(g, [[0, s * 0.04], [0, -s * 0.24]], w, p);
+  // The collar where the branch is soldered on - a fitting has a thicker band
+  // at every joint, and it is what stops this reading as two crossed sticks.
+  g.fillStyle(p.light, 1);
+  g.fillRect(-w * 0.62, -s * 0.02, w * 1.24, w * 0.42);
+  copperMouth(g, -s * 0.24, s * 0.04, w * 0.52, p, 1.6);
+  copperMouth(g, s * 0.24, s * 0.04, w * 0.52, p, 1.6);
+  copperMouth(g, 0, -s * 0.24, w * 0.52, p);
+}
+
+/** 06 - a manifold: one body, three risers. A comb, and the first ASSEMBLY. */
+function drawManifold(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const w = s * 0.13;
+  const body = s * 0.17;
+  for (const x of [-s * 0.19, 0, s * 0.19]) {
+    copperTube(g, [[x, body], [x, -s * 0.2]], w, p);
+    copperMouth(g, x, -s * 0.2, w * 0.52, p);
   }
+  // The header runs in FRONT of the risers, which is what makes them read as
+  // standing in it rather than crossing it.
+  copperTube(g, [[-s * 0.27, body], [s * 0.27, body]], w * 1.5, p);
+  copperMouth(g, s * 0.27, body, w * 0.78, p, 1.6);
 }
 
 /**
- * 06 - a spire: the grammar's tall faceted volume, RAISED in sheet copper
- * over a frame - panelled, seamed in courses, capped with a finial - rather
- * than the solid faceted prism the mineral families stand up.
- */
-function drawPatinaSpire(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const halfH = s * 0.3, rB = s * 0.17, rT = s * 0.03;
-  const apexY = -halfH - s * 0.06;
-  const drop = dropOffset(s);
-
-  g.fillStyle(p.shadow, 1);
-  g.beginPath();
-  g.moveTo(-rB, halfH + drop);
-  g.lineTo(rB, halfH + drop);
-  g.lineTo(0, apexY + drop);
-  g.closePath();
-  g.fillPath();
-
-  // Three panels. The one facing the key is lit and the ones turning away
-  // take the shade, which is what gives a cone volume instead of a silhouette.
-  const faces: [number, number, number][] = [
-    [-rB, -rB * 0.1, Math.PI * 0.9],
-    [-rB * 0.1, rB * 0.62, Math.PI * 1.35],
-    [rB * 0.62, rB, Math.PI * 1.9]
-  ];
-  for (const [x1, x2, normal] of faces) {
-    g.fillStyle(toneForNormal(p, normal), 1);
-    g.beginPath();
-    g.moveTo(x1, halfH);
-    g.lineTo(x2, halfH);
-    g.lineTo(rT * 0.4, apexY);
-    g.closePath();
-    g.fillPath();
-  }
-
-  // Seam bands, narrowing with the cone. Sheet metal is joined in courses,
-  // and those horizontals are what keep this from reading as a solid spike.
-  for (const t of [0.32, 0.66]) {
-    const y = halfH - (halfH * 2 + s * 0.06) * t;
-    const r = rB * (1 - t) + rT * t;
-    g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.8);
-    g.beginPath();
-    g.moveTo(-r, y);
-    g.lineTo(r, y);
-    g.strokePath();
-  }
-  // Gilt finial - one warm point at the top of a tall cold form, which is the
-  // whole reason the eye travels up it. Two tones, so it is a ball.
-  const gilt = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
-  g.fillStyle(gilt.base, 1);
-  g.fillCircle(0, apexY - s * 0.015, s * 0.035);
-  g.fillStyle(gilt.highlight, 1);
-  g.fillCircle(-s * 0.011, apexY - s * 0.026, s * 0.017);
-}
-
-/**
- * 07 - riveted straps, woven.
+ * 07 - a condenser coil: tube wound down an axis.
  *
- * The grammar's interlocking compound form, in copper's own joining method.
- * The straps are FLAT bands with rivets near each end, and the middle band is
- * laid down LAST so it passes over the other two - that single explicit
- * over/under is what separates a weave from three bars simply overlaid.
+ * Drawn as separate turns rather than one path, so each wrap can be laid over
+ * the one above it - a helix only reads as a helix when you can see which
+ * turn is in front.
  */
-function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Wide and thick enough that three of them still read as BANDS at cell
-  // size. The first pass used thin straps with prominent rivets, and the
-  // rivets won - the whole icon read as scattered specks.
-  const len = s * 0.66, w = s * 0.155;
-  const angles = [Math.PI * 0.08, Math.PI * 0.75, Math.PI * 0.42];
+function drawCondenserCoil(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const w = s * 0.085;
+  const turns = 5;
+  const rx = s * 0.19;
+  const top = -s * 0.26;
+  const pitch = (s * 0.52) / turns;
 
-  // The band laid down FIRST is the one the other two cross over, so it sits
-  // in the damp and takes the cuprite. Its own five stops are tinted, so it
-  // is the same strap under the same light in another key.
-  const corroded = tintPalette(p, VERDIGRIS_BLOOM, 0.3);
-  const brass = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
-  angles.forEach((angle, band) => {
-    const cos = Math.cos(angle), sin = Math.sin(angle);
-    const pts: [number, number][] = ([
-      [-len / 2, -w / 2], [len / 2, -w / 2], [len / 2, w / 2], [-len / 2, w / 2]
-    ] as [number, number][]).map(([px, py]) => [px * cos - py * sin, px * sin + py * cos] as [number, number]);
-    g.fillStyle(toneForNormal(band === 0 ? corroded : p, angle), 1);
-    g.beginPath();
-    pts.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py) : g.lineTo(px, py)));
-    g.closePath();
-    g.fillPath();
-    g.lineStyle(1, p.shadow, 0.6);
-    g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
-    for (const t of [-0.36, 0.36]) {
-      const rx = len * t * cos, ry = len * t * sin;
-      g.fillStyle(brass.highlight, 0.95);
-      g.fillCircle(rx, ry, s * 0.016);
-      g.fillStyle(brass.dark, 0.8);
-      g.fillCircle(rx + s * 0.006, ry + s * 0.006, s * 0.008);
+  for (let i = 0; i < turns; i++) {
+    const y = top + pitch * i;
+    const pts: [number, number][] = [];
+    for (let k = 0; k <= 22; k++) {
+      const a = Math.PI * (k / 22) * 2 - Math.PI * 0.5;
+      pts.push([Math.cos(a) * rx, y + Math.sin(a) * rx * 0.3 + pitch * (k / 22)]);
     }
-  });
+    copperTube(g, pts, w, p);
+  }
+  // The tail that leaves the coil, so it is plumbing rather than a spring.
+  copperTube(g, [[rx * 0.1, top + pitch * turns], [s * 0.26, top + pitch * turns + s * 0.06]], w, p);
 }
 
 /**
- * 08 - a trefoil knot in drawn bar.
+ * 08 - the still: a body with a swan neck running off it.
  *
- * Deliberately NOT the three rotated rings the other chains finish on. Those
- * read as concentric loops; a trefoil is ONE continuous bar crossing itself,
- * which is both a different silhouette and the honest end of this chain's
- * story - poured, rolled, cast, chamfered, raised, riveted, finally drawn.
+ * The only closed VESSEL in the family, and the only tier with a curve that
+ * is not a tube - which is what makes the top of the chain look like the end
+ * of a process rather than one more fitting.
  */
-function drawVerdigrisKnot(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const pts: Phaser.Geom.Point[] = [];
-  const SEGMENTS = 90;
-  for (let i = 0; i <= SEGMENTS; i++) {
-    const t = (Math.PI * 2 * i) / SEGMENTS;
-    // The standard trefoil parametrisation, flattened a little on y so it
-    // sits in its cell the way every other icon here does.
-    const x = Math.sin(t) + 2 * Math.sin(2 * t);
-    const y = Math.cos(t) - 2 * Math.cos(2 * t);
-    pts.push(new Phaser.Geom.Point(x * s * 0.082, y * s * 0.072));
-  }
-  // Three passes down the same path: a round section reads by having a bright
-  // line running along the middle of a darker tube.
-  g.lineStyle(s * 0.085, p.shadow, 0.9);
-  g.strokePoints(pts, false, true);
-  g.lineStyle(s * 0.065, p.base, 1);
-  g.strokePoints(pts, false, true);
-  g.lineStyle(s * 0.022, p.highlight, 0.85);
-  g.strokePoints(pts, false, true);
+function drawAlembic(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const cx = -s * 0.06, cy = s * 0.08, r = s * 0.19;
+
+  // Swan neck first, so the body sits over its root.
+  copperTube(g, [
+    [cx, cy - r * 0.9], [cx + s * 0.04, cy - r * 1.5],
+    [cx + s * 0.18, cy - r * 1.55], [cx + s * 0.25, cy - r * 0.7],
+    [cx + s * 0.26, cy + s * 0.06]
+  ], s * 0.085, p);
+  copperMouth(g, cx + s * 0.26, cy + s * 0.06, s * 0.05, p);
+
+  g.fillStyle(p.shadow, 0.35);
+  g.fillEllipse(cx + s * 0.02, cy + r * 0.95, r * 2.1, r * 0.55);
+
+  // The body: a squat gourd, lit from the upper left like everything else.
+  g.fillStyle(p.dark, 1);
+  g.fillEllipse(cx, cy, r * 2, r * 1.9);
+  g.fillStyle(p.base, 1);
+  g.fillEllipse(cx - r * 0.06, cy - r * 0.04, r * 1.82, r * 1.72);
+  g.fillStyle(p.light, 0.9);
+  g.fillEllipse(cx - r * 0.34, cy - r * 0.4, r * 0.9, r * 0.72);
+  g.fillStyle(p.highlight, 0.75);
+  g.fillEllipse(cx - r * 0.44, cy - r * 0.52, r * 0.34, r * 0.26);
+
+  // A riveted band around its waist - the one straight line on a round form,
+  // which is what stops it reading as a ball.
+  const band = tintPalette(p, VERDIGRIS_HOT, TINT_SMALL);
+  g.fillStyle(band.base, 1);
+  g.fillRect(cx - r * 0.92, cy + r * 0.34, r * 1.84, r * 0.3);
+  g.fillStyle(band.highlight, 0.9);
+  g.fillRect(cx - r * 0.92, cy + r * 0.34, r * 1.84, r * 0.1);
 }
 
 /**

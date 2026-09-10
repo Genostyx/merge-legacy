@@ -59,7 +59,22 @@ regardless of how it fits the grammar's stage names.
 | 7 | Interlocking compound form | Blocky interlocking cross/lattice - start of the saved knot-sculpture reference |
 | 8 | Smooth interlocking knot | Fully refined torus/ring knot - end of the saved knot-sculpture reference |
 
-Every family (existing or new) walks this same 8-stage shape ladder.
+Every PERMANENT family walks this same 8-stage shape ladder.
+
+**The one deliberate exception is the timed event's chain** (`verdigris`, in
+`src/game/events/EventChain.ts`). It first walked the grammar in copper's
+colours and failed for a reason the grammar cannot fix: a chunk is a chunk and
+a block is a block, so tier for tier it looked like Stone or Glass in another
+hue, and its own tiers looked like each other. An event runs for three days
+and shares its board with nothing else, so it has to be legible on sight.
+Its ladder is drawn and fitted copper instead - wire, coil, pipe, elbow, tee,
+manifold, condenser, still - because nothing on the main board is a tube, an
+open mouth or a helix. Its ramp also runs through a real hue journey (warm
+copper up into patina green-blue) rather than one hue's lightness.
+
+A future permanent family should NOT take this as licence to invent its own
+grammar; the exception is bought by being temporary and by living on a board
+of its own.
 Retrofitting the two pre-grammar chains is an incremental `TierIcons.ts`
 task:
 
