@@ -81,10 +81,11 @@ describe('event orders', () => {
   });
 
   it('pays a tier its own value, with no exception at the top', () => {
-    // The scale is linear end to end. A jackpot on the last tier would break
-    // it at the exact place a player is most likely to check the arithmetic.
+    // No jackpot anywhere: a bonus on one tier would make that order worth
+    // more player time per point than the rest, which is the whole thing the
+    // payout curve exists to prevent.
     for (let tier = 1; tier <= EVENT_MAX_TIER; tier++) {
-      expect(eventOrderPayout(tier)).toBe(tier);
+      expect(eventOrderPayout(tier)).toBe(eventPointsForTier(tier));
     }
   });
 

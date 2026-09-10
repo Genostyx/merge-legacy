@@ -72,15 +72,11 @@ export const EVENTS: readonly TimedEventDef[] = [
     startsAt: Date.UTC(2026, 8, 10),
     endsAt: Date.UTC(2026, 8, 13),
     minLevel: 5,
-    // 140 points, against a payout of one point per tier.
-    //
-    // Tier N pays N, so the cheapest piece is also the most efficient one per
-    // unit of raw material: a tier 1 is a point for one energy, a tier 8 is
-    // eight points for a hundred and twenty-eight. A player filling nothing
-    // but the easy slot therefore needs about 140 hut taps to clear the
-    // track; one climbing the chain needs considerably more. Only one of the
-    // three bands reaches the bottom of the chain, which is what stops the
-    // cheap route being the whole board.
+    // 140 points, and a point IS a hut tap - an order pays exactly the
+    // energy the piece it asked for cost to build. So the goal reads
+    // directly as "140 taps of raw material", however the player chooses to
+    // arrange them, and two players dealt completely different rows finish
+    // in the same time. See eventPointsForTier.
     goal: 140,
     // Five rungs, front-loaded. The first lands inside a single session, so a
     // player learns what the board is for before deciding whether to chase

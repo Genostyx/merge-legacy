@@ -37,26 +37,24 @@ export { EVENT_CHAIN, EVENT_MAX_TIER, eventTierDef, isEventTypeId } from './Even
 import { EVENT_CHAIN, EVENT_MAX_TIER } from './EventChain';
 
 /**
- * Points an event order pays, by the tier it asked for. LINEAR, and with no
- * exceptions anywhere: tier N pays N.
+ * ONE POINT PER ENERGY. An order pays exactly what the piece cost to make.
  *
- * It deliberately does NOT track the merge cost, which doubles. That makes
- * the cheapest piece the most efficient one per unit of raw material - a
- * tier 1 pays a point for one energy, where a tier 8 pays eight for a hundred
- * and twenty-eight. That is a known and accepted trade, not an oversight:
+ * A tier-N piece is 2^(N-1) taps of the hut, so that is what tier N pays.
+ * Every order is then worth the same amount of PLAYER TIME per point, and
+ * which orders a player happens to be dealt stops deciding how long the event
+ * takes them - two players who fill entirely different rows finish together.
  *
- *  - The slots cannot be dismissed or re-rolled at will, so a player cannot
- *    hold three cheap orders. Only one band reaches the bottom of the chain,
- *    which caps the cheap strategy at a third of the row.
- *  - A payout that doubled with the merge cost would make the top of the
- *    chain worth so much that nothing below it mattered, which is the
- *    opposite failure and a worse one.
+ * This is deliberately not a flat step per tier, and the two cannot both be
+ * had. A flat scale makes the cheapest piece the most time-efficient by a
+ * factor of sixteen at the top of the chain, so the row a player is dealt
+ * decides their pace; matching the merge cost is the only curve that removes
+ * that, because the merge cost is what the time actually is.
  *
- * Anything that pays a bonus on top of this - a top-tier jackpot, say - makes
- * the scale non-linear again, so there is nothing of the sort.
+ * The goal reads as taps because of this: 140 points is 140 hut taps of raw
+ * material, arranged however the player likes.
  */
 export function eventPointsForTier(tier: number): number {
-  return Math.max(1, Math.floor(tier));
+  return 2 ** Math.max(0, Math.floor(tier) - 1);
 }
 
 export interface EventBoardState {

@@ -62,17 +62,21 @@ describe('event board', () => {
     expect(state.energy).toBe(0);
   });
 
-  it('pays a flat step per tier', () => {
-    // Linear by decision, not by oversight: the payout does NOT keep pace
-    // with the merge cost, and the order bands are what stop the cheap end
-    // being the whole game. See eventPointsForTier.
-    const steps = [];
-    for (let tier = 1; tier < 8; tier++) {
-      steps.push(eventPointsForTier(tier + 1) - eventPointsForTier(tier));
-    }
-    expect(new Set(steps).size).toBe(1);
-    expect(steps[0]).toBe(1);
+  it('pays exactly the energy the piece cost to make', () => {
+    // THE BALANCE RULE: every order is worth the same player time per point,
+    // so which orders a player is dealt cannot decide how long the event
+    // takes them. A tier-N piece is 2^(N-1) hut taps.
     expect(eventPointsForTier(1)).toBe(1);
+    for (let tier = 1; tier < 8; tier++) {
+      expect(eventPointsForTier(tier + 1)).toBe(eventPointsForTier(tier) * 2);
+    }
+
+    // Stated the other way round, which is the way it will be read in a
+    // balance argument: two pieces of one tier cost and pay what one of the
+    // next tier does.
+    for (let tier = 1; tier < 8; tier++) {
+      expect(eventPointsForTier(tier) * 2).toBe(eventPointsForTier(tier + 1));
+    }
   });
 
   it('pays an overflow crate every step past the last rung, once each', () => {
