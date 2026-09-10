@@ -4061,8 +4061,16 @@ function drawAlembic(g: Phaser.GameObjects.Graphics, s: number, p: Palette): voi
  * three-day window.
  */
 function drawVerdigrisSourceIsometric(
-  g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean
+  g: Phaser.GameObjects.Graphics, r: number, _p: Palette, ready: boolean
 ): void {
+  // ITS OWN PALETTE, not the one it was handed.
+  //
+  // A source takes its colour from its chain's tier 1, which here is raw
+  // copper - so the hut came out the same brown as the offcuts it dispenses
+  // and read as a pile of them. It is a standing building that has weathered
+  // for years, so it wears the patina the event is named for, which also
+  // makes it the one fixed landmark on a board of loose brown parts.
+  const p = materialLighting(EVENT_CHAIN.tiers[5].color, 6);
   // Same architectural unit the other three families use, so all four sources
   // carry equal weight on a board.
   const u = r * 1.38;

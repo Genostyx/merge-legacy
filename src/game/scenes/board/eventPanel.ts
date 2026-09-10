@@ -5,7 +5,8 @@ import { Grid } from '../../Grid';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { TileView } from '../../objects/TileView';
 import { SpawnerView } from '../../objects/SpawnerView';
-import { drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
 import {
   EVENT_BOARD_COLS, EVENT_BOARD_ROWS, EVENT_CHAIN, EVENT_MAX_TIER, EVENT_SPAWN_COST,
@@ -16,9 +17,10 @@ import {
   EVENT_ORDER_SLOTS, eventOrderPayout, rollEventOrders, submitEventOrder, visibleEventOrders
 } from '../../events/EventOrders';
 import {
-  activeEvent, addEventProgress, eventMsRemaining, eventProgress,
-  formatEventCountdown, unclaimedMilestones
+  activeEvent, addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
+  formatEventCountdown, isMilestoneClaimed
 } from '../../events/TimedEvents';
+import type { TimedEventDef } from '../../events/TimedEvents';
 
 /**
  * THE EVENT BOARD PANEL - a second board, opened from the chip.
@@ -43,7 +45,7 @@ import {
 
 const PAD = 12;
 const ORDER_CARD_H = 62;
-const TRACK_H = 46;
+const TRACK_H = 74;
 /** The info box under the board, mirroring the main board's action tray. */
 const INFO_H = 46;
 
@@ -244,7 +246,7 @@ function buildChrome(
     W: number; headerH: number; ordersY: number; trackY: number;
     onClose: () => void; onSave: () => void;
   }
-): { refresh: () => void; tick: () => void } {
+): { refresh: () => void; tick: () => void; celebrate: () => void } {
   const { W, headerH, ordersY, trackY } = opts;
 
   // --- header: the name, the countdown, and the way out ---
@@ -282,22 +284,8 @@ function buildChrome(
   backHit.on('pointerup', opts.onClose);
   layer.add([back, backHit]);
 
-  // --- the milestone track, as a bar with its rungs marked on it ---
-  const trackGfx = scene.add.graphics();
-  const trackText = scene.add.text(PAD + 4, trackY + 6, '', {
-    resolution: textResolution,
-    fontFamily: Theme.fontNumeric, fontSize: '10px', fontStyle: 'bold',
-    color: hex(EVENT_TOKEN_COLOR)
-  }).setOrigin(0, 0);
-  layer.add([trackGfx, trackText]);
-  const trackHit = scene.add.zone(W / 2, trackY + TRACK_H / 2, W - PAD * 2, TRACK_H)
-    .setInteractive({ useHandCursor: true });
-  trackHit.on('pointerup', () => {
-    // Refreshed on close: claiming a rung changes what this bar has to say.
-    scene.eventTrackClosed = () => refresh();
-    scene.openEventTrack(true);
-  });
-  layer.add(trackHit);
+  // --- the milestone track ---
+  const track = buildTrack(scene, event, layer, { W, trackY });
 
   // --- order cards ---
   const cardW = Math.floor((W - PAD * 2 - 12) / EVENT_ORDER_SLOTS);
@@ -327,9 +315,12 @@ function buildChrome(
       }
       state.views.get(keyOf(result.from))?.destroy();
       state.views.delete(keyOf(result.from));
-      payEventPoints(scene, result.points);
+      const finished = payEventPoints(scene, result.points);
       opts.onSave();
       refresh();
+      // Only ever fires once - `addEventProgress` reports completion on the
+      // call that crosses the goal and never again.
+      if (finished) track.celebrate();
     });
     return { x, bg, icon, pay };
   });
@@ -351,25 +342,7 @@ function buildChrome(
     energyToken.setAlpha(spent ? 0.4 : 1);
     energyText.setAlpha(spent ? 0.4 : 1);
 
-    // Energy and progress on the track bar.
-    const points = eventProgress(scene.timedEvents, event);
-    const owed = unclaimedMilestones(scene.timedEvents, event).length;
-    const barY = trackY + 26;
-    const barW = W - PAD * 2 - 8;
-    trackGfx.clear();
-    trackGfx.fillStyle(Theme.bg, 0.9);
-    trackGfx.fillRoundedRect(PAD + 4, barY, barW, 8, 4);
-    trackGfx.fillStyle(EVENT_TOKEN_COLOR, 0.9);
-    trackGfx.fillRoundedRect(PAD + 4, barY, Math.max(4, barW * (points / event.goal)), 8, 4);
-    for (const milestone of event.milestones) {
-      const mx = PAD + 4 + barW * Math.min(1, milestone.at / event.goal);
-      const reached = points >= milestone.at;
-      trackGfx.fillStyle(reached ? EVENT_TOKEN_COLOR : Theme.borderOnDark, 1);
-      trackGfx.fillCircle(mx, barY + 4, reached ? 5 : 3.5);
-    }
-    trackText.setText(
-      `${points}/${event.goal}${owed > 0 ? `  ·  ${owed} READY` : ''}`
-    ).setColor(hex(owed > 0 ? EVENT_TOKEN_COLOR : Theme.textOnDarkMuted));
+    track.refresh();
 
     // Order cards.
     const asking = visibleEventOrders(scene.eventBoard, state.grid);
@@ -406,7 +379,164 @@ function buildChrome(
   };
   refresh();
 
-  return { refresh, tick };
+  return { refresh, tick, celebrate: () => track.celebrate() };
+}
+
+/**
+ * THE MILESTONE TRACK, as a rail with the actual prizes standing on it.
+ *
+ * Each prize sits at the point it unlocks, so the distance to the next one is
+ * something you SEE rather than arithmetic you do - and it is claimed by
+ * tapping the prize itself, where the player is already looking, instead of
+ * through a panel opened from somewhere else.
+ *
+ * Three states, and only three: out of reach (dimmed), ready (breathing),
+ * taken (dimmed again, with its dot filled). The breath is the only thing on
+ * this screen that moves at rest, which is what makes an unclaimed reward
+ * impossible to walk past.
+ */
+function buildTrack(
+  scene: BoardScene,
+  event: TimedEventDef,
+  layer: Phaser.GameObjects.Container,
+  opts: { W: number; trackY: number }
+): { refresh: () => void; celebrate: () => void } {
+  const { W, trackY } = opts;
+  const gfx = scene.add.graphics();
+  const barY = trackY + 50;
+  const left = PAD + 10;
+  const width = W - left * 2;
+  layer.add(gfx);
+
+  const label = scene.add.text(W / 2, barY + 10, '', {
+    resolution: textResolution,
+    fontFamily: Theme.fontNumeric, fontSize: '10px', fontStyle: 'bold',
+    color: hex(EVENT_TOKEN_COLOR)
+  }).setOrigin(0.5, 0);
+  layer.add(label);
+
+  const prizes = event.milestones.map((milestone, index) => {
+    const x = left + width * Math.min(1, milestone.at / event.goal);
+    const holder = scene.add.container(
+      Phaser.Math.Clamp(x, left + 16, left + width - 16), trackY + 22
+    );
+    if (milestone.kind === 'crate') {
+      const art = scene.add.graphics();
+      drawCrate(art, 40, milestone.tier);
+      holder.add(art);
+    } else {
+      holder.add(currencyIcon(scene, 'gem', 32).setPosition(-7, 0));
+      // BESIDE the gem, not under it. Underneath put the figure on the rail,
+      // where it read as a marker on the track rather than as an amount.
+      holder.add(scene.add.text(9, 1, `${milestone.amount}`, {
+        resolution: textResolution,
+        fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
+        color: hex(Theme.currencyGem)
+      }).setOrigin(0, 0.5));
+    }
+    const hit = scene.add.zone(holder.x, holder.y, 44, 42).setInteractive({ useHandCursor: true });
+    layer.add([holder, hit]);
+
+    hit.on('pointerup', () => {
+      if (!claimMilestone(scene.timedEvents, event, index)) return;
+      scene.payEventMilestone(milestone);
+      scene.saveState();
+      // The prize leaves toward the board it is being paid into, rather than
+      // simply switching off where it stands.
+      scene.tweens.killTweensOf(holder);
+      scene.tweens.add({
+        targets: holder, y: holder.y - 16, scale: 1.5, alpha: 0,
+        duration: 420, ease: 'Quad.Out',
+        onComplete: () => { holder.setScale(1).setAlpha(1).setY(trackY + 22); refresh(); }
+      });
+      refresh();
+    });
+
+    return { holder, hit, milestone, index, breathing: false, wasReached: false };
+  });
+
+  type Prize = (typeof prizes)[number];
+  const startBreathing = (prize: Prize): void => {
+    prize.breathing = true;
+    scene.tweens.add({
+      targets: prize.holder, scale: 1.12, duration: 620, yoyo: true, repeat: -1,
+      ease: 'Sine.InOut'
+    });
+  };
+
+  const refresh = (): void => {
+    const points = eventProgress(scene.timedEvents, event);
+    gfx.clear();
+
+    gfx.fillStyle(Theme.bg, 0.9);
+    gfx.fillRoundedRect(left, barY, width, 7, 3.5);
+    const filled = Math.min(1, event.goal > 0 ? points / event.goal : 0);
+    if (filled > 0) {
+      gfx.fillStyle(EVENT_TOKEN_COLOR, 0.95);
+      gfx.fillRoundedRect(left, barY, Math.max(4, width * filled), 7, 3.5);
+    }
+
+    for (const prize of prizes) {
+      const x = Phaser.Math.Clamp(
+        left + width * Math.min(1, prize.milestone.at / event.goal),
+        left + 16, left + width - 16
+      );
+      const reached = points >= prize.milestone.at;
+      const claimed = isMilestoneClaimed(scene.timedEvents, event, prize.index);
+      const ready = reached && !claimed;
+
+      gfx.fillStyle(reached ? EVENT_TOKEN_COLOR : Theme.borderOnDark, 1);
+      gfx.fillCircle(x, barY + 3.5, ready ? 5 : 3.5);
+
+      prize.holder.setAlpha(ready ? 1 : 0.32);
+      if (ready) prize.hit.setInteractive({ useHandCursor: true });
+      else prize.hit.disableInteractive();
+
+      // ARRIVING is its own moment, separate from waiting. A prize that just
+      // came into reach pops once and then settles into the breath; without
+      // the pop, crossing a rung and merely being near one look the same.
+      const justReached = reached && !prize.wasReached;
+      prize.wasReached = reached;
+      if (justReached && ready) {
+        scene.tweens.killTweensOf(prize.holder);
+        prize.breathing = false;
+        prize.holder.setScale(0.6);
+        scene.tweens.add({
+          targets: prize.holder, scale: 1, duration: 340, ease: 'Back.Out',
+          onComplete: () => startBreathing(prize)
+        });
+        continue;
+      }
+
+      // The breath starts once and is left alone, so a refresh mid-cycle
+      // cannot make the whole row jump back into step.
+      if (ready && !prize.breathing) {
+        startBreathing(prize);
+      } else if (!ready && prize.breathing) {
+        prize.breathing = false;
+        scene.tweens.killTweensOf(prize.holder);
+        prize.holder.setScale(1);
+      }
+    }
+
+    label.setText(`${points}/${event.goal}`);
+  };
+  refresh();
+
+  /** The finish: the rail runs bright and every prize answers in turn. */
+  const celebrate = (): void => {
+    scene.tweens.add({
+      targets: gfx, alpha: 0.35, duration: 130, yoyo: true, repeat: 3, ease: 'Sine.InOut'
+    });
+    prizes.forEach((prize, i) => {
+      scene.tweens.add({
+        targets: prize.holder, scale: 1.45, duration: 200, yoyo: true,
+        delay: 90 * i, ease: 'Quad.Out'
+      });
+    });
+  };
+
+  return { refresh, celebrate };
 }
 
 /**
@@ -416,10 +546,10 @@ function buildChrome(
  * reward always lands where the player is looking. Overflow crates are,
  * because past the last rung there is no track left to claim from.
  */
-function payEventPoints(scene: BoardScene, points: number): void {
+function payEventPoints(scene: BoardScene, points: number): boolean {
   const event = activeEvent(Date.now());
-  if (!event) return;
-  addEventProgress(scene.timedEvents, event, points, Date.now());
+  if (!event) return false;
+  const finished = addEventProgress(scene.timedEvents, event, points, Date.now());
   const total = eventProgress(scene.timedEvents, event);
   const owed = overflowCratesOwed(scene.eventBoard, event, total);
   if (owed > 0) {
@@ -427,6 +557,7 @@ function payEventPoints(scene: BoardScene, points: number): void {
     markOverflowPaid(scene.eventBoard, owed);
   }
   scene.refreshEventChip();
+  return finished;
 }
 
 /* ------------------------------------------------------------------ */
