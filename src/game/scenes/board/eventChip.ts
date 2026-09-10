@@ -17,6 +17,11 @@ import type { TimedEventDef } from '../../events/TimedEvents';
  */
 export const EVENT_CHIP_W = 64;
 
+/** Where the energy pill sits, and how big it is. */
+const ENERGY_PILL_W = 42;
+const ENERGY_PILL_H = 17;
+const ENERGY_PILL_CY = 12;
+
 /**
  * THE EVENT CHIP - a card at the head of the order row.
  *
@@ -49,9 +54,9 @@ export function buildEventChip(scene: BoardScene): void {
   // up off the board, so it may only ever mark energy; the points below have
   // a bar instead, because two quantities wearing one piece of art was the
   // confusion this layout exists to end.
-  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2 - 11, 13);
+  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2 - 10, ENERGY_PILL_CY);
   drawEventToken(token, 17, materialLighting(EVENT_TOKEN_COLOR, 5));
-  const energy = scene.add.text(EVENT_CHIP_W / 2 - 2, 13, '', {
+  const energy = scene.add.text(EVENT_CHIP_W / 2 - 1, ENERGY_PILL_CY, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
@@ -61,7 +66,7 @@ export function buildEventChip(scene: BoardScene): void {
   // before it said anything; a bar is a distance along a line, which is the
   // shape a progress track already is everywhere else in this game.
   const meter = scene.add.graphics();
-  const count = scene.add.text(EVENT_CHIP_W / 2, 24, '', {
+  const count = scene.add.text(EVENT_CHIP_W / 2, 21, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '8px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
@@ -124,6 +129,17 @@ export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
     owed > 0 ? 1 : 0.85
   );
   bg.strokeRoundedRect(0, 0, EVENT_CHIP_W, ORDER_CARD_H, Theme.radiusChip);
+
+  // A PILL around the energy, so it reads as a held amount rather than as a
+  // second score stacked over the track. It is the same shape the header's
+  // currency chips use, which is the point: this is a currency you spend, and
+  // the track below it is not.
+  const pillX = (EVENT_CHIP_W - ENERGY_PILL_W) / 2;
+  const pillY = ENERGY_PILL_CY - ENERGY_PILL_H / 2;
+  bg.fillStyle(Theme.bgElevated, 1);
+  bg.fillRoundedRect(pillX, pillY, ENERGY_PILL_W, ENERGY_PILL_H, ENERGY_PILL_H / 2);
+  bg.lineStyle(1, EVENT_TOKEN_COLOR, scene.eventBoard.energy > 0 ? 0.75 : 0.3);
+  bg.strokeRoundedRect(pillX, pillY, ENERGY_PILL_W, ENERGY_PILL_H, ENERGY_PILL_H / 2);
 }
 
 /**
@@ -140,7 +156,7 @@ function drawChipMeter(
   if (!g) return;
   const left = 7;
   const width = EVENT_CHIP_W - left * 2;
-  const y = 37;
+  const y = 33;
   g.clear();
 
   g.fillStyle(Theme.borderOnDark, 0.55);
