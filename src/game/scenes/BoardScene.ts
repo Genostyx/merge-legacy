@@ -2066,10 +2066,25 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     this.infoButtonZone = this.add.zone(0, 0, 10, 10)
       .setInteractive({ useHandCursor: true })
       .setVisible(false);
+    // A COMPLETE press AND release on the `i`, not a release alone.
+    //
+    // REFILL acts on pointerdown, and refilling makes its chip vanish - so the
+    // tray reflows and this button slides into the space that chip just left,
+    // arriving under a finger that is still down. The release then opened the
+    // family panel on top of the refill the player actually asked for.
+    // Requiring the press as well means a button that moves under the pointer
+    // mid-tap cannot claim that tap.
+    let pressedInfo = false;
+    this.infoButtonZone.on('pointerdown', () => { pressedInfo = true; });
     this.infoButtonZone.on('pointerup', () => {
+      if (!pressedInfo) return;
+      pressedInfo = false;
       const family = this.familyForSelection();
       if (family) openFamilyPanel(this, family);
     });
+    // A release anywhere else clears it, so a press that wanders off the button
+    // and comes back cannot open the panel either.
+    this.input.on('pointerup', () => { pressedInfo = false; });
 
     // The energy multiplier, as a chip rather than a line of text: the energy
     // glyph in its own box with the multiplier as a badge on the corner. It
