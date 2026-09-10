@@ -2936,10 +2936,20 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     if (Math.random() < chance - owed) owed++;
     for (let i = 0; i < owed; i++) {
       const spot = this.firstFreeCellInReadingOrder();
-      // Refused, not queued. A token in the vault would be a reward the
-      // player has to make room for, and this one is meant to cost nothing.
-      if (!spot) return;
-      this.placeEventToken(spot, true);
+      if (spot) {
+        this.placeEventToken(spot, true);
+        continue;
+      }
+      // A FULL BOARD MUST NOT COST A TOKEN.
+      //
+      // These used to be refused rather than queued, on the reasoning that a
+      // token in the vault is a reward the player has to make room for. That
+      // was the wrong way round: a full board is normal play, and silently
+      // dropping the event's only currency because of it punishes the player
+      // for a board state that has nothing to do with the event. The vault
+      // already exists for exactly this - it is where every other reward
+      // waits when there is no cell for it.
+      this.enqueueForcedSpawn({ kind: 'event-token' });
     }
     if (owed > 0) this.saveState();
   }
@@ -3004,12 +3014,25 @@ TAP THE EVENT CARD TO SPEND IT`
    */
   sweepExpiredEventTokens(): void {
     if (this.currentEvent()) return;
+    let swept = false;
     for (const [key, view] of [...this.views.entries()]) {
       if (!(view instanceof EventTokenView)) continue;
       this.grid.set(view.gridPos, null);
       this.views.delete(key);
       view.destroy();
+      swept = true;
     }
+    // The vault too. A token queued there on a full board would otherwise
+    // outlive its window and be handed out during no event at all - a piece
+    // that pays nothing and cannot be merged, which is the exact thing the
+    // board sweep exists to prevent.
+    const before = this.forcedSpawnVault.length;
+    this.forcedSpawnVault = this.forcedSpawnVault.filter((e) => e.kind !== 'event-token');
+    if (before !== this.forcedSpawnVault.length) {
+      this.refreshForcedSpawnVault();
+      swept = true;
+    }
+    if (swept) this.saveState();
   }
 
   /**

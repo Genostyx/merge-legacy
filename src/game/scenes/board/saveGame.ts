@@ -160,6 +160,9 @@ export function loadOrSeed(scene: BoardScene): void {
             if (entry.kind === 'splitter') return true;
             if (entry.kind === 'facility') return entry.facilityId === 'shredder' || entry.facilityId === 'crucible';
             if (entry.kind === 'resource-producer') return typeof entry.producerId === 'string' && Number.isFinite(entry.remaining);
+            // Carries nothing: which event it belongs to is whichever one
+            // is open, and the sweep clears any that outlive their window.
+            if (entry.kind === 'event-token') return true;
             return typeof entry.typeId === 'string' && Number.isFinite(entry.tier);
           })
         : [];

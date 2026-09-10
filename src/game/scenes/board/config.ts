@@ -93,6 +93,7 @@ export type ForcedSpawn =
   | { kind: 'spawner'; typeId: string; tier: number }
   | { kind: 'splitter' }
   | { kind: 'facility'; facilityId: FacilityId }
+  | { kind: 'event-token' }
   | { kind: 'resource-producer'; producerId: ResourceProducerId; remaining: number }
   // `readyAt` rides along so a bought crate that has to wait for board space
   // keeps counting down in the vault rather than restarting when it lands.

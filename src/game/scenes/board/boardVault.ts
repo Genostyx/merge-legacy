@@ -7,6 +7,7 @@ import { drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePa
 import { drawSpawnerPieceIcon } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon } from '../../objects/SplitterView';
 import { drawFacilityIcon } from '../../objects/FacilityView';
+import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
 import { getTierDef } from '../../data/chains';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import { boxForDrawnArt } from '../../objects/ArtFill';
@@ -90,6 +91,9 @@ export function drawForcedSpawnIcon(scene: BoardScene, g: Phaser.GameObjects.Gra
   if (spawn.kind === 'crate') drawCrate(g, size, spawn.tier);
   else if (spawn.kind === 'splitter') drawSplitterIcon(g, size);
   else if (spawn.kind === 'facility') drawFacilityIcon(g, spawn.facilityId, size);
+  else if (spawn.kind === 'event-token') {
+    drawEventToken(g, size, materialLighting(EVENT_TOKEN_COLOR, 5));
+  }
   else if (spawn.kind === 'spawner') {
     drawSourceBuilding(g, spawn.typeId, spawn.tier, size * 0.4, sourcePalette(spawn.typeId), true);
   } else if (spawn.kind === 'spawner-piece') drawSpawnerPieceIcon(g, spawn.typeId, spawn.tier, size);
@@ -256,6 +260,7 @@ export function placeForcedSpawn(scene: BoardScene, spot: GridPosition, spawn: F
   if (spawn.kind === 'crate') return scene.placeCrate(spot, spawn.tier, spawn.remaining, spawn.readyAt);
   if (spawn.kind === 'splitter') return scene.placeSplitter(spot, false);
   if (spawn.kind === 'facility') return scene.placeFacility(spot, spawn.facilityId, false);
+  if (spawn.kind === 'event-token') return scene.placeEventToken(spot, true);
   if (spawn.kind === 'resource-producer') return scene.placeResourceProducer(spot, spawn.producerId, spawn.remaining, false);
   if (spawn.kind === 'spawner') return scene.placeSpawner(spot, spawn.typeId, spawn.tier, false);
   if (spawn.kind === 'spawner-piece') return scene.placeSpawnerPiece(spot, spawn.typeId, spawn.tier, false);
