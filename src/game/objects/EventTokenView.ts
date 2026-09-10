@@ -26,7 +26,14 @@ export const EVENT_TOKEN_COLOR = 0x2fb59a;
  * six-point burst it replaced was a generic sparkle.
  */
 export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: MaterialLighting): void {
-  const r = s * 0.3;
+  // 0.38 of the box, not 0.3.
+  //
+  // The struck device is the whole point of the coin and at the old size it
+  // was about twenty pixels across on a phone - the rays and the relief were
+  // there and simply could not be seen. Every other board piece fills far
+  // more of its cell than this was, so it also read as a small thing rather
+  // than as something worth crossing the board for.
+  const r = s * 0.38;
 
   // Rim, then the sunken face inside it - a coin reads as struck because its
   // edge stands proud of its middle, not because of what is printed on it.
