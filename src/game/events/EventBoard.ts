@@ -67,6 +67,14 @@ export interface EventBoardState {
    */
   orders: number[];
   /**
+   * The highest tier the player has actually MADE, which is what the ladder
+   * reveals. Crusted pieces are excluded on purpose: seeing a tier sitting
+   * under the crust is not the same as having built it, and a ladder that
+   * spoiled its own top row from the first second would have nothing left to
+   * show for a merge.
+   */
+  seenTier: number;
+  /**
    * Overflow crates already paid. Points past the last rung keep paying, and
    * this is what stops a reload paying for the same points twice.
    */
@@ -74,7 +82,7 @@ export interface EventBoardState {
 }
 
 export function createDefaultEventBoardState(): EventBoardState {
-  return { energy: 0, grid: [], seeded: false, orders: [], overflowPaid: 0 };
+  return { energy: 0, grid: [], seeded: false, orders: [], seenTier: 0, overflowPaid: 0 };
 }
 
 /**
@@ -91,6 +99,9 @@ export function normalizeEventBoardState(
   if (!raw) return state;
 
   if (Number.isFinite(raw.energy)) state.energy = Math.max(0, Math.floor(raw.energy as number));
+  if (Number.isFinite(raw.seenTier)) {
+    state.seenTier = Math.min(EVENT_MAX_TIER, Math.max(0, Math.floor(raw.seenTier as number)));
+  }
   if (Number.isFinite(raw.overflowPaid)) {
     state.overflowPaid = Math.max(0, Math.floor(raw.overflowPaid as number));
   }
@@ -208,6 +219,12 @@ export function overflowCratesOwed(
   if (points <= last) return 0;
   const earned = Math.floor((points - last) / EVENT_OVERFLOW_STEP);
   return Math.max(0, earned - state.overflowPaid);
+}
+
+/** Raises the ladder's high-water mark. Never lowers it. */
+export function noteEventTierSeen(state: EventBoardState, tier: number): void {
+  if (!Number.isFinite(tier)) return;
+  state.seenTier = Math.min(EVENT_MAX_TIER, Math.max(state.seenTier, Math.floor(tier)));
 }
 
 /** Records `count` overflow crates as paid. The caller does the paying. */

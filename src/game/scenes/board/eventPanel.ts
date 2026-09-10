@@ -6,15 +6,17 @@ import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { TileView } from '../../objects/TileView';
 import { SpawnerView } from '../../objects/SpawnerView';
 import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { burstParticles, shakeForTier } from '../../fx/MergeFx';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
 import {
   EVENT_BOARD_COLS, EVENT_BOARD_ROWS, EVENT_CHAIN, EVENT_MAX_TIER, EVENT_SPAWN_COST,
   EVENT_SPAWNER_AT, createEventGrid, eventPointsForTier, eventTierDef,
-  markOverflowPaid, overflowCratesOwed, seedEventBoard, spendEventEnergy
+  markOverflowPaid, noteEventTierSeen, overflowCratesOwed, seedEventBoard, spendEventEnergy
 } from '../../events/EventBoard';
 import {
-  EVENT_ORDER_SLOTS, eventOrderPayout, rollEventOrders, submitEventOrder, visibleEventOrders
+  EVENT_ORDER_SLOTS, eventOrderPayout, findEventItem, rollEventOrders, submitEventOrder,
+  visibleEventOrders
 } from '../../events/EventOrders';
 import {
   activeEvent, addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
@@ -54,6 +56,8 @@ interface PanelState {
   boardLayer: Phaser.GameObjects.Container;
   grid: Grid;
   views: Map<string, TileView | SpawnerView>;
+  /** Held while a merge plays, so a second drag cannot start mid-animation. */
+  inputLocked: boolean;
   cellSize: number;
   originX: number;
   originY: number;
@@ -117,6 +121,7 @@ export function openEventPanel(scene: BoardScene): void {
 
   const state: PanelState = {
     overlay, boardLayer, grid, views: new Map(), cellSize, originX, originY,
+    inputLocked: false,
     redraw: () => undefined, refreshChrome: () => undefined, say: () => undefined
   };
 
@@ -132,7 +137,23 @@ export function openEventPanel(scene: BoardScene): void {
     fontFamily: Theme.fontMono, fontSize: '10px', color: hex(Theme.textOnDarkMuted),
     lineSpacing: 3
   }).setOrigin(0, 0.5);
-  chromeLayer.add([infoBg, infoText]);
+
+  // THE LADDER BUTTON, in the same corner of the same box as the main
+  // board's. A player who has learned that the `i` answers "what does this
+  // turn into?" should not have to learn a second place for it here.
+  const infoDot = scene.add.graphics();
+  const dotX = W - PAD - 20;
+  const dotY = infoY + INFO_H / 2;
+  infoDot.lineStyle(1, EVENT_TOKEN_COLOR, 0.9);
+  infoDot.strokeCircle(dotX, dotY, 10);
+  const infoLetter = scene.add.text(dotX, dotY, 'i', {
+    resolution: textResolution,
+    fontFamily: Theme.fontHeading, fontSize: '12px', fontStyle: 'bold',
+    color: hex(EVENT_TOKEN_COLOR)
+  }).setOrigin(0.5);
+  const infoHit = scene.add.zone(dotX, dotY, 40, 40).setInteractive({ useHandCursor: true });
+  infoHit.on('pointerup', () => openEventLadder(scene));
+  chromeLayer.add([infoBg, infoText, infoDot, infoLetter, infoHit]);
 
   const HINT = 'TAP THE BOOTH TO PRODUCE\nDRAG MATCHES TO MERGE';
   state.say = (text: string): void => {
@@ -301,20 +322,36 @@ function buildChrome(
     const hit = scene.add.zone(x + cardW / 2, ordersY + ORDER_CARD_H / 2, cardW, ORDER_CARD_H)
       .setInteractive({ useHandCursor: true });
     layer.add([bg, icon, pay, hit]);
+
     hit.on('pointerup', () => {
-      const result = submitEventOrder(scene.eventBoard, state.grid, slot);
-      if (!result) {
-        // Refused, and it says which item is missing rather than just
-        // failing silently - the card's own art is the answer, so the
-        // shake points at it.
+      const asking = visibleEventOrders(scene.eventBoard, state.grid)[slot];
+      const from = asking ? findEventItem(state.grid, asking) : null;
+      if (!from) {
+        // Refused, and it says WHY rather than failing silently - the card's
+        // own art is the answer, so the shake points back at it.
         scene.tweens.add({
           targets: bg, x: 4, duration: 60, yoyo: true, repeat: 1, ease: 'Sine.InOut',
           onComplete: () => bg.setX(0)
         });
+        state.say(`NONE READY  \u00b7  ${(eventTierDef(asking ?? 1)?.label ?? '').toUpperCase()}\nMERGE UP TO IT FIRST`);
         return;
       }
-      state.views.get(keyOf(result.from))?.destroy();
-      state.views.delete(keyOf(result.from));
+
+      // The piece FLIES to the card that took it, exactly as an order
+      // delivery does on the main board. Handing something over and having
+      // it simply vanish is the one moment on this board that would feel
+      // like nothing happened.
+      const view = state.views.get(keyOf(from));
+      const result = submitEventOrder(scene.eventBoard, state.grid, slot);
+      if (!result) return;
+      state.views.delete(keyOf(from));
+      if (view instanceof TileView) {
+        void view.playDeliverTo(x + cardW / 2, ordersY + ORDER_CARD_H / 2);
+      } else {
+        view?.destroy();
+      }
+
+      floatPayout(scene, layer, x + cardW / 2, ordersY + 8, result.points);
       const finished = payEventPoints(scene, result.points);
       opts.onSave();
       refresh();
@@ -322,7 +359,7 @@ function buildChrome(
       // call that crosses the goal and never again.
       if (finished) track.celebrate();
     });
-    return { x, bg, icon, pay };
+    return { x, bg, icon, pay, lit: false };
   });
 
   // ONLY the clock. Called every second, so it must not repaint the cards -
@@ -331,6 +368,11 @@ function buildChrome(
   const tick = (): void => {
     clock.setText(formatEventCountdown(eventMsRemaining(event, Date.now())));
   };
+
+  // The unscaled size an order icon was drawn at, so the breath can be based
+  // on it rather than compounding whatever scale it is mid-tween.
+  const cardScale = new Map<object, number>();
+  const present0 = (card: object): number => cardScale.get(card) ?? 1;
 
   const refresh = (): void => {
     const now = Date.now();
@@ -350,15 +392,33 @@ function buildChrome(
       const tier = asking[slot];
       const def = eventTierDef(tier);
       const top = tier >= EVENT_MAX_TIER;
+      // A card LIGHTS UP the moment the board can actually fill it. Reading
+      // a card and then discovering you cannot pay it is the difference
+      // between a board that answers you and one you have to interrogate.
+      const canFill = !!findEventItem(state.grid, tier);
       card.bg.clear();
-      card.bg.fillStyle(Theme.bgElevated, 1);
+      card.bg.fillStyle(canFill ? Theme.bg : Theme.bgElevated, 1);
       card.bg.fillRoundedRect(card.x, ordersY, cardW, ORDER_CARD_H, Theme.radiusChip);
-      // The top-tier auto-order is the one card that lights up, because it is
-      // the one that will not be there next time you look.
       card.bg.lineStyle(
-        Theme.borderWidth, top ? EVENT_TOKEN_COLOR : Theme.borderOnDark, top ? 1 : 0.7
+        canFill ? Theme.borderWidthStrong : Theme.borderWidth,
+        canFill || top ? EVENT_TOKEN_COLOR : Theme.borderOnDark,
+        canFill ? 1 : (top ? 0.9 : 0.6)
       );
       card.bg.strokeRoundedRect(card.x, ordersY, cardW, ORDER_CARD_H, Theme.radiusChip);
+      card.pay.setColor(hex(canFill ? EVENT_TOKEN_COLOR : Theme.textOnDarkMuted));
+
+      // ...and breathes while it stays fillable, the same signal the track's
+      // ready prizes use. One idiom for "this is waiting for you", not two.
+      if (canFill && !card.lit) {
+        card.lit = true;
+        scene.tweens.add({
+          targets: card.icon, scale: present0(card) * 1.08, duration: 640,
+          yoyo: true, repeat: -1, ease: 'Sine.InOut'
+        });
+      } else if (!canFill && card.lit) {
+        card.lit = false;
+        scene.tweens.killTweensOf(card.icon);
+      }
 
       card.icon.clear();
       if (def) {
@@ -367,8 +427,9 @@ function buildChrome(
           card.icon, EVENT_CHAIN.typeId, tier, size, materialLighting(def.color, tier)
         );
         const present = iconPresentation(EVENT_CHAIN.typeId, tier, size);
+        cardScale.set(card, present.scale);
         card.icon.setAlpha(render.materialAlpha)
-          .setScale(present.scale)
+          .setScale(card.lit ? card.icon.scaleX : present.scale)
           .setPosition(
             card.x + cardW / 2 + present.offsetX,
             ordersY + ORDER_CARD_H * 0.42 + present.offsetY
@@ -584,7 +645,7 @@ function attachPanelInput(
   const down = (pointer: Phaser.Input.Pointer): void => {
     // The board is inert while the milestone track is stacked over it -
     // otherwise a drag would run underneath the panel the player is reading.
-    if (scene.eventTrackOpen) return;
+    if (scene.eventTrackOpen || state.inputLocked) return;
     const cell = opts.worldToCell(pointer.x, pointer.y);
     if (!cell) return;
     const view = state.views.get(keyOf(cell));
@@ -648,13 +709,7 @@ function attachPanelInput(
       && fromCellData.tier < EVENT_MAX_TIER;
 
     if (mergeable) {
-      state.grid.set(from, null);
-      state.grid.set(target, {
-        kind: 'item', typeId: fromCellData.typeId, tier: fromCellData.tier + 1
-      });
-      rebuildCells(scene, state, opts, [from, target]);
-      opts.save();
-      opts.afterChange();
+      void runEventMerge(scene, state, opts, view as TileView, from, target, fromCellData.tier);
       return;
     }
 
@@ -683,6 +738,198 @@ function attachPanelInput(
       scene.input.off('pointerup', up);
     }
   };
+}
+
+/**
+ * The points a delivery paid, rising off the card that paid them.
+ *
+ * A number that appears where the action happened is the cheapest possible
+ * answer to "did that work?", and without it the only feedback for filling an
+ * order is a bar somewhere else moving by a few pixels.
+ */
+function floatPayout(
+  scene: BoardScene, layer: Phaser.GameObjects.Container,
+  x: number, y: number, points: number
+): void {
+  const text = scene.add.text(x, y, `+${points}`, {
+    resolution: textResolution,
+    fontFamily: Theme.fontNumeric, fontSize: '15px', fontStyle: 'bold',
+    color: hex(EVENT_TOKEN_COLOR)
+  }).setOrigin(0.5);
+  layer.add(text);
+  scene.tweens.add({
+    targets: text, y: y - 26, alpha: 0, duration: 700, ease: 'Quad.Out',
+    onComplete: () => text.destroy()
+  });
+}
+
+/**
+ * THE LADDER - what this chain turns into, and how far up it you have got.
+ *
+ * The same plate, the same question mark, the same grid as the main board's
+ * family panel, so a player reads it the way they already read that one.
+ *
+ * The one difference is deliberate: there is NO Gem claim here. The
+ * collection pays a Gem for discovering a permanent family's tier because
+ * that is a permanent record worth completing. This chain is deleted when the
+ * window shuts, so paying to complete it would be paying for something that
+ * cannot be kept - and would quietly make the event the cheapest Gem source
+ * in the game. It shows the progression and nothing else.
+ */
+function openEventLadder(scene: BoardScene): void {
+  if (scene.eventTrackOpen) return;
+  scene.eventTrackOpen = true;
+
+  const overlay = scene.add.container(0, 0).setDepth(3060);
+  const close = (): void => {
+    scene.eventTrackOpen = false;
+    overlay.destroy(true);
+  };
+
+  const W = scene.scale.width;
+  const H = scene.scale.height;
+  const shade = scene.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.72).setInteractive();
+  shade.on('pointerup', close);
+  overlay.add(shade);
+
+  const COLS = 4;
+  const slot = 62;
+  const gap = 8;
+  const rows = Math.ceil(EVENT_MAX_TIER / COLS);
+  const gridW = COLS * slot + (COLS - 1) * gap;
+  const panelW = Math.min(W - 32, gridW + 44);
+  const headerH = 58;
+  const panelH = headerH + rows * slot + (rows - 1) * gap + 22;
+  const left = W / 2 - panelW / 2;
+  const top = H / 2 - panelH / 2;
+
+  const bg = scene.add.graphics();
+  bg.fillStyle(Theme.bgElevated, 1);
+  bg.fillRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
+  bg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
+  bg.strokeRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
+  const catcher = scene.add.zone(left + panelW / 2, top + panelH / 2, panelW, panelH)
+    .setInteractive();
+  overlay.add([bg, catcher]);
+
+  const seen = scene.eventBoard.seenTier;
+  overlay.add(scene.add.text(W / 2, top + 22, 'VERDIGRIS', {
+    resolution: textResolution,
+    fontFamily: Theme.fontHeading, fontSize: '16px', fontStyle: 'bold',
+    color: hex(EVENT_TOKEN_COLOR)
+  }).setOrigin(0.5));
+  overlay.add(scene.add.text(W / 2, top + 42, `${Math.min(seen, EVENT_MAX_TIER)}/${EVENT_MAX_TIER}`, {
+    resolution: textResolution,
+    fontFamily: Theme.fontNumeric, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
+  }).setOrigin(0.5));
+
+  const x = scene.add.text(left + panelW - 20, top + 20, '\u2715', {
+    resolution: textResolution,
+    fontFamily: Theme.fontHeading, fontSize: '16px', color: hex(Theme.textOnDarkMuted)
+  }).setOrigin(0.5);
+  const xHit = scene.add.zone(left + panelW - 20, top + 20, 40, 40)
+    .setInteractive({ useHandCursor: true });
+  xHit.on('pointerup', close);
+  overlay.add([x, xHit]);
+
+  const gridLeft = W / 2 - gridW / 2;
+  const gridTop = top + headerH;
+
+  EVENT_CHAIN.tiers.forEach((def, index) => {
+    const column = index % COLS;
+    const row = Math.floor(index / COLS);
+    const cellTop = gridTop + row * (slot + gap);
+    const cx = gridLeft + slot / 2 + column * (slot + gap);
+    const cy = cellTop + slot / 2;
+    const known = def.tier <= seen;
+
+    const plate = scene.add.graphics();
+    plate.fillStyle(Theme.bg, known ? 0.92 : 0.48);
+    plate.fillRoundedRect(cx - slot / 2, cellTop, slot, slot, Theme.radiusChip);
+    plate.lineStyle(1, Theme.borderOnDark, 0.55);
+    plate.strokeRoundedRect(cx - slot / 2, cellTop, slot, slot, Theme.radiusChip);
+    overlay.add(plate);
+
+    if (!known) {
+      overlay.add(scene.add.text(cx, cy, '?', {
+        resolution: textResolution,
+        fontFamily: Theme.fontNumeric, fontSize: '26px', fontStyle: 'bold',
+        color: hex(Theme.textOnDarkMuted)
+      }).setOrigin(0.5).setAlpha(0.5));
+      return;
+    }
+
+    const size = slot * 0.9;
+    const icon = scene.add.graphics();
+    const render = drawTierIcon(
+      icon, EVENT_CHAIN.typeId, def.tier, size, materialLighting(def.color, def.tier)
+    );
+    const present = iconPresentation(EVENT_CHAIN.typeId, def.tier, size);
+    icon.setAlpha(render.materialAlpha)
+      .setScale(present.scale)
+      .setPosition(cx + present.offsetX, cy + present.offsetY);
+    overlay.add(icon);
+  });
+}
+
+/**
+ * THE MERGE, beat for beat as the main board plays it.
+ *
+ * Snap the dragged piece home, collapse BOTH pieces, burst, shake, then the
+ * result grows in. It is the game's most repeated animation, so an event
+ * board that merged instantly would feel like a different game inside the
+ * same one - and the timings are read from TileView and MergeFx rather than
+ * re-chosen here, so the two can never drift apart.
+ */
+async function runEventMerge(
+  scene: BoardScene,
+  state: PanelState,
+  opts: {
+    cellToWorld: (pos: GridPosition) => { x: number; y: number };
+    save: () => void;
+    afterChange: () => void;
+  },
+  view: TileView,
+  from: GridPosition,
+  target: GridPosition,
+  tier: number
+): Promise<void> {
+  const targetView = state.views.get(keyOf(target));
+  const world = opts.cellToWorld(target);
+  const def = eventTierDef(tier + 1);
+  const wasCrusted = targetView instanceof TileView && targetView.locked;
+
+  state.inputLocked = true;
+  view.setScale(1);
+  await view.snapTo(world.x, world.y);
+
+  state.grid.set(from, null);
+  state.views.delete(keyOf(from));
+
+  await Promise.all([
+    view.playMergeOutAndDestroy(),
+    targetView instanceof TileView ? targetView.playMergeOutAndDestroy() : Promise.resolve()
+  ]);
+  state.views.delete(keyOf(target));
+
+  burstParticles(scene, world.x, world.y, def?.color ?? EVENT_TOKEN_COLOR, tier + 1);
+  shakeForTier(scene, tier + 1);
+
+  state.grid.set(target, { kind: 'item', typeId: EVENT_CHAIN.typeId, tier: tier + 1 });
+  rebuildCells(scene, state, opts, [target]);
+  const made = state.views.get(keyOf(target));
+  if (made instanceof TileView) void made.playMergeIn();
+
+  // Freeing a crusted cell is the board getting bigger, which is worth saying
+  // out loud - it is the only merge here that does more than raise a tier.
+  state.say(wasCrusted
+    ? `FREED  ·  ${(def?.label ?? 'PIECE').toUpperCase()}\nA CELL IS YOURS AGAIN`
+    : '');
+
+  noteEventTierSeen(scene.eventBoard, tier + 1);
+  state.inputLocked = false;
+  opts.save();
+  opts.afterChange();
 }
 
 /**
@@ -774,6 +1021,7 @@ function tapBooth(
 
   const tier = Math.random() < 0.22 ? 2 : 1;
   state.grid.set(free, { kind: 'item', typeId: EVENT_CHAIN.typeId, tier });
+  noteEventTierSeen(scene.eventBoard, tier);
   rebuildCells(scene, state, opts, [free]);
   // Flies out of the booth, so a tap has an origin rather than an item
   // simply appearing somewhere else on the board.
