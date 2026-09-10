@@ -31,6 +31,8 @@ import { normalizeInventory } from '../../inventory/Inventory';
 import type { InventoryState } from '../../inventory/Inventory';
 import { discoverThrough, normalizeCollectionState } from '../../collection/Collection';
 import { normalizeTimedEventState } from '../../events/TimedEvents';
+import { normalizeEventBoardState } from '../../events/EventBoard';
+import type { EventBoardState } from '../../events/EventBoard';
 import type { TimedEventState } from '../../events/TimedEvents';
 import type { CollectionState } from '../../collection/Collection';
 import { ROOM_PIECES } from '../../rooms/RoomView3D';
@@ -90,6 +92,7 @@ export function loadOrSeed(scene: BoardScene): void {
         rewards?: Partial<RewardsState>;
         collection?: Partial<CollectionState>;
         timedEvents?: Partial<TimedEventState>;
+        eventBoard?: Partial<EventBoardState>;
         inventory?: Partial<InventoryState>;
         pendingSpawners?: { typeId: string; tier: number }[];
         forcedSpawnVault?: ForcedSpawn[];
@@ -148,6 +151,7 @@ export function loadOrSeed(scene: BoardScene): void {
       const legacyCollection = parsed.collection == null;
       scene.collection = normalizeCollectionState(parsed.collection);
       scene.timedEvents = normalizeTimedEventState(parsed.timedEvents);
+      scene.eventBoard = normalizeEventBoardState(parsed.eventBoard);
       scene.inventory = normalizeInventory(parsed.inventory);
       const savedVault = Array.isArray(parsed.forcedSpawnVault)
         ? parsed.forcedSpawnVault.filter((entry): entry is ForcedSpawn => {
@@ -362,6 +366,7 @@ export function saveState(scene: BoardScene): void {
     rewards: scene.rewards,
     collection: scene.collection,
     timedEvents: scene.timedEvents,
+    eventBoard: scene.eventBoard,
     inventory: scene.inventory,
     forcedSpawnVault: scene.forcedSpawnVault,
     boardExpansion: { unlockedCells: [...scene.boardExpansionUnlocked] }

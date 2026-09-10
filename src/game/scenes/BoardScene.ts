@@ -19,6 +19,8 @@ import {
   refreshEventChip as refreshEventChipExt
 } from './board/eventChip';
 import type { TimedEventState } from '../events/TimedEvents';
+import { createDefaultEventBoardState } from '../events/EventBoard';
+import type { EventBoardState } from '../events/EventBoard';
 import { CRUCIBLE_METER_MAX, acceptsItem as crucibleAccepts, feedCrucible, rollCruciblePrize } from '../facility/Crucible';
 import { SHREDDER_METER_MAX, feedShredder, rollShredderPrize, shredderAccepts } from '../facility/Shredder';
 import type { GridPosition } from '../types';
@@ -573,6 +575,8 @@ export class BoardScene extends Phaser.Scene {
   inventory: InventoryState = createDefaultInventory();
   collection: CollectionState = createDefaultCollectionState();
   timedEvents: TimedEventState = createDefaultTimedEventState();
+  /** The event board's own state. Its Grid is built when the panel opens. */
+  eventBoard: EventBoardState = createDefaultEventBoardState();
   eventChip: Phaser.GameObjects.Container | null = null;
   eventChipBg: Phaser.GameObjects.Graphics | null = null;
   eventChipCount: Phaser.GameObjects.Text | null = null;
@@ -935,6 +939,7 @@ export class BoardScene extends Phaser.Scene {
         this.refreshEventChip();
         if ((this.eventChip?.visible ?? false) !== chipWas) this.refreshOrderBar();
         this.sweepExpiredEventTokens();
+        this.settleExpiredEventBoard();
         for (const view of this.views.values()) {
           if (view instanceof SpawnerView) view.refresh();
         }
@@ -2955,6 +2960,29 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     }
     this.saveState();
     this.checkDeadlock();
+  }
+
+  /**
+   * Shuts a finished event's board down and pays out what is left in it.
+   *
+   * Unspent event energy converts to main-game energy 1:1 rather than being
+   * deleted. A player who banked taps for an evening they never got to would
+   * otherwise be punished for the schedule, which is exactly the outcome that
+   * makes people stop opening events at all.
+   *
+   * Safe to call on every tick: it does nothing once the state is already
+   * cleared, so it cannot pay twice.
+   */
+  settleExpiredEventBoard(): void {
+    if (activeEvent(Date.now())) return;
+    const board = this.eventBoard;
+    if (!board.seeded && board.energy <= 0 && board.overflowPaid === 0) return;
+    if (board.energy > 0) {
+      addEnergy(this.energy, board.energy);
+      this.updateEnergyText();
+    }
+    this.eventBoard = createDefaultEventBoardState();
+    this.saveState();
   }
 
   /**
