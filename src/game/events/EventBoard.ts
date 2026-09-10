@@ -47,9 +47,23 @@ import { EVENT_CHAIN, EVENT_MAX_TIER } from './EventChain';
  * run of tier eights either.
  *
  * That is what makes a flat scale fair, and it is why the payout curve does
- * not have to carry the fairness on its own. The alternative - paying 2^(N-1)
- * so every order costs identical player time - is exactly balanced and reads
- * absurd: 1 point beside 128 on the same row.
+ * not have to carry the fairness on its own.
+ *
+ * Flat is also the LOWEST-LUCK option, which was measured rather than
+ * assumed. With the bag dealing complete cycles, the only luck left is where
+ * the clock stops inside one - so the worst gap between two players is the
+ * spread of a band's payouts, summed over the three slots:
+ *
+ *     flat  N            worst gap    7   (5% of a 140 goal)
+ *     2N-1                            14
+ *     triangular                      35
+ *     energy 2^(N-1)                 127   (91%)
+ *
+ * The energy scale pays identical player time per point and is still by far
+ * the swingiest at the buzzer, because one unfilled tier-8 order is most of
+ * an event. Flat compounds its own advantage too: smaller payouts mean more
+ * fills to reach the goal, so more complete cycles and less partial-cycle
+ * luck again.
  */
 export function eventPointsForTier(tier: number): number {
   return Math.max(1, Math.floor(tier));
