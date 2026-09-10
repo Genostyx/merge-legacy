@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { Theme, materialLighting, toneForNormal } from '../ui/Theme';
+import { EVENT_CHAIN } from '../events/EventBoard';
+import { Theme, materialLighting, toneAt, toneForNormal } from '../ui/Theme';
 import { CHAINS, getTierDef } from '../data/chains';
 import { GraphicsRecorder } from './GraphicsRecorder';
 
@@ -135,6 +136,17 @@ function drawIconShape(g: Phaser.GameObjects.Graphics, typeId: string, tier: num
       case 7: drawQuartz(g, s, palette); break;
       case 8: drawSapphire(g, s, palette); break;
       default: drawStarSapphire(g, s, palette);
+    }
+  } else if (typeId === EVENT_CHAIN.typeId) {
+    switch (tier) {
+      case 1: drawCopperSlag(g, s, palette); break;
+      case 2: drawOxideShard(g, s, palette); break;
+      case 3: drawCutCathode(g, s, palette); break;
+      case 4: drawBronzeBillet(g, s, palette); break;
+      case 5: drawFacetedBronze(g, s, palette); break;
+      case 6: drawPatinaSpire(g, s, palette); break;
+      case 7: drawVerdigrisLattice(g, s, palette); break;
+      default: drawVerdigrisKnot(g, s, palette); break;
     }
   } else if (typeId === 'glass') {
     switch (tier) {
@@ -594,6 +606,10 @@ const ICON_SIZE_CORRECTION: Record<string, number> = {
 
 /** How many tiers the family has, for normalising the size ladder across it. */
 function chainLength(typeId: string): number {
+  // The event chain is deliberately absent from CHAINS, so it is answered
+  // here - without this it fell to the default 9 and its eight tiers were
+  // sized as though a ninth existed, so the top merge grew barely at all.
+  if (typeId === EVENT_CHAIN.typeId) return EVENT_CHAIN.tiers.length;
   return CHAINS.find((chain) => chain.typeId === typeId)?.tiers.length ?? 9;
 }
 
@@ -3606,7 +3622,9 @@ export function drawSourceBuilding(
 ): void {
   const level = Phaser.Math.Clamp(Math.round(tier), 1, 5);
 
-  if (typeId === 'decagon') {
+  if (typeId === EVENT_CHAIN.typeId) {
+    drawVerdigrisSourceIsometric(g, r, p, ready);
+  } else if (typeId === 'decagon') {
     drawDecagonMachine(g, r, p, ready);
   } else if (typeId === 'water') {
     drawWaterSourceIsometric(g, r, p, ready, level);
@@ -3747,4 +3765,386 @@ function drawWaterSourceIsometric(
   } else {
     g.fillCircle(postX, crankY - r * 0.18, Math.max(1.5, r * 0.065));
   }
+}
+
+/**
+ * ---- Verdigris: copper's own sheet-and-casting language (the event chain) ----
+ *
+ * Wood ends in joinery, Glass in rings, Stone in lapidary cuts. Copper is
+ * neither cut nor jointed: it is POURED, ROLLED, RIVETED and finally DRAWN
+ * into bar. So this chain speaks in that vocabulary, and no tier here is one
+ * of the shared helpers called with nudged arguments - which is the exact
+ * failure the roadmap records for Wood 7/8, Stone 7-9 and Glass 8/9, where a
+ * reused shape read as the same object twice in a row.
+ *
+ * It still walks the shared eight-stage grammar (rough chunk, shard, cut
+ * slab, squared solid, faceted block, spire, interlocking form, smooth knot);
+ * only the material's language differs, which is the rule the roadmap sets.
+ *
+ * The one signature no other family has is the PATINA: pitting low in the
+ * chain, then a bloom of pale oxide creeping over the metal from tier 4 up.
+ * The chain's colours already run greener as they refine, and the bloom is
+ * what makes that read as corrosion rather than as a hue shift.
+ */
+
+/** Corrosion pits - dark holes, each with its far rim catching the key. */
+function copperPits(g: Phaser.GameObjects.Graphics, p: Palette, pits: [number, number, number][]): void {
+  for (const [x, y, r] of pits) {
+    g.fillStyle(p.shadow, 0.75);
+    g.fillCircle(x, y, r);
+    // A pit is a hole, so the inside of its FAR wall is lit where the flat
+    // surface around it is not. Without this they read as printed dots.
+    g.fillStyle(p.light, 0.35);
+    g.fillCircle(x + r * 0.25, y + r * 0.3, r * 0.55);
+  }
+}
+
+/**
+ * Pale oxide creeping over the metal. `amount` is 0-1 and drives how much of
+ * the form it has taken, so the top of the chain reads as further gone rather
+ * than merely a lighter green.
+ */
+function patinaBloom(g: Phaser.GameObjects.Graphics, s: number, p: Palette, amount: number): void {
+  const blooms: [number, number, number][] = [
+    [-s * 0.16, -s * 0.1, s * 0.075],
+    [s * 0.13, s * 0.05, s * 0.06],
+    [-s * 0.04, s * 0.16, s * 0.05],
+    [s * 0.18, -s * 0.15, s * 0.045]
+  ];
+  const take = Math.round(blooms.length * Math.min(1, Math.max(0, amount)));
+  for (let i = 0; i < take; i++) {
+    const [x, y, r] = blooms[i];
+    g.fillStyle(p.highlight, 0.22 + 0.14 * amount);
+    g.fillCircle(x, y, r);
+    g.fillStyle(p.light, 0.2);
+    g.fillCircle(x - r * 0.3, y - r * 0.25, r * 0.55);
+  }
+}
+
+/** 01 - a poured blob of slag: lobed rather than fractured, and gas-pitted. */
+function drawCopperSlag(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  // Rounded lobes, not broken planes: this is metal that cooled as it ran, so
+  // its outline is surface tension. Stone's tier 1 is a break; this is a pour.
+  drawIrregularChip(g, [
+    [-s * 0.24, s * 0.1], [-s * 0.2, -s * 0.08], [-s * 0.05, -s * 0.16],
+    [s * 0.12, -s * 0.11], [s * 0.22, s * 0.02], [s * 0.14, s * 0.16],
+    [-s * 0.08, s * 0.18]
+  ], p);
+  copperPits(g, p, [
+    [-s * 0.08, s * 0.02, s * 0.035],
+    [s * 0.08, s * 0.06, s * 0.026],
+    [s * 0.02, -s * 0.08, s * 0.02]
+  ]);
+}
+
+/** 02 - one flat shard, its rolled skin peeling off the metal underneath. */
+function drawOxideShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  drawIrregularChip(g, [
+    [-s * 0.26, s * 0.12], [-s * 0.12, -s * 0.18], [s * 0.16, -s * 0.14],
+    [s * 0.24, s * 0.04], [s * 0.02, s * 0.2]
+  ], p);
+  // THE PEEL - a lifted corner showing bright metal still under the skin.
+  // Two materials in one piece is the tier's whole idea, and it is what
+  // separates a shard of copper from a shard of anything else on this board.
+  g.fillStyle(p.highlight, 0.6);
+  g.beginPath();
+  g.moveTo(-s * 0.12, -s * 0.18);
+  g.lineTo(s * 0.16, -s * 0.14);
+  g.lineTo(s * 0.04, -s * 0.04);
+  g.lineTo(-s * 0.1, -s * 0.08);
+  g.closePath();
+  g.fillPath();
+  copperPits(g, p, [[s * 0.06, s * 0.08, s * 0.028]]);
+}
+
+/**
+ * 03 - a cathode plate: the grammar's first clean rectilinear form, in the
+ * shape copper actually leaves a refinery in - a thin hanging sheet with a
+ * lug over the bar.
+ */
+function drawCutCathode(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const w = s * 0.34, h = s * 0.42, d = s * 0.05;
+  const x = -w / 2, y = -h / 2 + s * 0.03;
+
+  g.fillStyle(p.shadow, 1);
+  g.fillRect(x + d, y + dropOffset(s), w, h);
+  g.fillGradientStyle(p.light, p.base, p.dark, p.shadow, 1);
+  g.fillRect(x, y, w, h);
+  // The thin right edge is what says "sheet" instead of "card".
+  g.fillStyle(p.dark, 1);
+  g.beginPath();
+  g.moveTo(x + w, y);
+  g.lineTo(x + w + d, y - d * 0.6);
+  g.lineTo(x + w + d, y + h - d * 0.6);
+  g.lineTo(x + w, y + h);
+  g.closePath();
+  g.fillPath();
+
+  // The lug, off-centre so the plate reads as hung rather than as a tile.
+  g.fillStyle(p.light, 1);
+  g.fillRect(x + w * 0.18, y - s * 0.07, w * 0.28, s * 0.08);
+  g.lineStyle(1, p.highlight, 0.7);
+  g.beginPath();
+  g.moveTo(x, y);
+  g.lineTo(x + w, y);
+  g.strokePath();
+  copperPits(g, p, [[x + w * 0.62, y + h * 0.6, s * 0.03]]);
+}
+
+/** 04 - a cast billet: squared, and struck with the mark of whoever poured it. */
+function drawBronzeBillet(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  drawBlock(g, s * 0.46, s * 0.3, s * 0.13, -s * 0.1, p);
+  // The stamped boss. A cast bar carries a maker's mark, and it is the one
+  // detail that says "made" rather than "found" - which IS the step from a
+  // cut plate to a cast solid.
+  g.fillStyle(p.shadow, 0.85);
+  g.fillCircle(-s * 0.11, s * 0.05, s * 0.055);
+  g.fillStyle(p.light, 0.9);
+  g.fillCircle(-s * 0.115, s * 0.043, s * 0.04);
+  g.fillStyle(p.dark, 0.9);
+  g.fillCircle(-s * 0.11, s * 0.05, s * 0.016);
+  patinaBloom(g, s * 0.7, p, 0.25);
+}
+
+/**
+ * 05 - the billet chamfered: a squared solid with its corners taken off.
+ *
+ * A chamfered RECTANGLE, deliberately not the rosette `drawFacetedForm`
+ * draws: at icon size a five- or six-sided rosette reads as a cut gem, and
+ * this tier has to still read as tier 4's block, one operation further on.
+ */
+function drawFacetedBronze(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const w = s * 0.23, h = s * 0.19, c = s * 0.075;
+  const pts: [number, number][] = [
+    [-w + c, -h], [w - c, -h], [w, -h + c], [w, h - c],
+    [w - c, h], [-w + c, h], [-w, h - c], [-w, -h + c]
+  ];
+  const drop = dropOffset(s);
+  g.fillStyle(p.shadow, 1);
+  g.beginPath();
+  pts.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py + drop) : g.lineTo(px, py + drop)));
+  g.closePath();
+  g.fillPath();
+
+  fillFanFacets(g, pts, p);
+  g.lineStyle(1, p.shadow, 0.6);
+  g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
+  // The chamfer itself takes the key hardest. That one bright short edge is
+  // what tells you a corner was cut off rather than rounded.
+  g.lineStyle(Math.max(1, s * 0.018), p.highlight, 0.75);
+  g.beginPath();
+  g.moveTo(-w, -h + c);
+  g.lineTo(-w + c, -h);
+  g.strokePath();
+  patinaBloom(g, s * 0.8, p, 0.45);
+}
+
+/**
+ * 06 - a spire: the grammar's tall faceted volume, RAISED in sheet copper
+ * over a frame - panelled, seamed in courses, capped with a finial - rather
+ * than the solid faceted prism the mineral families stand up.
+ */
+function drawPatinaSpire(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const halfH = s * 0.3, rB = s * 0.17, rT = s * 0.03;
+  const apexY = -halfH - s * 0.06;
+  const drop = dropOffset(s);
+
+  g.fillStyle(p.shadow, 1);
+  g.beginPath();
+  g.moveTo(-rB, halfH + drop);
+  g.lineTo(rB, halfH + drop);
+  g.lineTo(0, apexY + drop);
+  g.closePath();
+  g.fillPath();
+
+  // Three panels. The one facing the key is lit and the ones turning away
+  // take the shade, which is what gives a cone volume instead of a silhouette.
+  const faces: [number, number, number][] = [
+    [-rB, -rB * 0.1, Math.PI * 0.9],
+    [-rB * 0.1, rB * 0.62, Math.PI * 1.35],
+    [rB * 0.62, rB, Math.PI * 1.9]
+  ];
+  for (const [x1, x2, normal] of faces) {
+    g.fillStyle(toneForNormal(p, normal), 1);
+    g.beginPath();
+    g.moveTo(x1, halfH);
+    g.lineTo(x2, halfH);
+    g.lineTo(rT * 0.4, apexY);
+    g.closePath();
+    g.fillPath();
+  }
+
+  // Seam bands, narrowing with the cone. Sheet metal is joined in courses,
+  // and those horizontals are what keep this from reading as a solid spike.
+  for (const t of [0.32, 0.66]) {
+    const y = halfH - (halfH * 2 + s * 0.06) * t;
+    const r = rB * (1 - t) + rT * t;
+    g.lineStyle(Math.max(1, s * 0.02), p.dark, 0.8);
+    g.beginPath();
+    g.moveTo(-r, y);
+    g.lineTo(r, y);
+    g.strokePath();
+  }
+  g.fillStyle(p.highlight, 0.95);
+  g.fillCircle(0, apexY - s * 0.015, s * 0.035);
+  patinaBloom(g, s * 0.9, p, 0.6);
+}
+
+/**
+ * 07 - riveted straps, woven.
+ *
+ * The grammar's interlocking compound form, in copper's own joining method.
+ * The straps are FLAT bands with rivets near each end, and the middle band is
+ * laid down LAST so it passes over the other two - that single explicit
+ * over/under is what separates a weave from three bars simply overlaid.
+ */
+function drawVerdigrisLattice(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const len = s * 0.54, w = s * 0.115;
+  const angles = [Math.PI * 0.08, Math.PI * 0.75, Math.PI * 0.42];
+
+  for (const angle of angles) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const pts: [number, number][] = ([
+      [-len / 2, -w / 2], [len / 2, -w / 2], [len / 2, w / 2], [-len / 2, w / 2]
+    ] as [number, number][]).map(([px, py]) => [px * cos - py * sin, px * sin + py * cos] as [number, number]);
+    g.fillStyle(toneForNormal(p, angle), 1);
+    g.beginPath();
+    pts.forEach(([px, py], i) => (i === 0 ? g.moveTo(px, py) : g.lineTo(px, py)));
+    g.closePath();
+    g.fillPath();
+    g.lineStyle(1, p.shadow, 0.6);
+    g.strokePoints(pts.map(([px, py]) => new Phaser.Geom.Point(px, py)), true);
+    for (const t of [-0.36, 0.36]) {
+      const rx = len * t * cos, ry = len * t * sin;
+      g.fillStyle(p.highlight, 0.85);
+      g.fillCircle(rx, ry, s * 0.022);
+      g.fillStyle(p.shadow, 0.5);
+      g.fillCircle(rx + s * 0.008, ry + s * 0.008, s * 0.011);
+    }
+  }
+  patinaBloom(g, s, p, 0.8);
+}
+
+/**
+ * 08 - a trefoil knot in drawn bar.
+ *
+ * Deliberately NOT the three rotated rings the other chains finish on. Those
+ * read as concentric loops; a trefoil is ONE continuous bar crossing itself,
+ * which is both a different silhouette and the honest end of this chain's
+ * story - poured, rolled, cast, chamfered, raised, riveted, finally drawn.
+ */
+function drawVerdigrisKnot(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
+  const pts: Phaser.Geom.Point[] = [];
+  const SEGMENTS = 90;
+  for (let i = 0; i <= SEGMENTS; i++) {
+    const t = (Math.PI * 2 * i) / SEGMENTS;
+    // The standard trefoil parametrisation, flattened a little on y so it
+    // sits in its cell the way every other icon here does.
+    const x = Math.sin(t) + 2 * Math.sin(2 * t);
+    const y = Math.cos(t) - 2 * Math.cos(2 * t);
+    pts.push(new Phaser.Geom.Point(x * s * 0.082, y * s * 0.072));
+  }
+  // Three passes down the same path: a round section reads by having a bright
+  // line running along the middle of a darker tube.
+  g.lineStyle(s * 0.085, p.shadow, 0.9);
+  g.strokePoints(pts, false, true);
+  g.lineStyle(s * 0.065, p.base, 1);
+  g.strokePoints(pts, false, true);
+  g.lineStyle(s * 0.022, p.highlight, 0.85);
+  g.strokePoints(pts, false, true);
+  patinaBloom(g, s * 1.1, p, 1);
+}
+
+/**
+ * The event's source building: a copper condenser hut.
+ *
+ * Deliberately the ONE source on any board with a domed roof. Wood, Stone and
+ * Glass are all pitched or slabbed rectilinear buildings, so a dome is the
+ * fastest possible way to say "this is not one of yours" at board size -
+ * which matters more here than anywhere, because the event board is the only
+ * place it ever stands.
+ *
+ * It takes no tier: the booth is always tier 1. What gates a tap is event
+ * energy, and a source that levelled up would be a second economy inside a
+ * three-day window.
+ */
+function drawVerdigrisSourceIsometric(
+  g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean
+): void {
+  // Same architectural unit the other three families use, so all four sources
+  // carry equal weight on a board.
+  const u = r * 1.38;
+  const glow = ready ? p.highlight : p.dark;
+
+  g.fillStyle(p.shadow, 0.22);
+  g.fillEllipse(u * 0.06, u * 0.78, u * 2.55, u * 0.46);
+
+  // Foundation slab, in the established isometric basis.
+  fillPoly(g, [
+    [-u * 1.08, u * 0.48], [-u * 0.2, -u * 0.03],
+    [u * 1.1, u * 0.48], [u * 0.2, u]
+  ], p.base);
+  fillPoly(g, [
+    [-u * 1.08, u * 0.48], [u * 0.2, u], [u * 0.2, u * 1.12], [-u * 1.08, u * 0.6]
+  ], p.dark);
+  fillPoly(g, [
+    [u * 0.2, u], [u * 1.1, u * 0.48], [u * 1.1, u * 0.6], [u * 0.2, u * 1.12]
+  ], p.shadow);
+
+  const leftBottom: [number, number] = [-u * 0.8, u * 0.36];
+  const centreBottom: [number, number] = [u * 0.12, u * 0.74];
+  const rightBottom: [number, number] = [u * 0.84, u * 0.32];
+  const leftTop: [number, number] = [-u * 0.8, -u * 0.24];
+  const centreTop: [number, number] = [u * 0.12, u * 0.14];
+  const rightTop: [number, number] = [u * 0.84, -u * 0.28];
+
+  // Two wall planes, opaque - this is sheet metal over a frame, so the walls
+  // take flat tones and all the interest goes to the roof and the seams.
+  fillPoly(g, [leftBottom, centreBottom, centreTop, leftTop], p.base);
+  fillPoly(g, [centreBottom, rightBottom, rightTop, centreTop], p.dark);
+
+  // Standing seams down the near wall: the mark of a sheet-copper building,
+  // and the one detail that reads at cell size.
+  for (const t of [0.3, 0.62, 0.9]) {
+    const bx = leftBottom[0] + (centreBottom[0] - leftBottom[0]) * t;
+    const by = leftBottom[1] + (centreBottom[1] - leftBottom[1]) * t;
+    const tx = leftTop[0] + (centreTop[0] - leftTop[0]) * t;
+    const ty = leftTop[1] + (centreTop[1] - leftTop[1]) * t;
+    g.lineStyle(Math.max(1, u * 0.035), p.dark, 0.8);
+    g.beginPath();
+    g.moveTo(bx, by);
+    g.lineTo(tx, ty);
+    g.strokePath();
+  }
+
+  // THE DOME. Drawn as stacked ellipses rather than an arc, so the courses of
+  // the roof are visible - a smooth dome at this size reads as a bubble.
+  const domeCx = u * 0.02, domeCy = -u * 0.34;
+  const courses = 5;
+  for (let i = courses - 1; i >= 0; i--) {
+    const t = i / courses;
+    g.fillStyle(toneAt(p, 0.25 + t * 0.5), 1);
+    g.fillEllipse(domeCx, domeCy - u * 0.42 * t, u * 1.5 * (1 - t * 0.72), u * 0.62 * (1 - t * 0.6));
+  }
+  // The lit crown, upper-left, matching every other object's single key.
+  g.fillStyle(p.highlight, 0.45);
+  g.fillEllipse(domeCx - u * 0.12, domeCy - u * 0.5, u * 0.34, u * 0.16);
+
+  // Vent stack and its cap.
+  g.fillStyle(p.dark, 1);
+  g.fillRect(domeCx - u * 0.06, domeCy - u * 0.92, u * 0.12, u * 0.3);
+  g.fillStyle(p.light, 1);
+  g.fillEllipse(domeCx, domeCy - u * 0.92, u * 0.3, u * 0.12);
+
+  // The delivery slot. The only thing on the building that changes with
+  // state, so readiness is a light in one place rather than a colour shift
+  // across the whole form.
+  fillPoly(g, [
+    [-u * 0.16, u * 0.44], [u * 0.16, u * 0.57],
+    [u * 0.16, u * 0.31], [-u * 0.16, u * 0.18]
+  ], p.shadow);
+  fillPoly(g, [
+    [-u * 0.11, u * 0.42], [u * 0.11, u * 0.51],
+    [u * 0.11, u * 0.33], [-u * 0.11, u * 0.24]
+  ], glow, ready ? 0.95 : 0.5);
 }
