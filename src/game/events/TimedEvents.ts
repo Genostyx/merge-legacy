@@ -158,6 +158,25 @@ export function eventMsRemaining(event: TimedEventDef, now: number): number {
   return Math.max(0, event.endsAt - now);
 }
 
+/**
+ * The countdown, as a running clock: `HH:MM:SS`.
+ *
+ * Days are rolled into the HOURS field rather than shown separately. A
+ * "2d 4h" reading tells a player nothing is happening for hours and is worth
+ * no second glance; a clock that moves every second says the window is
+ * actually closing, which is the entire job of an event timer. Rolling the
+ * days in also keeps it to eight characters, so the same string fits the chip
+ * in the order row and the panel header without two formats to keep in step.
+ */
+export function formatEventCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
 /** Progress recorded so far, capped at the goal. */
 export function eventProgress(state: TimedEventState, event: TimedEventDef): number {
   return Math.min(event.goal, state.progress[event.id] ?? 0);

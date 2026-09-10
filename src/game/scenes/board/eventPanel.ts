@@ -16,7 +16,8 @@ import {
   EVENT_ORDER_SLOTS, eventOrderPayout, rollEventOrders, submitEventOrder, visibleEventOrders
 } from '../../events/EventOrders';
 import {
-  activeEvent, addEventProgress, eventMsRemaining, eventProgress, unclaimedMilestones
+  activeEvent, addEventProgress, eventMsRemaining, eventProgress,
+  formatEventCountdown, unclaimedMilestones
 } from '../../events/TimedEvents';
 
 /**
@@ -186,7 +187,12 @@ export function openEventPanel(scene: BoardScene): void {
     afterChange: () => chrome.refresh()
   });
 
+  // The countdown runs while the panel is open. Removed on close, or it would
+  // keep ticking against destroyed text after the overlay is gone.
+  const ticker = scene.time.addEvent({ delay: 1000, loop: true, callback: () => chrome.tick() });
+
   const close = (): void => {
+    ticker.remove();
     input.detach();
     save();
     scene.eventOverlay = null;
@@ -210,7 +216,7 @@ function buildChrome(
     W: number; headerH: number; ordersY: number; trackY: number;
     onClose: () => void; onSave: () => void;
   }
-): { refresh: () => void } {
+): { refresh: () => void; tick: () => void } {
   const { W, headerH, ordersY, trackY } = opts;
 
   // --- header: the name, the countdown, and the way out ---
@@ -300,9 +306,16 @@ function buildChrome(
     return { x, bg, icon, pay };
   });
 
+  // ONLY the clock. Called every second, so it must not repaint the cards -
+  // redrawing eight tier icons a second to move one digit would fight the
+  // board's own tweens for no gain.
+  const tick = (): void => {
+    clock.setText(formatEventCountdown(eventMsRemaining(event, Date.now())));
+  };
+
   const refresh = (): void => {
     const now = Date.now();
-    clock.setText(formatRemaining(eventMsRemaining(event, now)));
+    clock.setText(formatEventCountdown(eventMsRemaining(event, now)));
     energyText.setText(String(scene.eventBoard.energy));
     // Dimmed when there is nothing to spend, which is the state that explains
     // why the booth has stopped responding.
@@ -365,7 +378,7 @@ function buildChrome(
   };
   refresh();
 
-  return { refresh };
+  return { refresh, tick };
 }
 
 /**
@@ -386,15 +399,6 @@ function payEventPoints(scene: BoardScene, points: number): void {
     markOverflowPaid(scene.eventBoard, owed);
   }
   scene.refreshEventChip();
-}
-
-function formatRemaining(ms: number): string {
-  const totalMinutes = Math.floor(ms / 60_000);
-  const days = Math.floor(totalMinutes / 1440);
-  if (days >= 1) return `${days}d ${Math.floor((totalMinutes % 1440) / 60)}h`;
-  const hours = Math.floor(totalMinutes / 60);
-  if (hours >= 1) return `${hours}h ${totalMinutes % 60}m`;
-  return `${totalMinutes}m`;
 }
 
 /* ------------------------------------------------------------------ */

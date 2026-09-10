@@ -6,6 +6,7 @@ import {
   claimMilestone,
   createDefaultTimedEventState,
   eventMsRemaining,
+  formatEventCountdown,
   isMilestoneClaimed,
   isEventComplete,
   normalizeTimedEventState,
@@ -41,6 +42,16 @@ describe('timed events', () => {
     for (let i = 1; i < sorted.length; i++) {
       expect(sorted[i].startsAt).toBeGreaterThanOrEqual(sorted[i - 1].endsAt);
     }
+  });
+
+  it('counts down as a running clock, and stops at zero', () => {
+    expect(formatEventCountdown(0)).toBe('00:00:00');
+    expect(formatEventCountdown(-5000)).toBe('00:00:00');
+    expect(formatEventCountdown(9_000)).toBe('00:00:09');
+    expect(formatEventCountdown(HOUR + 61_000)).toBe('01:01:01');
+    // Days roll into HOURS rather than getting a field of their own, so one
+    // eight-character string fits both the chip and the panel.
+    expect(formatEventCountdown(HOUR * 52 + 90_000)).toBe('52:01:30');
   });
 
   it('opens on its start and is over AT its end, not after', () => {

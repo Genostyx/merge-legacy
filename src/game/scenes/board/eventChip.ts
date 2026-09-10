@@ -7,7 +7,7 @@ import { drawCrate } from '../../objects/TierIcons';
 import { ORDER_CARD_H } from './config';
 import {
   activeEvent, claimMilestone, eventMsRemaining, eventProgress,
-  isMilestoneClaimed, unclaimedMilestones
+  formatEventCountdown, isMilestoneClaimed, unclaimedMilestones
 } from '../../events/TimedEvents';
 import type { TimedEventDef } from '../../events/TimedEvents';
 
@@ -87,7 +87,7 @@ export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
 
   const points = eventProgress(scene.timedEvents, event);
   scene.eventChipCount?.setText(`${points}/${event.goal}`);
-  scene.eventChipClock?.setText(formatRemaining(eventMsRemaining(event, now)));
+  scene.eventChipClock?.setText(formatEventCountdown(eventMsRemaining(event, now)));
 
   const owed = unclaimedMilestones(scene.timedEvents, event).length;
   drawChipMeter(scene, event, points, owed);
@@ -150,16 +150,6 @@ function drawChipMeter(
     g.fillStyle(EVENT_TOKEN_COLOR, 0.9);
     g.fillCircle(0, 0, r * 0.42);
   }
-}
-
-/** Days once past a day, hours and minutes below that. */
-function formatRemaining(ms: number): string {
-  const totalMinutes = Math.floor(ms / 60_000);
-  const days = Math.floor(totalMinutes / 1440);
-  if (days >= 1) return `${days}d ${Math.floor((totalMinutes % 1440) / 60)}h`;
-  const hours = Math.floor(totalMinutes / 60);
-  if (hours >= 1) return `${hours}h ${totalMinutes % 60}m`;
-  return `${totalMinutes}m`;
 }
 
 /**
@@ -225,7 +215,7 @@ export function openEventTrack(scene: BoardScene, overPanel = false): void {
   const points = eventProgress(scene.timedEvents, event);
   overlay.add(scene.add.text(
     scene.scale.width / 2, top + 46,
-    `${points}/${event.goal}  ·  ${formatRemaining(eventMsRemaining(event, Date.now()))}`,
+    `${points}/${event.goal}  ·  ${formatEventCountdown(eventMsRemaining(event, Date.now()))}`,
     {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
