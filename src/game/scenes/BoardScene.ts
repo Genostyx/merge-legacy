@@ -2267,6 +2267,26 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.setSellButton('SELL', `+${value}`, 'credit', Theme.currencyCredit);
       return;
     }
+    if (selected instanceof FacilityView) {
+      this.rushTargetKey = null;
+      // What it EATS is the thing a player cannot deduce from the art. The
+      // two machines look nothing alike, which says they are different; it
+      // does not say which one takes the Rosewood Heirloom. Show-don't-tell
+      // allows a caption exactly where the art cannot carry the meaning, and
+      // this is that case - along with the count, which no picture can give.
+      const shredder = selected.facilityId === 'shredder';
+      const meter = shredder ? this.rewards.shredder.meter : this.rewards.crucible.meter;
+      const max = shredder ? SHREDDER_METER_MAX : CRUCIBLE_METER_MAX;
+      this.actionText.setText(shredder
+        ? `SHREDDER  ·  ${meter}/${max}\nDRAG IN ANY UNFINISHED ITEM  ·  PAYS A CRATE`
+        : `CRUCIBLE  ·  ${meter}/${max}\nDRAG IN A TOP-TIER ITEM  ·  PAYS THE BEST CRATES`);
+      this.sellButton.setVisible(false);
+      this.sellButtonMark.setVisible(false);
+      this.sellButtonBg.setVisible(false);
+      this.sellButtonAmount.setVisible(false);
+      this.sellButtonZone.setVisible(false);
+      return;
+    }
     if (selected instanceof SplitterView) {
       this.rushTargetKey = null;
       this.actionText.setText('SPLITTER\nDRAG ONTO A TIER 02+ ITEM TO DIVIDE IT');
