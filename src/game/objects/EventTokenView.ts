@@ -108,10 +108,17 @@ function drawPolishedFace(
   ];
   const color = (v: number): number => {
     const broad = Math.exp(-Math.pow((v + 0.22) / 0.23, 2));
-    const sharp = Math.exp(-Math.pow((v + 0.28) / 0.055, 2));
+    // Widened from 0.055: at a 74px cell that was a sub-pixel line, which
+    // aliases into a dashed glint rather than a reflection. It still reads
+    // as a hard edge when large, and now survives being small.
+    const sharp = Math.exp(-Math.pow((v + 0.28) / 0.085, 2));
     const lower = Math.exp(-Math.pow((v - 0.85) / 0.1, 2));
-    const darkMetal = metalMix(p.shadow, 0x020b0a, 0.68);
-    const body = metalMix(darkMetal, p.base, 0.12 + broad * 0.35);
+    // Was mixed 68% toward near-black and then only 12% back toward the
+    // family colour, which came out as dark chrome rather than the bright
+    // metal it is meant to be. The floor is lifted and the body sits much
+    // closer to the token's own teal.
+    const darkMetal = metalMix(p.shadow, 0x020b0a, 0.3);
+    const body = metalMix(darkMetal, p.base, 0.38 + broad * 0.42);
     return metalMix(body, 0xf3fff5, Math.min(0.94, broad * 0.48 + sharp * 0.46 + lower * 0.22));
   };
   for (let i = 0; i < strips; i++) {
@@ -214,11 +221,23 @@ function drawStruckCrown(
     g.fillTriangle(bx + px, by + py, cos * tip, cy + sin * tip, bx - px, by - py);
   }
 
-  // THE HALF RING they stand on - open at the bottom, so it is a band around
-  // a head that is not drawn rather than a closed hoop.
+  // THE ARCH, long enough to carry every foot.
+  //
+  // It ran from 1.02PI to 1.98PI while the rays ran 1.04PI to 1.96PI - about
+  // four degrees of margin at each end. But a ray's foot is a WIDTH, not a
+  // point: half a base of `halfBase` at a radius of `bandR` subtends around
+  // twenty-four degrees, so the outer two rays hung off the ends of the arch
+  // with nothing under them.
+  //
+  // The span is derived from that foot angle now rather than guessed, so the
+  // arch always finishes outside the last ray however the fan is retuned.
+  const footAngle = Math.atan2(halfBase, bandR);
+  const bandFrom = from - footAngle;
+  const bandTo = to + footAngle;
   const band: Phaser.Geom.Point[] = [];
-  for (let i = 0; i <= 26; i++) {
-    const a = Math.PI * 1.02 + (Math.PI * 0.96 * i) / 26;
+  const BAND_STEPS = 30;
+  for (let i = 0; i <= BAND_STEPS; i++) {
+    const a = bandFrom + ((bandTo - bandFrom) * i) / BAND_STEPS;
     band.push(new Phaser.Geom.Point(Math.cos(a) * bandR, cy + Math.sin(a) * bandR));
   }
   // The same relief under the band, offset the same way, so the whole device
