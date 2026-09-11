@@ -253,27 +253,61 @@ def crystal(radius: float, height: float, tip: float, sides: int = 6, taper: flo
     return ob
 
 
-def cut_stone(girdle, crown: float, pavilion: float, table: float = 0.5):
-    """A cut stone from any GIRDLE outline: table, crown, pavilion to a keel.
+def cut_stone(girdle, crown, pavilion):
+    """A cut stone built from FACET ROWS, not a single slope.
 
-    One function, three cuts - the girdle is what tells them apart, which is
-    also how real lapidary names them. A round girdle is a brilliant, a lens
-    is a marquise, a rectangle is a step cut. Three separate near-identical
-    rosettes is exactly what this tier art was rewritten to stop being.
+    The first version had one crown row and one pavilion row, so a step cut, a
+    marquise and a brilliant all came out as the same thing: a cone with a
+    flat top. What actually distinguishes the cuts is how many times the
+    surface CHANGES ANGLE between the girdle and the table - a step cut is
+    literally named for its steps, and a brilliant carries two rows of facets
+    above the girdle and two below.
+
+    `crown` and `pavilion` are lists of (scale, height) rings measured from
+    the girdle, outward face first. The last pavilion ring at scale 0 closes
+    to a keel point.
     """
-    mesh = bpy.data.meshes.new("cut")
+    mesh = bpy.data.meshes.new('cut')
     bm = bmesh.new()
-    lower = [bm.verts.new((x, y, pavilion)) for x, y in girdle]
-    upper = [bm.verts.new((x * table, y * table, pavilion + crown)) for x, y in girdle]
-    point = bm.verts.new((0.0, 0.0, 0.0))
-    for i in range(len(girdle)):
-        j = (i + 1) % len(girdle)
-        bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
-        bm.faces.new((lower[j], lower[i], point))
-    bm.faces.new(tuple(upper))
+
+    def make_ring(scale, z):
+        # A scale may be a single number or a pair. The pair exists for the
+        # marquise: scaling both axes evenly pulls its POINTS in as the crown
+        # rises, so the table ends up a tiny lens that reads as a dark slot
+        # rather than a ridge running the length of the stone.
+        sx, sy = scale if isinstance(scale, tuple) else (scale, scale)
+        return [bm.verts.new((x * sx, y * sy, z)) for x, y in girdle]
+
+    rows = [make_ring(1.0, 0.0)]
+    for scale, z in crown:
+        rows.append(make_ring(scale, z))
+    below = [rows[0]]
+    keel = None
+    for scale, z in pavilion:
+        if not isinstance(scale, tuple) and scale <= 0.0:
+            keel = bm.verts.new((0.0, 0.0, z))
+        else:
+            below.append(make_ring(scale, z))
+
+    def band(lower, upper):
+        for k in range(len(girdle)):
+            m = (k + 1) % len(girdle)
+            bm.faces.new((lower[k], lower[m], upper[m], upper[k]))
+
+    for a, b in zip(rows, rows[1:]):
+        band(a, b)
+    for a, b in zip(below, below[1:]):
+        band(b, a)
+    if keel is not None:
+        last = below[-1]
+        for k in range(len(girdle)):
+            m = (k + 1) % len(girdle)
+            bm.faces.new((last[m], last[k], keel))
+    bm.faces.new(tuple(rows[-1]))
+
     bm.to_mesh(mesh)
     bm.free()
-    ob = bpy.data.objects.new("cut", mesh)
+    ob = bpy.data.objects.new('cut', mesh)
     bpy.context.collection.objects.link(ob)
     bpy.context.view_layer.objects.active = ob
     return ob
@@ -291,10 +325,16 @@ def lens(length: float, width: float, per_side: int = 7):
 
     Two arcs meeting at sharp points. A squashed circle is NOT this: the
     points are the whole identity of the cut, and an ellipse has none.
+
+    The return arc runs BACKWARDS. Walking both arcs left-to-right does not
+    close a loop, it crosses one - the outline came out a bow tie, and the
+    fold showed on the render as a dark slot across the crown that no amount
+    of adjusting the facet rows was ever going to fix.
     """
     pts = []
     for side in (1, -1):
-        for i in range(per_side):
+        steps = range(per_side) if side == 1 else range(per_side, 0, -1)
+        for i in steps:
             t = -1.0 + 2.0 * i / per_side
             pts.append((t * length * 0.5, side * width * 0.5 * (1 - t * t) ** 0.72))
     return pts
@@ -510,9 +550,30 @@ def build_mineral():
     # simplest and the right read for the chain's first cut stone; the
     # marquise adds points; the round brilliant is the most heavily cut and
     # earns the top slot on silhouette alone.
-    out[7] = cut_stone(rect_ring(0.62, 0.42), crown=0.13, pavilion=0.26, table=0.72)
-    out[8] = cut_stone(lens(0.74, 0.40), crown=0.16, pavilion=0.32, table=0.46)
-    out[9] = cut_stone(ring(16, 0.36), crown=0.20, pavilion=0.46, table=0.42)
+    # STEP CUT: named for its steps, so it gets three of them up to a broad
+    # table and two down to the keel. A single slope is what made it read as
+    # a loaf.
+    out[7] = cut_stone(
+        rect_ring(0.60, 0.42),
+        crown=[(0.88, 0.05), (0.76, 0.10), (0.64, 0.15)],
+        pavilion=[(0.84, -0.09), (0.56, -0.19), (0.0, -0.30)],
+    )
+    # MARQUISE: the points are the identity of the cut, so the girdle is a
+    # lens and the crown keeps its length as it rises - scaling it down evenly
+    # would round the points off before they reached the table.
+    out[8] = cut_stone(
+        lens(0.80, 0.38),
+        crown=[((0.92, 0.74), 0.07), ((0.80, 0.30), 0.15)],
+        pavilion=[((0.84, 0.66), -0.13), ((0.62, 0.34), -0.26), (0.0, -0.38)],
+    )
+    # ROUND BRILLIANT: the most heavily cut stone in the chain, and it should
+    # win on facet count alone - two rows above the girdle, two below, on a
+    # sixteen-sided girdle.
+    out[9] = cut_stone(
+        ring(16, 0.36),
+        crown=[(0.86, 0.08), (0.46, 0.17)],
+        pavilion=[(0.74, -0.16), (0.38, -0.33), (0.0, -0.46)],
+    )
 
     for tier, ob in out.items():
         # Gems and crystal keep CRISP facets - a bevel on a cut stone rounds
