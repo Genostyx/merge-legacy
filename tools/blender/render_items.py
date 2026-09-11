@@ -1678,7 +1678,7 @@ def dress_currency(kind: str, out):
             # reflects about 5 percent face on, so the gloss has to come
             # from a full clear COAT over the colour rather than from base
             # roughness, the same way the polished stones get theirs.
-            shader.inputs["Roughness"].default_value = 0.14
+            shader.inputs["Roughness"].default_value = 0.07
             shader.inputs["IOR"].default_value = 1.75
             polished(material, coat_roughness=0.03)
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
