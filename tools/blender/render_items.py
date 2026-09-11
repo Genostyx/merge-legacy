@@ -253,31 +253,83 @@ def crystal(radius: float, height: float, tip: float, sides: int = 6, taper: flo
     return ob
 
 
-def gem(radius: float, crown: float, pavilion: float, sides: int = 8, table: float = 0.52):
-    """A cut stone: flat table, sloped crown, pavilion to a point.
+def cut_stone(girdle, crown: float, pavilion: float, table: float = 0.5):
+    """A cut stone from any GIRDLE outline: table, crown, pavilion to a keel.
 
-    The top of the mineral ladder is the one place the family stops being
-    found rock and becomes something CUT, and a faceted silhouette is what
-    says so at board size - not a shinier material on the same lump.
+    One function, three cuts - the girdle is what tells them apart, which is
+    also how real lapidary names them. A round girdle is a brilliant, a lens
+    is a marquise, a rectangle is a step cut. Three separate near-identical
+    rosettes is exactly what this tier art was rewritten to stop being.
     """
-    mesh = bpy.data.meshes.new("gem")
+    mesh = bpy.data.meshes.new("cut")
     bm = bmesh.new()
-    girdle = [bm.verts.new((math.cos(2 * math.pi * i / sides) * radius,
-                            math.sin(2 * math.pi * i / sides) * radius, pavilion))
-              for i in range(sides)]
-    top = [bm.verts.new((math.cos(2 * math.pi * i / sides) * radius * table,
-                         math.sin(2 * math.pi * i / sides) * radius * table,
-                         pavilion + crown))
-           for i in range(sides)]
+    lower = [bm.verts.new((x, y, pavilion)) for x, y in girdle]
+    upper = [bm.verts.new((x * table, y * table, pavilion + crown)) for x, y in girdle]
     point = bm.verts.new((0.0, 0.0, 0.0))
-    for i in range(sides):
-        j = (i + 1) % sides
-        bm.faces.new((girdle[i], girdle[j], top[j], top[i]))
-        bm.faces.new((girdle[j], girdle[i], point))
-    bm.faces.new(tuple(top))
+    for i in range(len(girdle)):
+        j = (i + 1) % len(girdle)
+        bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
+        bm.faces.new((lower[j], lower[i], point))
+    bm.faces.new(tuple(upper))
     bm.to_mesh(mesh)
     bm.free()
-    ob = bpy.data.objects.new("gem", mesh)
+    ob = bpy.data.objects.new("cut", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def ring(sides: int, radius: float, squash: float = 1.0, spin: float = 0.0):
+    """A closed outline: the girdle of a round brilliant."""
+    return [(math.cos(spin + 2 * math.pi * i / sides) * radius,
+             math.sin(spin + 2 * math.pi * i / sides) * radius * squash)
+            for i in range(sides)]
+
+
+def lens(length: float, width: float, per_side: int = 7):
+    """A pointed oval - the marquise girdle.
+
+    Two arcs meeting at sharp points. A squashed circle is NOT this: the
+    points are the whole identity of the cut, and an ellipse has none.
+    """
+    pts = []
+    for side in (1, -1):
+        for i in range(per_side):
+            t = -1.0 + 2.0 * i / per_side
+            pts.append((t * length * 0.5, side * width * 0.5 * (1 - t * t) ** 0.72))
+    return pts
+
+
+def rect_ring(w: float, d: float, chamfer: float = 0.22):
+    """A rectangle with its corners cut - the step-cut girdle."""
+    hw, hd = w * 0.5, d * 0.5
+    cw, cd = hw * chamfer, hd * chamfer
+    return [(hw - cw, -hd), (hw, -hd + cd), (hw, hd - cd), (hw - cw, hd),
+            (-hw + cw, hd), (-hw, hd - cd), (-hw, -hd + cd), (-hw + cw, -hd)]
+
+
+def plate(radius: float, thickness: float, seed: int, sides: int = 6, jitter: float = 0.22):
+    """One irregular flat sheet with its own thickness.
+
+    Slate's real habit is splitting into PLATES, and being a sheet rather than
+    a lump is what separates tier one from the broken chunks above it.
+    """
+    rng = random.Random(seed)
+    outline = [(math.cos(2 * math.pi * i / sides) * radius * (1 + rng.uniform(-jitter, jitter)),
+                math.sin(2 * math.pi * i / sides) * radius * 0.78 * (1 + rng.uniform(-jitter, jitter)))
+               for i in range(sides)]
+    mesh = bpy.data.meshes.new('plate')
+    bm = bmesh.new()
+    low = [bm.verts.new((x, y, 0.0)) for x, y in outline]
+    high = [bm.verts.new((x, y, thickness)) for x, y in outline]
+    for i in range(len(outline)):
+        j = (i + 1) % len(outline)
+        bm.faces.new((low[i], low[j], high[j], high[i]))
+    bm.faces.new(tuple(high))
+    bm.faces.new(tuple(reversed(low)))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new('plate', mesh)
     bpy.context.collection.objects.link(ob)
     bpy.context.view_layer.objects.active = ob
     return ob
@@ -423,58 +475,44 @@ def build_mineral():
     """
     out = {}
 
-    # 1-3: found rock. Count carries the first two merges, exactly as the
-    # plank tiers do, but the pieces are angular rather than milled.
-    out[1] = rock(0.72, 0.20, seed=11)
+    # THE COUNT IS THE TIER NUMBER for the first three - one plate, two
+    # chunks, three chips. That is how the genre encodes chain position, it is
+    # why Slate sits at 1 and Gravel at 3, and the existing art is built on
+    # it. My first pass gave tier three FOUR pieces and broke the convention.
+    out[1] = plate(0.40, 0.09, seed=11)
     out[2] = stack([
         rock(0.52, 0.30, seed=21),
         translate_to(rock(0.40, 0.24, seed=22), beside(0.34, -0.10)),
     ])
     out[3] = stack([
-        translate_to(rock(0.34, 0.26, seed=30 + i), beside(right, back))
-        for i, (right, back) in enumerate(
-            ((-0.34, 0.06), (0.10, -0.20), (0.38, 0.14), (-0.06, 0.26))
-        )
+        translate_to(rock(0.34, 0.28, seed=30 + i), beside(right, back))
+        # Tight. Framing normalises each sprite to its own spread, so pushing
+        # the chips apart does not make the group bigger - it makes every chip
+        # smaller, and at board size they vanish.
+        for i, (right, back) in enumerate(((-0.17, 0.02), (0.05, -0.11), (0.19, 0.07)))
     ])
 
-    # 4-5: dressed stone. Still irregular at 4, squared and chamfered at 5 -
-    # the tier where the family stops being found and starts being worked.
-    out[4] = rock(0.62, 0.42, seed=41, jitter=0.10)
-    # A DRESSED DRUM, not a bare cube. A cube is the wood language - tier
-    # four of that chain is one - and a heavy chamfer on a cube is still
-    # unmistakably a cube. An eight-sided plinth reads as stone someone has
-    # worked, and shares no silhouette with anything in wood.
-    out[5] = crystal(radius=0.38, height=0.46, tip=0.0, sides=8, taper=0.92)
+    # 4 - POLISHED STONE: a flat wide pebble, heavily rounded. Not another
+    # lump; it is the first tier that has been worked and SMOOTH is the read.
+    out[4] = cube(0.60, 0.44, 0.22)
 
-    # 6-7: crystal. 6 is a single blunt column, 7 a cluster of three - more
-    # points, taller, which is the silhouette escalation.
-    out[6] = crystal(radius=0.30, height=0.44, tip=0.26, sides=6)
-    # The cluster has to be BIGGER than the single column it merges from -
-    # first pass made it smaller and the ladder shrank at tier seven.
-    # Spread WIDE. The first attempt sat them close enough to overlap and the
-    # three read as one white mass - the count is the whole difference between
-    # this tier and the single column below it, so the gaps have to survive at
-    # board size.
-    spires = []
-    for radius, height, tip, loc, tilt in (
-        (0.22, 0.60, 0.36, beside(0.0, 0.10), 0),
-        (0.16, 0.34, 0.24, beside(-0.40), -22),
-        (0.14, 0.26, 0.20, beside(0.38, -0.08), 20),
-    ):
-        spire = crystal(radius=radius, height=height, tip=tip, sides=6)
-        if tilt:
-            lean(spire, tilt)
-        spires.append(translate_to(spire, loc))
-    out[7] = stack(spires)
+    # 5 - MARBLE: a tall upright block, a pedestal fragment. The existing art
+    # went out of its way to make this tall so it would not be a bigger,
+    # veinier version of the flat pebble below it.
+    out[5] = cube(0.34, 0.30, 0.58)
 
-    # 8-9: cut gems, the one place the family is no longer found rock. Nine
-    # takes more facets and a deeper pavilion than eight rather than just
-    # being larger.
-    # A SHALLOW crown over a wide table reads as a spinning top, not a stone.
-    # A cut gem is mostly pavilion, with a small table and a crown steep
-    # enough to catch light across several facets at once.
-    out[8] = gem(radius=0.32, crown=0.26, pavilion=0.46, sides=8, table=0.38)
-    out[9] = gem(radius=0.38, crown=0.32, pavilion=0.58, sides=12, table=0.32)
+    # 6 - GRANITE: a faceted SLAB of seven sides, deliberately not a tower.
+    # The art notes record that it had been an obelisk and read as Glass's
+    # Crystal Obelisk; seven sides is also unique across the whole set.
+    out[6] = crystal(radius=0.40, height=0.20, tip=0.0, sides=7, taper=0.82)
+
+    # 7-9 - THREE REAL LAPIDARY CUTS, plainest first. A step cut is the
+    # simplest and the right read for the chain's first cut stone; the
+    # marquise adds points; the round brilliant is the most heavily cut and
+    # earns the top slot on silhouette alone.
+    out[7] = cut_stone(rect_ring(0.62, 0.42), crown=0.13, pavilion=0.26, table=0.72)
+    out[8] = cut_stone(lens(0.74, 0.40), crown=0.16, pavilion=0.32, table=0.46)
+    out[9] = cut_stone(ring(16, 0.36), crown=0.20, pavilion=0.46, table=0.42)
 
     for tier, ob in out.items():
         # Gems and crystal keep CRISP facets - a bevel on a cut stone rounds
@@ -482,11 +520,14 @@ def build_mineral():
         # Tier five takes a deliberately HEAVY chamfer - that is the dressing.
         # Crystal and gems take none: a bevel on a cut stone rounds off the
         # only thing that says it was cut.
-        bevel = 0.0 if tier >= 6 else (0.055 if tier == 5 else 0.012)
+        # A cut stone takes NO bevel - rounding its arrises removes the only
+        # thing that says it was cut. The pebble takes a heavy one, because
+        # smooth is its entire identity.
+        bevel = 0.0 if tier >= 6 else (0.085 if tier == 4 else 0.012)
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
         material.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = (
-            0.18 if tier >= 8 else 0.46
+            0.14 if tier >= 7 else (0.24 if tier == 4 else 0.46)
         )
         finish(ob, "mineral%d" % tier, material, bevel=bevel)
     return out
