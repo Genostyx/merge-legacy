@@ -31,7 +31,12 @@ from mathutils import Euler, Matrix, Vector
 ELEVATION = math.radians(26.565)
 AZIMUTH = math.radians(225)          # looking toward +X / -Y, equal components
 MARGIN = 1.16                        # frame padding, as a multiple of the fit
-RESOLUTION = 384
+# 192, not 384. A board tile renders at roughly 74px and the panels draw
+# these at 0.9 of a slot, so 384 was about five times oversampled - four
+# times the download and four times the GPU memory for detail no surface in
+# the game is big enough to show. Every fill ratio in the TypeScript is a
+# RATIO, so none of them move with this.
+RESOLUTION = 192
 
 # Screen-horizontal in world terms, for this camera. Anything that has to
 # splay left and right on screen leans along this, NOT along +X and +Y - those
