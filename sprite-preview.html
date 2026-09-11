@@ -1,0 +1,57 @@
+<meta charset="utf-8">
+<title>Item sprites</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #141413; color: #8a857c;
+         font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  h2 { margin: 28px 16px 4px; font-size: 13px; font-weight: normal;
+       color: #c9c3b8; letter-spacing: .08em; text-transform: uppercase; }
+  .row { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px; }
+  figure { margin: 0; width: 150px; text-align: center; }
+  figure img { width: 100%; display: block; image-rendering: auto; }
+  figcaption { padding-bottom: 10px; color: #6f6a62; }
+  /* The board is dark glass, so judging a sprite on white is judging the
+     wrong thing - this is roughly the tile it will actually sit on. */
+  .board { background: #0f0d0b; border-radius: 10px; padding: 6px 0; }
+  .controls { padding: 12px 16px; }
+  label { margin-right: 14px; }
+</style>
+<div class="controls">
+  <label><input type="checkbox" id="small"> board size (74px)</label>
+  <label><input type="checkbox" id="light"> light ground</label>
+</div>
+<div id="out"></div>
+<script type="module">
+  // Sprite contact sheet. Separate from wood-preview.html, which runs the
+  // PROCEDURAL renderer - these are the Blender PNGs that actually ship, and
+  // the two can disagree, so they need to be looked at separately.
+  const FAMILIES = ['wood', 'mineral'];
+  const out = document.getElementById('out');
+  const small = document.getElementById('small');
+  const light = document.getElementById('light');
+
+  const draw = () => {
+    // Cache-busted every render: these files are overwritten by the Blender
+    // pipeline constantly, and a cached PNG is the easiest way to spend ten
+    // minutes fixing something that was already fixed.
+    const bust = Date.now();
+    out.innerHTML = FAMILIES.map((family) => `
+      <h2>${family}</h2>
+      <div class="row${light.checked ? '' : ' board'}">
+        ${Array.from({ length: 9 }, (_, i) => i + 1).map((tier) => `
+          <figure style="width:${small.checked ? 82 : 150}px">
+            <img src="/assets/items/${family}/${tier}.png?v=${bust}"
+                 alt="${family} tier ${tier}"
+                 onerror="this.closest('figure').style.opacity=.25">
+            <figcaption>${tier}</figcaption>
+          </figure>`).join('')}
+      </div>`).join('');
+    document.querySelectorAll('.row').forEach((row) => {
+      row.style.background = light.checked ? '#cfcabf' : '';
+    });
+  };
+
+  small.addEventListener('change', draw);
+  light.addEventListener('change', draw);
+  draw();
+</script>
