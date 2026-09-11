@@ -1111,8 +1111,14 @@ def disc(radius: float, thickness: float, sides: int = 24):
 
 # The bolt, as a closed outline. A lightning glyph is a zigzag with one long
 # diagonal on each half; fewer points than this and it stops reading as one.
-BOLT = [(0.06, 0.50), (-0.30, 0.02), (-0.06, 0.02), (-0.18, -0.50),
-        (0.30, -0.04), (0.04, -0.04)]
+#
+# Sized against the COIN, not against the frame. A unit that spans a whole
+# unit of height next to a coin 0.34 across is three times the mark, and at
+# tiers four and five the cluster closed into a thicket. The drawn art called
+# for energy running SLIGHTLY larger than the round marks, because a zigzag
+# carries less ink at equal width - slightly, not triple.
+BOLT = [(0.04, 0.31), (-0.19, 0.01), (-0.04, 0.01), (-0.11, -0.31),
+        (0.19, -0.03), (0.03, -0.03)]
 
 
 # ---- the currency chains ---------------------------------------------------
@@ -1133,27 +1139,165 @@ CURRENCY_CLUSTERS = [
 ]
 
 
+def facing_camera(ob):
+    """Turns a piece square to the viewer.
+
+    Used sparingly, and only where a thing's identity IS a flat face. A coin
+    is a disc: seen from the board's camera lying down it is an ellipse, and
+    stood on edge it is a line. There is no orientation that makes a coin
+    three-dimensional, because a coin is not - unlike the knots, which were
+    turned to face the viewer to hide the fact that they were modelled as
+    plates, and which got fixed by giving them real depth instead.
+    """
+    forward = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion() @ Vector((0, 0, -1))
+    ob.rotation_euler = (-forward).to_track_quat('Z', 'Y').to_euler()
+    return ob
+
+
+# WHICH WAY IS FRONT.
+#
+# The camera sits at -X / +Y and looks toward +X / -Y, so the faces you can
+# see on an axis-aligned box are the -X one and the +Y one. Every applied
+# detail - a vault door, a roll's end cap, a strap's seal - has to go on one
+# of those. I put all of them on -Y first, which is the face pointing directly
+# away, and they rendered as a plain gold box, a plain cylinder and a jumble.
+FRONT_Y = 1.0
+
+
+def coin(radius: float = 0.17, thickness: float = 0.042):
+    """A coin WITH ITS FACE DEVICE - the raised inner ring.
+
+    The drawn art strokes a circle at 0.72 of the radius on every coin it
+    shows, and that ring is most of what separates a coin from a disc. In 2D
+    it is a line; in 3D it has to be geometry, so it is a shallow raised step
+    on the face that catches the key light along one side and shades along the
+    other.
+    """
+    body = disc(radius, thickness)
+    device = disc(radius * 0.72, thickness * 0.34)
+    translate_to(device, (0.0, 0.0, thickness))
+    return stack([body, device])
+
+
+def build_credits():
+    """The credit chain is an OBJECT LADDER, not a growing pile.
+
+    Read off the drawn art, which spells it out: one coin, two coins, a stack,
+    a wrapped roll, a bound bundle, a strongbox. Six different things, each
+    plainly more money than the last - a far better merge than six piles
+    differing only in how many discs are in them, which is what I had reduced
+    it to by assuming credits followed the cluster rule. Only gems and energy
+    do.
+
+    The DETAILS come from the same source and are the point of it: face rings,
+    the coin edges in a stack, the wrapper's seam and band, the bundle's strap
+    and seal, the vault's spokes and dial. Several of them cost nothing here
+    that they cost in 2D - a stack built from real discs has edge lines
+    because it has edges.
+    """
+    out = {}
+    coin_r, coin_t = 0.17, 0.042
+
+    # 1-2: loose coins, square to the camera, because a coin is its FACE.
+    out[1] = facing_camera(coin())
+    out[2] = stack([
+        translate_to(facing_camera(coin()), beside(-0.11, 0.05)),
+        translate_to(facing_camera(coin()), beside(0.11, -0.05)),
+    ])
+
+    # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
+    # and a highlight arc per layer; stacked solids have those edges already.
+    # The top coin keeps its face device, since that face is visible.
+    layers = [translate_to(disc(coin_r, coin_t), (0.0, 0.0, i * (coin_t + 0.005)))
+              for i in range(5)]
+    top_device = disc(coin_r * 0.72, coin_t * 0.34)
+    translate_to(top_device, (0.0, 0.0, 5 * (coin_t + 0.005)))
+    out[3] = stack(layers + [top_device])
+
+    # 4: a wrapped ROLL - a cylinder on its side with a paper band round it,
+    # a seam ridge along the band, and a coin showing at the open end. The
+    # wrapper is what separates a roll from "a taller stack".
+    # crystal() builds from z=0 UPWARD, so after tipping it 90 degrees the
+    # roll runs from y=0 to y=-0.46 rather than straddling the origin - which
+    # is why the end cap, placed at +0.235, floated in space beside it. Move
+    # the roll onto its own centre first and everything else can be measured
+    # from there.
+    roll = crystal(radius=coin_r, height=0.46, tip=0.0, sides=20, taper=1.0)
+    roll.rotation_euler.x = math.radians(90)
+    bpy.context.view_layer.objects.active = roll
+    bpy.ops.object.select_all(action='DESELECT')
+    roll.select_set(True)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    translate_to(roll, (0.0, 0.23, 0.0))
+    # A PROPER band: wider than the roll by enough to cast its own edge, and
+    # sitting toward the visible end. At 1.07 it merged into the cylinder and
+    # the roll read as a plain tube.
+    wrapper = crystal(radius=coin_r * 1.16, height=0.22, tip=0.0, sides=20, taper=1.0)
+    wrapper.rotation_euler.x = math.radians(90)
+    translate_to(wrapper, (0.0, FRONT_Y * -0.04, 0.0))
+    seam = cube(0.03, 0.23, 0.028, base=False)
+    translate_to(seam, (0.0, FRONT_Y * -0.04, coin_r * 1.16))
+    end_cap = disc(coin_r * 0.74, 0.02)
+    end_cap.rotation_euler.x = math.radians(-90)
+    translate_to(end_cap, (0.0, FRONT_Y * 0.235, 0.0))
+    out[4] = stack([roll, wrapper, seam, end_cap])
+
+    # 5: a BUNDLE - three stacks of real coins bound by a strap with a seal.
+    # Built from discs rather than smooth columns so the coin edges read, the
+    # way the drawn version's three ruled lines per stack did.
+    # Three columns, spread far enough apart that the strap reads as binding
+    # three things rather than sitting on one mass. They were close enough to
+    # merge into a single heap.
+    pieces = []
+    for index, right in enumerate((-0.27, 0.0, 0.27)):
+        for layer in range(7 + index % 2):
+            piece = disc(coin_r * 0.72, coin_t)
+            pieces.append(translate_to(piece,
+                          tuple(Vector(beside(right)) + Vector((0, 0, layer * (coin_t + 0.004))))))
+    strap = cube(0.74, 0.26, 0.08, base=False)
+    translate_to(strap, (0.0, 0.0, 0.16))
+    seal = disc(0.058, 0.022)
+    seal.rotation_euler.x = math.radians(-90)
+    translate_to(seal, (0.0, FRONT_Y * 0.152, 0.17))
+    out[5] = stack(pieces + [strap, seal])
+
+    # 6: the VAULT - a strongbox, corner-on like every other box in the game,
+    # because here the object IS a volume. Door, spokes and dial, all of which
+    # the drawn version draws and none of which a bare box has.
+    body = cube(0.52, 0.40, 0.44)
+    door = disc(0.145, 0.05)
+    door.rotation_euler.x = math.radians(-90)
+    translate_to(door, (0.0, FRONT_Y * 0.20, 0.24))
+    # The spokes cross on the door: one flat, one upright, both proud of it.
+    spokes = []
+    for upright in (False, True):
+        spoke = cube(0.03 if upright else 0.20, 0.03, 0.20 if upright else 0.03,
+                     base=False)
+        spokes.append(translate_to(spoke, (0.0, FRONT_Y * 0.245, 0.24)))
+    dial = disc(0.040, 0.03)
+    dial.rotation_euler.x = math.radians(-90)
+    translate_to(dial, (-0.15, FRONT_Y * 0.21, 0.10))
+    out[6] = stack([body, door, dial] + spokes)
+    return out
+
+
 def build_currency(kind: str):
-    """Credits, energy and gems - where the COUNT is the tier.
+    """Energy and gems, where the COUNT is the tier.
 
     Two rules come from the drawn art and are not mine to change. The number
     of units IS the tier number, and every unit is the SAME SIZE at every
     tier: shrinking them to fit more in made a tier-five pile read as smaller
     and cheaper than a tier-two one, which is the opposite of what a merge
     should say. A cluster is allowed to crowd and overlap instead.
+
+    Credits are NOT this - see build_credits.
     """
     out = {}
     tiers = len(CURRENCY_HEX[kind])
     for tier in range(1, tiers + 1):
         pieces = []
         for index, (right, back) in enumerate(CURRENCY_CLUSTERS[tier - 1]):
-            if kind == "currency-credit":
-                piece = disc(0.17, 0.05)
-                # Tipped a little, and each by a different amount. Coins
-                # dropped in a heap do not land dead flat and parallel; a pile
-                # of perfectly level discs reads as a diagram of a pile.
-                lean(piece, 7 + index * 5)
-            elif kind == "currency-energy":
+            if kind == "currency-energy":
                 piece = extrude_profile(BOLT, 0.10)
             else:
                 piece = cut_stone(
@@ -1163,7 +1307,11 @@ def build_currency(kind: str):
                 )
             pieces.append(translate_to(piece, beside(right, back)))
         out[tier] = stack(pieces)
+    return out
 
+
+def dress_currency(kind: str, out):
+    """The material, shared by all three chains."""
     for tier, ob in out.items():
         material = tier_material("%s-tier-%d" % (kind, tier),
                                  CURRENCY_HEX[kind][tier], CURRENCY_HEX[kind][tier])
@@ -1179,10 +1327,13 @@ def build_currency(kind: str):
         elif kind == "currency-energy":
             # A spark makes its own light. Nothing else here does, and it is
             # the whole read - an unlit blue zigzag is a blue zigzag.
-            shader.inputs["Emission Color"].default_value = (
-                *[min(1.0, c * 1.4) for c in _shader(material).inputs["Base Color"].default_value[:3]], 1.0
-            )
-            shader.inputs["Emission Strength"].default_value = 1.6
+            # Emission at the tier's OWN colour and well under 1. Scaling the
+            # colour up and then driving it at 1.6 clipped every channel to
+            # white, so the sparks came out pale grey - a glow that erases the
+            # thing glowing. The base still carries the blue; the emission
+            # only lifts it off the board.
+            shader.inputs["Emission Color"].default_value =                 shader.inputs["Base Color"].default_value
+            shader.inputs["Emission Strength"].default_value = 0.55
             shader.inputs["Roughness"].default_value = 0.25
         else:
             gemstone(material, ior=1.75, roughness=0.06, tint_strength=0.0)
@@ -1190,6 +1341,12 @@ def build_currency(kind: str):
         finish(ob, "%s%d" % (kind, tier), material,
                bevel=0.004 if kind == "currency-gem" else 0.010)
     return out
+
+
+def currency_family(kind: str):
+    """Geometry then material, for whichever currency chain."""
+    built = build_credits() if kind == "currency-credit" else build_currency(kind)
+    return dress_currency(kind, built)
 
 
 # ---- scene, framing, render ------------------------------------------------
@@ -1413,7 +1570,7 @@ def archive(path: str = ""):
 
     builders = [("wood", build_wood), ("mineral", build_mineral)]
     for kind in CURRENCY_HEX:
-        builders.append((kind, (lambda k: lambda: build_currency(k))(kind)))
+        builders.append((kind, (lambda k: lambda: currency_family(k))(kind)))
 
     for row, (family, build) in enumerate(builders):
         for tier, ob in sorted(build().items()):
@@ -1438,7 +1595,7 @@ def main(only: str = ""):
 
     families = [("wood", build_wood), ("mineral", build_mineral)]
     for kind in CURRENCY_HEX:
-        families.append((kind, (lambda k: lambda: build_currency(k))(kind)))
+        families.append((kind, (lambda k: lambda: currency_family(k))(kind)))
     for family, build in families:
         if only and family != only:
             continue

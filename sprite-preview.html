@@ -25,7 +25,12 @@
   // Sprite contact sheet. Separate from wood-preview.html, which runs the
   // PROCEDURAL renderer - these are the Blender PNGs that actually ship, and
   // the two can disagree, so they need to be looked at separately.
-  const FAMILIES = ['wood', 'mineral'];
+  // Tier counts differ per family - the currencies are shorter chains, and
+  // asking for a ninth coin just renders a broken image.
+  const FAMILIES = {
+    wood: 9, mineral: 9,
+    'currency-credit': 6, 'currency-energy': 5, 'currency-gem': 5
+  };
   const out = document.getElementById('out');
   const small = document.getElementById('small');
   const light = document.getElementById('light');
@@ -35,10 +40,10 @@
     // pipeline constantly, and a cached PNG is the easiest way to spend ten
     // minutes fixing something that was already fixed.
     const bust = Date.now();
-    out.innerHTML = FAMILIES.map((family) => `
+    out.innerHTML = Object.entries(FAMILIES).map(([family, tiers]) => `
       <h2>${family}</h2>
       <div class="row${light.checked ? '' : ' board'}">
-        ${Array.from({ length: 9 }, (_, i) => i + 1).map((tier) => `
+        ${Array.from({ length: tiers }, (_, i) => i + 1).map((tier) => `
           <figure style="width:${small.checked ? 82 : 150}px">
             <img src="/assets/items/${family}/${tier}.png?v=${bust}"
                  alt="${family} tier ${tier}"
