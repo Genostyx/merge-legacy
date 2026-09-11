@@ -35,9 +35,23 @@ export function itemSpriteKey(typeId: string, tier: number): string {
   return `item-${typeId}-${tier}`;
 }
 
+/**
+ * BUMP THIS whenever the sprites are re-rendered.
+ *
+ * The PNG paths never change, so a browser that has cached one keeps serving
+ * it to Phaser's loader and a plain reload does not revalidate. That is not
+ * a theoretical worry: after re-rendering every sprite from 384px to 192px,
+ * the running game was still holding all 36 textures at 384 - the art had
+ * changed on disk and on the server, and nothing anyone could see had moved.
+ *
+ * A version in the query string makes the URL new, so every client refetches
+ * once and then caches again normally.
+ */
+export const ITEM_ART_VERSION = 2;
+
 /** Where the renderer writes it, relative to `public/`. */
 export function itemSpritePath(typeId: string, tier: number): string {
-  return `assets/items/${typeId}/${tier}.png`;
+  return `assets/items/${typeId}/${tier}.png?v=${ITEM_ART_VERSION}`;
 }
 
 /**
