@@ -166,6 +166,14 @@ CURRENCY_HEX = {
 CURRENCY_MEASURED = {
     "currency-credit": {1: 0x4d3613, 2: 0x503714, 3: 0x6c5129,
                         4: 0x684f26, 5: 0x7d6032, 6: 0x635435},
+    # The bolts had no correction and came back around 0x8db7cf against a
+    # chain colour of 0x24a9e8 - a pale chalky blue, nowhere near it. A
+    # saturated colour under a bright studio loses its saturation first,
+    # because the light lifts the weak channel proportionally far more than
+    # the strong one; red went from 36 to 141 while blue barely moved. The
+    # correction is mostly a red cut, which is what puts the blue back.
+    "currency-energy": {1: 0x8db7cf, 2: 0x90bbd1, 3: 0x94bed1,
+                        4: 0x92baca, 5: 0x9dc1ce},
 }
 
 CURRENCY_RGB = {
@@ -1589,8 +1597,25 @@ def dress_currency(kind: str, out):
             # thing glowing. The base still carries the blue; the emission
             # only lifts it off the board.
             shader.inputs["Emission Color"].default_value =                 shader.inputs["Base Color"].default_value
-            shader.inputs["Emission Strength"].default_value = 0.55
-            shader.inputs["Roughness"].default_value = 0.25
+            # OFF. Emission at the base colour adds that colour to every
+            # lit and unlit part alike, which raises the darks, compresses
+            # the range and desaturates the whole thing towards white - so
+            # the self-lit look was costing exactly the depth and the blue
+            # that make the drawn bolt read. The drawn one is not emissive
+            # either: it is a saturated blue with hard bright edges, which
+            # is lighting, not glow.
+            shader.inputs["Emission Strength"].default_value = 0.0
+            shader.inputs["Roughness"].default_value = 0.18
+            # A LIGHT coat, not the stones' full one. `polished` sets Coat
+            # Weight to 1.0, which is right for a sealed countertop and far
+            # too much here: a full coat reflects the bright studio across
+            # the whole face, and it was that - not the base colour - doing
+            # the washing out. Driving the base darker barely moved the
+            # render (0x8db7cf to 0x8ab5d3) because the coat was most of
+            # what you were looking at.
+            shader.inputs["Coat Weight"].default_value = 0.22
+            shader.inputs["Coat Roughness"].default_value = 0.05
+            shader.inputs["Coat IOR"].default_value = 1.5
         else:
             gemstone(material, ior=1.75, roughness=0.06, tint_strength=0.0)
             absorbing(material, CURRENCY_RGB[kind][tier], density=9.0)
