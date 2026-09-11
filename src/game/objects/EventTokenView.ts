@@ -58,8 +58,15 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
   // its rim at the same angle to the light the whole way round, so the whole
   // ring is one tone. The face's own sheen carries the material; the rim only
   // has to say "raised edge".
-  g.lineStyle(r * 0.12, p.light, 1);
-  g.strokeCircle(0, 0, r * 0.9);
+  // A polished bevel reflects alternating bright and dark surroundings.
+  for (let i = 0; i < 96; i++) {
+    const a = i * Math.PI * 2 / 96;
+    const reflection = Math.pow(Math.abs(Math.cos(a + 0.55)), 8);
+    g.lineStyle(r * 0.12, metalMix(p.dark, 0xeafff7, 0.2 + reflection * 0.8), 1);
+    g.beginPath();
+    g.arc(0, 0, r * 0.9, a, a + Math.PI * 2 / 96 + 0.003);
+    g.strokePath();
+  }
 
   drawPolishedFace(g, r * 0.8, p);
 
@@ -82,38 +89,44 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
  * The specular goes on top: an elongated blur across the upper left, which is
  * the one mark that makes metal read as polished rather than painted.
  */
+function metalMix(a: number, b: number, t: number): number {
+  const mix = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t);
+  return (mix(16) << 16) | (mix(8) << 8) | mix(0);
+}
+
 function drawPolishedFace(
   g: Phaser.GameObjects.Graphics, radius: number, p: MaterialLighting
 ): void {
-  const SEGMENTS = 48;
-  // Upper-left, the key every object in this game shares.
-  const key = -Math.PI * 0.75;
-  // How lit a rim point is: full facing the light, darkest opposite it. The
-  // range is deliberately short of the ramp's ends - a coin's face is one
-  // material catching one light, not a sphere.
-  const litAt = (angle: number): number => 0.5 + 0.5 * Math.cos(angle - key);
-
-  for (let i = 0; i < SEGMENTS; i++) {
-    const a0 = (Math.PI * 2 * i) / SEGMENTS;
-    const a1 = (Math.PI * 2 * (i + 1)) / SEGMENTS;
-    const x0 = Math.cos(a0) * radius;
-    const y0 = Math.sin(a0) * radius;
-    const x1 = Math.cos(a1) * radius;
-    const y1 = Math.sin(a1) * radius;
-    // Centre vertex first, then the two rim vertices - Phaser maps the four
-    // gradient corners onto a triangle's three points in that order.
-    g.fillGradientStyle(toneAt(p, 0.52), toneAt(p, litAt(a0)), toneAt(p, litAt(a1)), toneAt(p, litAt(a1)), 1);
-    g.fillTriangle(0, 0, x0, y0, x1, y1);
+  // Parallel sections sample a reflected light strip across a flat face.
+  // Unlike a centre fan, the highlight can cross the disc without every
+  // triangle converging on the same middle tone. Keep the token's teal metal.
+  const strips = 80;
+  const angle = -0.3;
+  const point = (u: number, v: number): [number, number] => [
+    radius * (u * Math.cos(angle) - v * Math.sin(angle)),
+    radius * (u * Math.sin(angle) + v * Math.cos(angle))
+  ];
+  const color = (v: number): number => {
+    const broad = Math.exp(-Math.pow((v + 0.22) / 0.23, 2));
+    const sharp = Math.exp(-Math.pow((v + 0.28) / 0.055, 2));
+    const lower = Math.exp(-Math.pow((v - 0.85) / 0.1, 2));
+    const darkMetal = metalMix(p.shadow, 0x020b0a, 0.68);
+    const body = metalMix(darkMetal, p.base, 0.12 + broad * 0.35);
+    return metalMix(body, 0xf3fff5, Math.min(0.94, broad * 0.48 + sharp * 0.46 + lower * 0.22));
+  };
+  for (let i = 0; i < strips; i++) {
+    const v0 = -1 + 2 * i / strips;
+    const v1 = -1 + 2 * (i + 1) / strips;
+    const w0 = Math.sqrt(Math.max(0, 1 - v0 * v0));
+    const w1 = Math.sqrt(Math.max(0, 1 - v1 * v1));
+    const a = point(-w0, v0), b = point(w0, v0);
+    const c = point(-w1, v1), d = point(w1, v1);
+    const top = color(v0), bottom = color(v1);
+    g.fillGradientStyle(top, top, bottom, bottom, 1);
+    g.fillTriangle(...a, ...b, ...c);
+    g.fillGradientStyle(top, bottom, bottom, bottom, 1);
+    g.fillTriangle(...b, ...d, ...c);
   }
-
-  // NO SEPARATE HIGHLIGHT SHAPE.
-  //
-  // A blob and then a band were both tried on top of this gradient, and both
-  // read as something stuck to the metal rather than as the metal. A polished
-  // disc under one light IS a gradient - the bright part is simply the end of
-  // it, not a mark laid over it. The ramp above runs the full width of the
-  // material now, from its lightest tone to its darkest, which is the whole
-  // reflection.
 }
 
 /** Upper-left: the one light every object in this game is lit by. */
@@ -189,11 +202,11 @@ function drawStruckCrown(
     // Which flank faces the light depends on where the ray points, so the
     // two tones swap as the fan sweeps past the light's axis.
     const litSide = -sin * Math.cos(KEY_ANGLE) + cos * Math.sin(KEY_ANGLE) > 0;
-    const near = toneAt(p, 0.96);
-    const far = toneAt(p, 0.52 + lean * 0.16);
+    const near = metalMix(p.light, 0xf3fff5, 0.88);
+    const far = toneAt(p, 0.22 + lean * 0.1);
     g.fillGradientStyle(
       litSide ? near : far,
-      toneAt(p, 0.78 + lean * 0.1),
+      metalMix(p.light, 0xf3fff5, 0.6 + lean * 0.2),
       litSide ? far : near,
       litSide ? far : near,
       1
@@ -229,8 +242,8 @@ function drawStruckCrown(
     const len = Math.hypot(dx, dy) || 1;
     const nx = (-dy / len) * halfBand;
     const ny = (dx / len) * halfBand;
-    const lit = toneAt(p, 0.95);
-    const shade = toneAt(p, 0.55);
+    const lit = metalMix(p.light, 0xf3fff5, 0.85);
+    const shade = toneAt(p, 0.25);
     // The outer edge of the arc is the one facing up and out, so it takes
     // the light and the inner edge takes the shade.
     g.fillGradientStyle(lit, lit, shade, shade, 1);
