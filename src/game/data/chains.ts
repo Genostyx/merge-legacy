@@ -64,8 +64,8 @@ export const STONE_CHAIN: ChainDef = {
     { tier: 7, key: 'quartz', label: 'Quartz', color: 0xafbac1 },
     // The sapphire tiers retain a restrained geological blue, but it is
     // dark, greyed and far from Water's bright cyan ramp.
-    { tier: 8, key: 'sapphire', label: 'Sapphire', color: 0x40566e },
-    { tier: 9, key: 'star-sapphire', label: 'Star Sapphire', color: 0x5d7389 }
+    { tier: 8, key: 'sapphire', label: 'Sapphire', color: 0xb4501f },
+    { tier: 9, key: 'star-sapphire', label: 'Star Sapphire', color: 0xc85f26 }
   ]
 };
 

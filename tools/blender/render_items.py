@@ -68,7 +68,11 @@ WOOD_MEASURED = {
 # worked stone in the middle, cut crystal at the top.
 MINERAL_HEX = {
     1: 0x485562, 2: 0x566676, 3: 0x506274, 4: 0x687b8d, 5: 0x929faa,
-    6: 0xb3818a, 7: 0xafbac1, 8: 0x40566e, 9: 0x5d7389,
+    # BOTH cut stones are amber now, not the chain's old dark blues. A deep
+    # blue at this absorption depth returns almost nothing - the surviving
+    # colour has nowhere bright to survive TO - which is why the marquise kept
+    # coming back black however far its density was dropped.
+    6: 0xb3818a, 7: 0xafbac1, 8: 0xb4501f, 9: 0xc85f26,
 }
 # Measured off the first pass, same as wood's.
 MINERAL_MEASURED = {
@@ -365,6 +369,7 @@ def absorbing(mat, colour_rgb, density=7.0):
     absorb.inputs["Density"].default_value = density
     output = next(n for n in nodes if n.type == 'OUTPUT_MATERIAL')
     links.new(absorb.outputs["Volume"], output.inputs["Volume"])
+
     return mat
 
 
@@ -933,7 +938,8 @@ def build_mineral():
             # The marquise is the deepest cut in the chain - girdle to keel is
             # most of its height - and at 8 it absorbed almost everything and
             # came back black.
-            absorbing(material, MINERAL_HEX_RGB[tier], density=3.2 if tier == 8 else 6.0)
+            # Both cut stones take the SAME treatment; only the hue differs.
+            absorbing(material, MINERAL_HEX_RGB[tier], density=6.0)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
             polished(material)
@@ -1046,7 +1052,13 @@ def build_lights():
     bands.color_ramp.interpolation = 'CONSTANT'
     stops = bands.color_ramp.elements
     stops[0].position = 0.0
-    stops[0].color = (0.02, 0.02, 0.03, 1.0)     # floor, so facets have darks
+    # The floor stays NEAR BLACK, and that is deliberate.
+    #
+    # Lifting it to 0.20 to rescue one dark stone washed out every glossy tier
+    # at once - the same box is reflected by the polished slabs and refracted
+    # by the gems, so a change made for one is a change made to all nine. The
+    # darks are what the bright bands are bright AGAINST.
+    stops[0].color = (0.02, 0.02, 0.03, 1.0)
     stops[1].position = 0.34
     stops[1].color = (1.0, 1.0, 1.0, 1.0)        # the softbox
     for position, value in ((0.52, (0.10, 0.11, 0.14)),
