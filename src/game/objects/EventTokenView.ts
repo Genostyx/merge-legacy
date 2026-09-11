@@ -50,16 +50,16 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
   // and from nowhere at once.
   g.fillStyle(p.dark, 1);
   g.fillCircle(0, 0, r);
-  // The rim catches the key along its upper-left, which is what gives the
-  // coin an edge rather than an outline.
-  g.lineStyle(r * 0.13, p.highlight, 0.85);
-  g.beginPath();
-  g.arc(0, 0, r * 0.9, Math.PI * 0.8, Math.PI * 1.7);
-  g.strokePath();
-  g.lineStyle(r * 0.1, p.shadow, 0.6);
-  g.beginPath();
-  g.arc(0, 0, r * 0.9, Math.PI * 1.75, Math.PI * 2.75);
-  g.strokePath();
+  // AN EVEN RIM, all the way round.
+  //
+  // It used to be lit along the upper-left and shaded along the lower-right,
+  // which is how a SPHERE is shaded - and that is exactly what it looked
+  // like: a dish, or a coin bent toward the light. A coin lying face-on has
+  // its rim at the same angle to the light the whole way round, so the whole
+  // ring is one tone. The face's own sheen carries the material; the rim only
+  // has to say "raised edge".
+  g.lineStyle(r * 0.12, p.light, 1);
+  g.strokeCircle(0, 0, r * 0.9);
 
   // THE FACE, sunk inside the rim and a shade under the family colour, so
   // the pale device on it has something to be pale against.
