@@ -77,7 +77,11 @@ MINERAL_HEX = {
 # Measured off the first pass, same as wood's.
 MINERAL_MEASURED = {
     1: 0x616e79, 2: 0x6d7983, 3: 0x5d6974, 4: 0x6d7881, 5: 0x838b91,
-    6: 0x8d6e73, 7: 0x8d9497, 8: 0x485e71, 9: 0x71808c,
+    # Tiers 8 and 9 hold no correction: their measurements were taken when
+    # both were dark blue, and applying them to an amber divides the red up by
+    # two and a half while cutting the blue to a quarter - a correction aimed
+    # at a colour these tiers no longer are. Identity means "uncorrected".
+    6: 0x8d6e73, 7: 0x8d9497, 8: 0xb4501f, 9: 0xc85f26,
 }
 
 # MEASURED SURFACES, not chosen ones.
@@ -119,7 +123,7 @@ MINERAL_SURFACE = {
     5: (0.07, 1.60),   # polished marble
     6: (0.12, 1.70),   # polished granite, like a countertop
     7: (0.22, 1.54),   # milky quartz - waxy, not glassy
-    8: (0.06, 1.77),   # sapphire
+    8: (0.12, 1.77),   # sapphire - polished surface, not a transmitting one
     9: (0.06, 1.77),   # star sapphire
 }
 
@@ -147,7 +151,23 @@ def srgb_to_linear(channel: int) -> float:
 
 
 def tier_material(name: str, want: int, measured: int):
-    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    """A material built FRESH, every time.
+
+    This used to fetch the existing material by name and set the handful of
+    inputs it cared about, which meant every run inherited whatever the last
+    one had done. Tier eight was still carrying Transmission 1.0 and a linked
+    Volume Absorption node from an experiment several passes earlier - a fully
+    transmissive surface under a clear coat, which is why it read as chrome no
+    matter what the current code said. "Resetting" it changed nothing, because
+    nothing was ever reset.
+
+    Renders have to depend only on the code that produced them, so the node
+    tree is wiped and rebuilt rather than amended.
+    """
+    existing = bpy.data.materials.get(name)
+    if existing is not None:
+        bpy.data.materials.remove(existing)
+    mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     rgb = []
@@ -939,15 +959,21 @@ def build_mineral():
             mottle(material, base, scale=5.0, strength=0.13)
             milky(material, base)
             polished(material, coat_roughness=0.06)
-        elif tier >= 8:
+        elif tier == 8:
+            # RESET. Plain polished stone in the tier's own colour - no
+            # transmission, no volume, nothing layered on.
+            #
+            # The transmission stack never worked on this shape and every
+            # attempt to rescue it made something else worse: dropping density
+            # did nothing, lifting the studio floor washed out all nine tiers,
+            # and recutting the pavilion to stop the leak changed a silhouette
+            # that was already right. Each fix was aimed at a symptom of a cut
+            # that leaks by design, so the honest move is to stop stacking on
+            # a broken base and build again from a surface that reads.
+            polished(material, coat_roughness=0.04)
+        elif tier == 9:
             gemstone(material, ior=ior, roughness=roughness, tint_strength=0.0)
-            # Density is per unit of PATH, so a thick stone needs less of it.
-            # The marquise is the deepest cut in the chain - girdle to keel is
-            # most of its height - and at 8 it absorbed almost everything and
-            # came back black.
-            # Both cut stones take the SAME treatment; only the hue differs.
-            # Density is per unit of PATH, and these are the deep cuts, so it
-            # stays where it was tuned for them.
+            # Density is per unit of PATH, and this is a deep cut.
             absorbing(material, MINERAL_HEX_RGB[tier], density=6.0)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
