@@ -1497,7 +1497,13 @@ def dress_currency(kind: str, out):
             # brighter highlight - a metal has no diffuse colour at all, it
             # tints its own reflection, which is why gold looks like gold from
             # any angle and a yellow plastic does not.
-            shader.inputs["Metallic"].default_value = 1.0
+            # NOT fully metallic. A pure metal has no diffuse at all - every
+            # bit of its value is reflected - so against a mostly dark studio
+            # it comes back dark however bright its swatch is. Backing off to
+            # 0.7 lets the base colour carry some of the light directly, which
+            # lifts it without touching hue, and it still reads as metal
+            # because the specular is doing most of the work.
+            shader.inputs["Metallic"].default_value = 0.7
             # Polish, not tint: reflection is the only lever on a metal that
             # does not cost hue.
             shader.inputs["Roughness"].default_value = 0.13
