@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { EVENT_CHAIN } from '../events/EventChain';
 import { Theme, materialLighting, toneAt, toneForNormal } from '../ui/Theme';
 import { fillPoly, makeIso, type IsoFn } from './Isometric';
-import { box, group, renderMesh, rotateX, rotateY, rotateZ, translate, type Mesh } from './Mesh3D';
+import { box, faceViewer, group, renderMesh, rotateX, rotateY, rotateZ, translate, type Mesh } from './Mesh3D';
 import { WOVEN_KNOT_3, WOVEN_KNOT_5 } from './meshes/knots';
 import { CHAINS, getTierDef } from '../data/chains';
 import { GraphicsRecorder } from './GraphicsRecorder';
@@ -1917,12 +1917,8 @@ function drawEbonyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
 function drawGildedRosewood(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
   // Tier 8's smooth interlocking knot - a real trefoil tube, modelled rather
   // than drawn, so the three crossings are occlusion instead of draw order.
-  // Lying in its own plane, seen from the board's camera like everything
-  // else. It was first turned to face the viewer square on, which is a
-  // flat-art instinct: it made the knot legible by taking it OUT of the
-  // scene every other object shares.
-  renderMesh(g, WOVEN_KNOT_3, {
-    u: s * 1.15, tone: giltRamp(p, 0.75), center: true, smooth: 35
+  renderMesh(g, faceViewer(WOVEN_KNOT_3), {
+    u: s * 1.02, tone: giltRamp(p, 0.75), center: true
   });
   drawSparkles(g, [[s * 0.24, -s * 0.2, s * 0.016], [-s * 0.25, s * 0.15, s * 0.013]]);
 }
@@ -1930,8 +1926,8 @@ function drawGildedRosewood(g: Phaser.GameObjects.Graphics, s: number, p: Palett
 function drawRosewoodHeirloom(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
   // The capstone: five lobes against tier 8's three. More crossings, a denser
   // weave, and the gilt pushed further up the ramp.
-  renderMesh(g, WOVEN_KNOT_5, {
-    u: s * 1.18, tone: giltRamp(p, 0.9), center: true, smooth: 35
+  renderMesh(g, faceViewer(WOVEN_KNOT_5), {
+    u: s * 1.04, tone: giltRamp(p, 0.9), center: true
   });
   drawInlayAccent(g, 0, 0, s * 0.05, GILT);
   drawSparkles(g, [[s * 0.26, -s * 0.24, s * 0.017], [-s * 0.27, s * 0.17, s * 0.014], [s * 0.05, s * 0.3, s * 0.012]]);

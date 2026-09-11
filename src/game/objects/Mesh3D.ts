@@ -146,36 +146,80 @@ export function prism(sides: number, r: number, h: number, taper = 1, spin = 0):
 
 export function translate(mesh: Mesh, dx: number, dy: number, dz: number): Mesh {
   return {
-    faces: mesh.faces,
+    ...mesh,
     verts: mesh.verts.map(([x, y, z]): Vec3 => [x + dx, y + dy, z + dz])
+  };
+}
+
+/**
+ * Applies a rotation given as where the three object axes END UP.
+ *
+ * Every rotation goes through here so that BAKED NORMALS TURN WITH THE MESH.
+ * They were being dropped: the rotate helpers rebuilt `{ verts, faces }` and
+ * quietly left `cornerNormals` behind, so a rotated mesh silently fell back
+ * to runtime smoothing and shaded differently from the same mesh unrotated.
+ * A rotation is orthonormal, so the same matrix that moves a position moves a
+ * direction.
+ */
+function applyBasis(mesh: Mesh, ax: Vec3, ay: Vec3, az: Vec3): Mesh {
+  const map = ([x, y, z]: Vec3): Vec3 => [
+    ax[0] * x + ay[0] * y + az[0] * z,
+    ax[1] * x + ay[1] * y + az[1] * z,
+    ax[2] * x + ay[2] * y + az[2] * z
+  ];
+  return {
+    faces: mesh.faces,
+    verts: mesh.verts.map(map),
+    cornerNormals: mesh.cornerNormals?.map((face) => face.map(map))
   };
 }
 
 export function rotateX(mesh: Mesh, turns: number): Mesh {
   const a = turns * Math.PI * 2;
   const c = Math.cos(a), s = Math.sin(a);
-  return {
-    faces: mesh.faces,
-    verts: mesh.verts.map(([x, y, z]): Vec3 => [x, y * c - z * s, y * s + z * c])
-  };
+  return applyBasis(mesh, [1, 0, 0], [0, c, s], [0, -s, c]);
 }
 
 export function rotateY(mesh: Mesh, turns: number): Mesh {
   const a = turns * Math.PI * 2;
   const c = Math.cos(a), s = Math.sin(a);
-  return {
-    faces: mesh.faces,
-    verts: mesh.verts.map(([x, y, z]): Vec3 => [x * c + z * s, y, -x * s + z * c])
-  };
+  return applyBasis(mesh, [c, 0, -s], [0, 1, 0], [s, 0, c]);
 }
 
 export function rotateZ(mesh: Mesh, turns: number): Mesh {
   const a = turns * Math.PI * 2;
   const c = Math.cos(a), s = Math.sin(a);
-  return {
-    faces: mesh.faces,
-    verts: mesh.verts.map(([x, y, z]): Vec3 => [x * c - y * s, x * s + y * c, z])
-  };
+  return applyBasis(mesh, [c, s, 0], [-s, c, 0], [0, 0, 1]);
+}
+
+/**
+ * Stands a flat-lying mesh UP so the viewer sees its face, not its edge.
+ *
+ * A knot is a plate: all its structure lives in one plane. Left lying on the
+ * ground, the camera squashes that plane to 31% of its height and the weave
+ * becomes an oval smear - the shape reads as a ring rather than as a knot.
+ *
+ * The basis is DERIVED, not dialled in. The object's +z goes onto the view
+ * axis, so its plane is square to the viewer; its +y goes onto whatever is
+ * left of world-up once the view axis is taken out of it, so the object is
+ * upright rather than rolled to an arbitrary angle; and +x completes the set.
+ * Upright is the half that a hand-tuned pair of rotations kept getting wrong,
+ * because aiming an axis at the camera says nothing about the spin around it.
+ */
+export function faceViewer(mesh: Mesh): Mesh {
+  const az = VIEW_N;
+  const up: Vec3 = [0, 0, 1];
+  const ay = norm([
+    up[0] - az[0] * dot(up, az),
+    up[1] - az[1] * dot(up, az),
+    up[2] - az[2] * dot(up, az)
+  ]);
+  const ax: Vec3 = norm([
+    ay[1] * az[2] - ay[2] * az[1],
+    ay[2] * az[0] - ay[0] * az[2],
+    ay[0] * az[1] - ay[1] * az[0]
+  ]);
+  return applyBasis(mesh, ax, ay, az);
 }
 
 /** One mesh from several, so a whole object sorts and culls as one thing. */
