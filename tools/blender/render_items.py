@@ -114,7 +114,7 @@ MINERAL_SURFACE = {
     4: (0.10, 1.55),   # polished stone
     5: (0.07, 1.60),   # polished marble
     6: (0.12, 1.70),   # polished granite, like a countertop
-    7: (0.10, 1.54),   # quartz
+    7: (0.22, 1.54),   # milky quartz - waxy, not glassy
     8: (0.06, 1.77),   # sapphire
     9: (0.06, 1.77),   # star sapphire
 }
@@ -301,6 +301,33 @@ def polished(mat, coat_roughness=0.03):
     return mat
 
 
+def milky(mat, base_rgb, radius=0.22, weight=0.72):
+    """Cloudy translucent stone - milky quartz, agate, alabaster.
+
+    NOT transmission. Pure quartz is as clear as glass, but milky quartz is
+    quartz shot through with kaolin and feldspar, and that makes it a
+    slightly translucent DIFFUSE material: light enters, bounces about inside
+    and leaves somewhere else, rather than passing straight through. Rendered
+    with transmission it comes out as a cut window pane, which is what tiers
+    7-9 had become.
+
+    Subsurface is the tool for exactly this - the manual lists marble and wax
+    beside skin and milk - and it is what gives a tumbled pebble its waxy
+    depth instead of a hard glassy edge.
+    """
+    shader = _shader(mat)
+    shader.inputs["Transmission Weight"].default_value = 0.0
+    shader.inputs["Subsurface Weight"].default_value = weight
+    shader.inputs["Subsurface Scale"].default_value = radius
+    # Slightly warm and unequal per channel: light travels further
+    # through a stone at the red end, which is what stops the interior
+    # reading as grey.
+    shader.inputs["Subsurface Radius"].default_value = (1.0, 0.62, 0.44)
+    lifted = [min(1.0, c + (1.0 - c) * 0.45) for c in base_rgb]
+    shader.inputs["Base Color"].default_value = (*lifted, 1.0)
+    return mat
+
+
 def weathered(mat, strength=0.30, scale=48.0):
     """Roughness variation, so a rock is not uniformly matte plastic."""
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
@@ -320,6 +347,15 @@ def weathered(mat, strength=0.30, scale=48.0):
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], _shader(mat).inputs["Normal"])
     return mat
+
+
+# THE GLASS RECIPE, kept for the glass family.
+#
+# These settings were built for mineral tiers 7-9 and are wrong there - they
+# produce window glass, and quartz is not glass. They are exactly right for
+# the GLASS chain, though, so they are recorded here rather than tuned away
+# and rediscovered later. IOR 1.52 is soda-lime glass.
+GLASS_PRESET = {"ior": 1.52, "roughness": 0.06, "tint_strength": 0.86}
 
 
 def gemstone(mat, ior=1.77, roughness=0.06, tint_strength=0.86):
@@ -845,7 +881,13 @@ def build_mineral():
         _shader(material).inputs["Roughness"].default_value = roughness
         _shader(material).inputs["IOR"].default_value = ior
         base = _shader(material).inputs["Base Color"].default_value[:3]
-        if tier >= 7:
+        if tier == 7:
+            # Quartz is STONE, not a window. Cloudy inside, waxy outside, and
+            # a cloud pattern coarse enough to see through the translucency.
+            mottle(material, base, scale=5.0, strength=0.13)
+            milky(material, base)
+            polished(material, coat_roughness=0.06)
+        elif tier >= 8:
             gemstone(material, ior=ior, roughness=roughness)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
@@ -895,7 +937,12 @@ def build_lights():
     # them at their palette value, which matters because the board shows them
     # against dark glass.
     for name, loc, power, size in (
-        ("KeyLight", (-3, -4, 6), 1250, 4),
+        # Smaller and brighter than it was. A four-unit lamp on a piece under
+        # a unit across is a wall of light: it wraps the whole top and gives a
+        # soft gradient, which reads as matte no matter how glossy the surface
+        # is. Gloss is a SMALL bright reflection with a hard edge, so the lamp
+        # has to be small enough to have one.
+        ("KeyLight", (-3, -4, 6), 2600, 1.6),
         ("FillLight", (4, 1, 3), 520, 3),
     ):
         data = bpy.data.lights.get(name) or bpy.data.lights.new(name, type='AREA')
