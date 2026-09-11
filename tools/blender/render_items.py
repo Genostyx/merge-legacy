@@ -901,9 +901,18 @@ def build_mineral():
         for i, (right, back) in enumerate(((-0.17, 0.02), (0.05, -0.11), (0.19, 0.07)))
     ])
 
-    # 4 - POLISHED STONE: a flat wide pebble, heavily rounded. Not another
-    # lump; it is the first tier that has been worked and SMOOTH is the read.
-    out[4] = cube(0.60, 0.44, 0.22)
+    # 4 - POLISHED STONE: a tumbled pebble.
+    #
+    # HULL THEN SUBDIVIDE, which is the one combination that gives an organic
+    # stone. It was a bevelled cube - six flat faces with rounded corners -
+    # and no amount of bevel hides that a box is a box; it reads as low-poly
+    # geometry pretending to be a rock. A tumbled pebble has NO flat faces.
+    #
+    # The hull supplies irregular proportions without spikes, and subdivision
+    # rounds it off completely. Neither works alone: subdividing a sphere
+    # gives an egg, and a bare hull is faceted, which is right for rubble and
+    # wrong for something that has been worn smooth.
+    out[4] = rock(0.66, 0.20, seed=41, points=11, jitter=0.16)
 
     # 5 - MARBLE: a tall upright block, a pedestal fragment. The existing art
     # went out of its way to make this tall so it would not be a bigger,
@@ -962,12 +971,14 @@ def build_mineral():
         # screen, which is the same mistake the wood bevel made at 0.012.
         # What makes an edge read is a band of shading with WIDTH, so the
         # rocks get roughly what the timber gets.
-        bevel = 0.008 if tier >= 7 else (0.085 if tier == 4 else 0.032)
-        # One angle for everything now. A hull's facets are REAL faces, so
-        # there is no tessellation to merge and nothing to widen the angle
-        # for - the wide angles and the subdivision only ever existed to hide
-        # a sphere pretending to be a rock.
-        smooth = SMOOTH_ANGLE
+        # Tier four needs no bevel of its own - subdivision has already taken
+        # every edge off it.
+        bevel = 0.008 if tier >= 7 else (0.0 if tier == 4 else 0.032)
+        # A hull's facets are REAL faces, so there is nothing to merge and the
+        # narrow angle stands. Tier four is the exception: subdivision leaves
+        # it with hundreds of tiny quads that are pure tessellation, and at 30
+        # degrees each would catch its own tone.
+        smooth = math.radians(88) if tier == 4 else SMOOTH_ANGLE
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
         roughness, ior = MINERAL_SURFACE[tier]
@@ -1012,7 +1023,8 @@ def build_mineral():
             weathered(material, strength=0.34 if tier < 4 else 0.12)
             if tier == 4:
                 polished(material)
-        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth)
+        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth,
+               subdivide=2 if tier == 4 else 0)
     return out
 
 
@@ -1099,13 +1111,19 @@ def build_lights():
     axis = nodes.new("ShaderNodeSeparateXYZ")
     links.new(coords.outputs["Generated"], axis.inputs["Vector"])
     bands = nodes.new("ShaderNodeValToRGB")
-    # HARD-EDGED bands, not a gradient.
+    # SOFT-EDGED, AND MORE OF THEM.
     #
-    # A smooth sky reflects as a smooth sweep, which is just shading - it
-    # cannot say "reflective". What reads as polish is a reflected EDGE: the
-    # line where a bright window stops. Constant interpolation gives the box
-    # real walls, so a coat has something with a boundary to show.
-    bands.color_ramp.interpolation = 'CONSTANT'
+    # These were three hard constant bands, which is fine on a flat slab and
+    # wrong on anything curved: a curved surface sweeps the whole sky in a
+    # short distance, so three walls reflect as three flat stripes wrapping
+    # the object - lines painted on a pebble, which is the low-poly look.
+    #
+    # A real room has many surfaces at many brightnesses, and their edges are
+    # soft because nothing has an infinitely sharp boundary. Linear
+    # interpolation with stops close together keeps the edge a reflection
+    # needs while giving it somewhere to travel, and six of them mean a curve
+    # picks up variety rather than a stripe.
+    bands.color_ramp.interpolation = 'LINEAR'
     stops = bands.color_ramp.elements
     stops[0].position = 0.0
     # The floor stays NEAR BLACK, and that is deliberate.
@@ -1115,11 +1133,15 @@ def build_lights():
     # by the gems, so a change made for one is a change made to all nine. The
     # darks are what the bright bands are bright AGAINST.
     stops[0].color = (0.02, 0.02, 0.03, 1.0)
-    stops[1].position = 0.34
-    stops[1].color = (1.0, 1.0, 1.0, 1.0)        # the softbox
-    for position, value in ((0.52, (0.10, 0.11, 0.14)),
-                            (0.74, (0.62, 0.66, 0.78)),
-                            (1.0, (0.16, 0.17, 0.20))):
+    stops[1].position = 0.26
+    stops[1].color = (0.05, 0.05, 0.07, 1.0)
+    for position, value in ((0.33, (1.0, 1.0, 1.0)),      # the softbox
+                            (0.44, (0.90, 0.92, 1.0)),
+                            (0.50, (0.09, 0.10, 0.13)),   # its edge
+                            (0.63, (0.28, 0.30, 0.36)),
+                            (0.78, (0.72, 0.76, 0.88)),   # a second, dimmer one
+                            (0.88, (0.30, 0.32, 0.38)),
+                            (1.0, (0.14, 0.15, 0.18))):
         element = stops.new(position)
         element.color = (*value, 1.0)
     links.new(axis.outputs["Z"], bands.inputs["Fac"])
