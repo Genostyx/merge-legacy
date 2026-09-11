@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Theme, materialLighting } from './Theme';
 import { drawGemGlyph } from '../objects/TierIcons';
+import { loadedItemSprite } from '../objects/itemSprites';
 
 /**
  * The three spendable currencies, drawn rather than spelled.
@@ -100,6 +101,28 @@ const CURRENCY_TEXTURE: Record<CurrencyKind, string> = {
   energy: 'currency-energy'
 };
 
+/** The tier-one item each currency's mark now comes from. */
+const CURRENCY_ITEM: Record<CurrencyKind, string> = {
+  credit: 'currency-credit',
+  gem: 'currency-gem',
+  energy: 'currency-energy'
+};
+
+/**
+ * The texture to draw a currency mark with.
+ *
+ * The RENDERED tier-one item when it is loaded, the flat SVG otherwise. The
+ * board draws the modelled coin, gem and bolt; leaving the HUD, the prices
+ * and the labels on the traced vector versions meant the same currency had
+ * two different pictures depending on where you looked at it, which is the
+ * exact split this module exists to close. Resolving it here rather than at
+ * each call site means a family that has not been modelled yet keeps its SVG
+ * with no special case anywhere.
+ */
+export function currencyTexture(scene: Phaser.Scene, kind: CurrencyKind): string {
+  return loadedItemSprite(scene, CURRENCY_ITEM[kind], 1) ?? CURRENCY_TEXTURE[kind];
+}
+
 /**
  * One currency icon, as a display object.
  *
@@ -121,7 +144,7 @@ export function currencyIcon(
   size: number,
   color?: number
 ): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
-  const key = CURRENCY_TEXTURE[kind];
+  const key = currencyTexture(scene, kind);
   const muted = color !== undefined && color !== CURRENCY_COLOR[kind];
   if (scene.textures.exists(key)) {
     const image = scene.add.image(0, 0, key).setDisplaySize(size, size);
@@ -203,7 +226,7 @@ export function currencyLabel(
 export function applyCurrencyIcon(
   image: Phaser.GameObjects.Image, kind: CurrencyKind, size: number, color?: number
 ): void {
-  image.setTexture(CURRENCY_TEXTURE[kind])
+  image.setTexture(currencyTexture(image.scene, kind))
     .setDisplaySize(size, size)
     .setAlpha(color !== undefined && color !== CURRENCY_COLOR[kind] ? 0.45 : 1);
 }

@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { AUTO_MERGE_KEY, ROWS, formatHudValue, type HudChip } from './config';
 import { Theme, hex, materialLighting, textResolution, toneAt } from '../../ui/Theme';
-import { currencyBoxFor } from '../../ui/CurrencyGlyph';
+import { currencyBoxFor, currencyTexture } from '../../ui/CurrencyGlyph';
+import type { CurrencyKind } from '../../ui/CurrencyGlyph';
 import { loadedItemSprite } from '../../objects/itemSprites';
 import { playerLevel, playerXpProgress } from '../../levels/Orders';
 import { syncEnergy } from '../../economy/Energy';
@@ -22,10 +23,14 @@ export function buildEnergyChip(scene: BoardScene, y: number): HudChip {
   const accent = Theme.currencyEnergy;
   const numberColor = materialLighting(accent, 4).light;
   const bg = scene.add.graphics().setDepth(20);
-  const iconSize = currencyBoxFor('energy', 17 * s);
-  const iconShadow = scene.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
-  const icon = scene.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setDepth(22);
-  const iconGloss = scene.add.image(0, 0, 'currency-energy').setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(0.2).setDepth(23);
+  // Same rule as the other two chips: the modelled bolt when it is loaded,
+  // the traced SVG when it is not.
+  const boltRendered = loadedItemSprite(scene, 'currency-energy', 1);
+  const boltKey = currencyTexture(scene, 'energy');
+  const iconSize = boltRendered ? 19 * s : currencyBoxFor('energy', 17 * s);
+  const iconShadow = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
+  const icon = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setDepth(22);
+  const iconGloss = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(boltRendered ? 0 : 0.2).setDepth(23);
   iconGloss.setCrop(0, 0, iconGloss.width, iconGloss.height * 0.42);
   const text = scene.add.text(0, 0, '', {
     fontFamily: Theme.fontNumeric,
@@ -114,18 +119,16 @@ scene: BoardScene,
   const s = scene.hudScale;
   const numberColor = materialLighting(accent, 4).light;
   const bg = scene.add.graphics().setDepth(20);
-  // The rendered coin when it is loaded, the flat SVG otherwise. The struck
-  // coin is the credit's object now - the chip carrying a different, flatter
-  // mark than the board does is the same split the SVG marks were built to
-  // close.
-  const rendered = glyph === 'coin' ? loadedItemSprite(scene, 'currency-credit', 1) : null;
-  const iconKey = rendered ?? (glyph === 'coin' ? 'currency-coin' : 'currency-gem');
+  // The rendered item when it is loaded, the flat SVG otherwise - resolved
+  // by `currencyTexture` so the chip cannot end up on different art from the
+  // board, the prices or the order cards.
+  const kind: CurrencyKind = glyph === 'coin' ? 'credit' : 'gem';
+  const rendered = loadedItemSprite(scene, `currency-${kind}`, 1);
+  const iconKey = currencyTexture(scene, kind);
   // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
   // why that is not the same as a 24px display size. The render fills almost
   // its whole box, so it needs no such correction.
-  const iconSize = rendered
-    ? 17 * s
-    : currencyBoxFor(glyph === 'coin' ? 'credit' : 'gem', 15 * s);
+  const iconSize = rendered ? 17 * s : currencyBoxFor(kind, 15 * s);
   const iconShadow = scene.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
   const icon = scene.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
   // No gloss pass over a render: it is already lit, and a white wash across
