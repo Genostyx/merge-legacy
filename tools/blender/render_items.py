@@ -155,6 +155,18 @@ CURRENCY_HEX = {
     "currency-gem": {1: 0x9d70c2, 2: 0xaa7dca, 3: 0xb789d2,
                      4: 0xc497db, 5: 0xd2a6e3},
 }
+# Measured off a render, like wood and mineral. Credits had NO correction,
+# and metal needs it more than anything else does: a metal has no diffuse
+# colour at all, it tints whatever it reflects, so against a mostly dim studio
+# it comes back far darker than its swatch. Every tier landed around half its
+# chain value, and tier six - a big flat box reflecting the dim parts of the
+# box - came out the DARKEST of the six when the chain says it is the
+# lightest. The ladder was inverted at the top.
+CURRENCY_MEASURED = {
+    "currency-credit": {1: 0x4d3613, 2: 0x503714, 3: 0x6c5129,
+                        4: 0x684f26, 5: 0x7d6032, 6: 0x635435},
+}
+
 CURRENCY_RGB = {
     kind: {tier: tuple(((c >> shift) & 255) / 255.0 for shift in (16, 8, 0))
            for tier, c in tiers.items()}
@@ -172,7 +184,7 @@ def srgb_to_linear(channel: int) -> float:
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
-def tier_material(name: str, want: int, measured: int):
+def tier_material(name: str, want: int, measured: int, max_gain: float = 3.0):
     """A material built FRESH, every time.
 
     This used to fetch the existing material by name and set the handful of
@@ -196,7 +208,7 @@ def tier_material(name: str, want: int, measured: int):
     for shift in (16, 8, 0):
         base = srgb_to_linear((want >> shift) & 255)
         gain = ((want >> shift) & 255) / max(1, (measured >> shift) & 255)
-        rgb.append(min(1.0, base * min(3.0, max(0.4, gain))))
+        rgb.append(min(1.0, base * min(max_gain, max(0.4, gain))))
     bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
     bsdf.inputs["Roughness"].default_value = 0.8
     if "Specular IOR Level" in bsdf.inputs:
@@ -1406,6 +1418,20 @@ def build_credits():
     # because here the object IS a volume. Door, spokes and dial, all of which
     # the drawn version draws and none of which a bare box has.
     body = cube(0.52, 0.40, 0.44)
+
+    # THE TRIM. The drawn version strokes a bright border round the whole
+    # strongbox, and without it the safe is a plain gold box - which is most
+    # of why it was hard to tell what it is. Four raised rails frame the
+    # visible face, the way a real strongbox's edge banding does.
+    trim = []
+    for horizontal, offset in ((True, 0.20), (True, -0.20),
+                               (False, 0.24), (False, -0.24)):
+        rail = (cube(0.54, 0.045, 0.045, base=False) if horizontal
+                else cube(0.045, 0.045, 0.44, base=False))
+        z = 0.22 + (offset if horizontal else 0.0)
+        x = 0.0 if horizontal else offset
+        trim.append(translate_to(rail, (x, FRONT_Y * 0.205, z)))
+
     door = disc(0.145, 0.05)
     door.rotation_euler.x = math.radians(-90)
     translate_to(door, (0.0, FRONT_Y * 0.20, 0.24))
@@ -1418,7 +1444,7 @@ def build_credits():
     dial = disc(0.040, 0.03)
     dial.rotation_euler.x = math.radians(-90)
     translate_to(dial, (-0.15, FRONT_Y * 0.21, 0.10))
-    out[6] = stack([body, door, dial] + spokes)
+    out[6] = stack([body, door, dial] + spokes + trim)
     return out
 
 
@@ -1454,8 +1480,15 @@ def build_currency(kind: str):
 def dress_currency(kind: str, out):
     """The material, shared by all three chains."""
     for tier, ob in out.items():
+        measured = CURRENCY_MEASURED.get(kind, CURRENCY_HEX[kind])
+        # A TIGHT gain cap on metal. Gold's render is about a third of its
+        # swatch, so an uncapped correction asks for 3x - which drives red and
+        # green to 1.0, leaves blue behind, and turns gold into yellow-green.
+        # Hue survives a small lift and does not survive a large one; the rest
+        # of the brightness has to come from the reflection, not the tint.
         material = tier_material("%s-tier-%d" % (kind, tier),
-                                 CURRENCY_HEX[kind][tier], CURRENCY_HEX[kind][tier])
+                                 CURRENCY_HEX[kind][tier], measured[tier],
+                                 max_gain=1.45)
         shader = _shader(material)
         if kind == "currency-credit":
             # A coin is the one genuinely METALLIC thing in the game. Every
@@ -1464,7 +1497,11 @@ def dress_currency(kind: str, out):
             # tints its own reflection, which is why gold looks like gold from
             # any angle and a yellow plastic does not.
             shader.inputs["Metallic"].default_value = 1.0
-            shader.inputs["Roughness"].default_value = 0.22
+            # Smoother than before, so the studio's bright bands come back as
+            # bright bands. A metal has no diffuse to lighten - all of its
+            # value is reflected, so polish is the only lever that does not
+            # cost hue.
+            shader.inputs["Roughness"].default_value = 0.13
         elif kind == "currency-energy":
             # A spark makes its own light. Nothing else here does, and it is
             # the whole read - an unlit blue zigzag is a blue zigzag.
