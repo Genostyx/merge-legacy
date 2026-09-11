@@ -888,7 +888,13 @@ def build_mineral():
     # flat - so it is a hull like the rubble, pressed down. plate() drew a
     # tidy hexagon and the bevel rounded its corners into a lozenge; a hull
     # gives the straight irregular edges a cleaved sheet actually has.
-    out[1] = rock(0.82, 0.055, seed=11, points=9, jitter=0.20)
+    #
+    # THICK ENOUGH TO BE A PLATE. At 0.055 with a wide jitter it came out a
+    # splinter - a sliver with a point on each end, which is neither slate nor
+    # anything you would pick up. A plate has real thickness you can see from
+    # the side and a broad flat face on top; the jitter is tighter too, since
+    # a cleaved sheet breaks along straightish lines rather than into spikes.
+    out[1] = rock(0.74, 0.16, seed=11, points=11, jitter=0.10)
     out[2] = stack([
         rock(0.52, 0.30, seed=21),
         translate_to(rock(0.40, 0.24, seed=22), beside(0.34, -0.10)),
