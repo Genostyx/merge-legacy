@@ -116,6 +116,9 @@ function drawPolishedFace(
   // reflection.
 }
 
+/** Upper-left: the one light every object in this game is lit by. */
+const KEY_ANGLE = -Math.PI * 0.75;
+
 /**
  * How far the relief is displaced, and how hard, as a fraction of the coin's
  * radius. Two passes rather than one: a single offset copy has a hard far
@@ -171,18 +174,31 @@ function drawStruckCrown(
       g.fillPath();
     }
 
-    g.fillStyle(p.highlight, 1);
-    g.beginPath();
-    g.moveTo(bx + px, by + py);
-    g.lineTo(cos * tip, cy + sin * tip);
-    g.lineTo(bx - px, by - py);
-    g.closePath();
-    g.fillPath();
-    // The shaded flank each ray used to carry is gone. At cell size a ray is
-    // four pixels across, so splitting it into a lit half and a shaded half
-    // left two two-pixel slivers and the crown turned to mush. The relief
-    // under the whole device does that job now, at a size that survives.
-
+    // GRADED ACROSS ITS WIDTH, not flat-filled.
+    //
+    // On real polished metal every raised form carries continuous tone: a
+    // spike is bright along the flank that faces the light and falls away
+    // smoothly to the other side. Flat fills with a line drawn round them
+    // read as cut paper, which is what these were - and it is the single
+    // biggest difference between this and a photograph of a coin.
+    //
+    // Phaser interpolates colour PER VERTEX on a triangle, so the two flank
+    // points take the lit and shaded tones and the tip takes the middle. The
+    // GPU does the rest.
+    const lean = Math.cos(a - KEY_ANGLE);
+    // Which flank faces the light depends on where the ray points, so the
+    // two tones swap as the fan sweeps past the light's axis.
+    const litSide = -sin * Math.cos(KEY_ANGLE) + cos * Math.sin(KEY_ANGLE) > 0;
+    const near = toneAt(p, 0.96);
+    const far = toneAt(p, 0.52 + lean * 0.16);
+    g.fillGradientStyle(
+      litSide ? near : far,
+      toneAt(p, 0.78 + lean * 0.1),
+      litSide ? far : near,
+      litSide ? far : near,
+      1
+    );
+    g.fillTriangle(bx + px, by + py, cos * tip, cy + sin * tip, bx - px, by - py);
   }
 
   // THE HALF RING they stand on - open at the bottom, so it is a band around
@@ -200,10 +216,28 @@ function drawStruckCrown(
       band.map((pt) => new Phaser.Geom.Point(pt.x + d * r, pt.y + d * r)), false, false
     );
   }
-  g.lineStyle(Math.max(1, r * 0.16), p.highlight, 1);
-  g.strokePoints(band, false, false);
-  g.lineStyle(Math.max(1, r * 0.06), p.light, 0.9);
-  g.strokePoints(band, false, false);
+  // The band is graded too, and for that it has to be a RIBBON rather than a
+  // stroked line: a stroke takes one colour for its whole width, where a pair
+  // of triangles per segment can run bright along its top edge and dark along
+  // its bottom, which is what a band of metal actually does.
+  const halfBand = r * 0.08;
+  for (let k = 0; k < band.length - 1; k++) {
+    const c0 = band[k];
+    const c1 = band[k + 1];
+    const dx = c1.x - c0.x;
+    const dy = c1.y - c0.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * halfBand;
+    const ny = (dx / len) * halfBand;
+    const lit = toneAt(p, 0.95);
+    const shade = toneAt(p, 0.55);
+    // The outer edge of the arc is the one facing up and out, so it takes
+    // the light and the inner edge takes the shade.
+    g.fillGradientStyle(lit, lit, shade, shade, 1);
+    g.fillTriangle(c0.x + nx, c0.y + ny, c1.x + nx, c1.y + ny, c0.x - nx, c0.y - ny);
+    g.fillGradientStyle(lit, shade, shade, shade, 1);
+    g.fillTriangle(c1.x + nx, c1.y + ny, c1.x - nx, c1.y - ny, c0.x - nx, c0.y - ny);
+  }
 }
 
 /** One event token standing on the board, waiting to be tapped in. */
