@@ -1659,68 +1659,126 @@ def build_event_token():
     shows whole from above, face and thickness at once.
     """
     radius, thickness = 0.17, 0.042
+    # THE DEVICE SITS LOW ON THE FACE. The arch is centred on the origin but
+    # the rays only rise from it, so the crown's mass lands well above centre
+    # unless the whole thing is dropped. Baked into the placements because
+    # `translate_to` bakes its offset into the mesh and leaves the object's
+    # location at zero - shifting `part.location` afterwards does nothing,
+    # which is why an earlier attempt at measuring the extent and correcting
+    # it had no effect at all.
+    # Face up to the camera, so the crown's up is simply +Y and screen-down
+    # is -Y. Lying flat at the board's isometric angle was tried and does not
+    # work here: at 26.5 degrees of elevation a device standing 0.03 proud on
+    # a 0.17 disc foreshortens into nothing, and the device is the object.
+    CROWN_UP = math.radians(90)
+    CROWN_DROP_X, CROWN_DROP_Y = 0.0, -0.030
     # 64 sides. The credit coins are seen from above where the outline is
     # an ellipse and 24 is plenty; this one is FACE ON, so its outline is a
     # full circle and the polygon shows.
     body = coin(radius, thickness, slot=False, sides=64)
+
+    # THE RIM'S CHAMFER IS THE DISC'S ALONE, applied before anything is
+    # joined. The shared two-segment bevel is one flat facet, and
+    # auto-smoothing that into a 64-sided wall leaves the normals stepping
+    # unevenly round the edge - that is the waviness on the outer ring, not
+    # the silhouette, which measures round to within the bevel's own width.
+    # Six segments make it an actual curve carrying one clean highlight the
+    # whole way round.
+    #
+    # Doing it to the assembled token instead would put the same 0.004 on
+    # the crown, whose rays are only 0.014 thick, and soften a struck device
+    # into an etched one.
+    rim = body.modifiers.new("RimChamfer", 'BEVEL')
+    rim.width, rim.segments = 0.004, 6
+    rim.limit_method, rim.angle_limit = 'ANGLE', SMOOTH_ANGLE
+    rim.use_clamp_overlap = True
+    bpy.ops.object.select_all(action='DESELECT')
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.modifier_apply(modifier="RimChamfer")
     face = thickness          # the recessed face `coin` leaves inside the rim
 
     # THE ARCH: a half ring standing proud of the face. Built as an annulus
     # with its lower half carved off rather than as a drawn stroke, because
     # here it is a raised band and has to catch the light like one.
-    band = carve(translate_to(disc(0.086, 0.030), (0.0, 0.0, face)),
-                 translate_to(disc(0.050, 0.070), (0.0, 0.0, face - 0.02)))
+    # A SMALLER ARCH than the rays. At 0.090 outer against rays reaching
+    # 0.134 the band covered most of each ray's length, so the fan read as a
+    # row of short teeth above a bridge. Drawn, the arch is a little over
+    # half the crown's radius and the spikes overhang it by a long way -
+    # that overhang IS the fan.
+    band = carve(
+        translate_to(disc(0.068, 0.030, 64), (CROWN_DROP_X, CROWN_DROP_Y, face)),
+        translate_to(disc(0.042, 0.070, 64), (CROWN_DROP_X, CROWN_DROP_Y, face - 0.02)))
     # UP ON A FLAT FACE IS 315 DEGREES, not +Y. The token lies down, so the
     # crown's up has to be the world direction that projects to screen up -
     # measured, not assumed: +X and -Y both come back at screen y +0.316, and
     # the direction between them at +0.447. Built round +Y the crown came out
     # lying on its side.
-    # Face on, the crown's up is simply +Y - none of the flat-face
-    # projection applies once the token is stood square to the camera.
-    up = math.radians(90)
+    up = CROWN_UP
     cutter = cube(0.44, 0.22, 0.14, base=False)
     cutter.rotation_euler.rotate_axis("Z", up - math.radians(270))
     band = carve(band, translate_to(cutter, (
-        -math.cos(up) * 0.11, -math.sin(up) * 0.11, face + 0.010)))
+        -math.cos(up) * 0.11 + CROWN_DROP_X,
+        -math.sin(up) * 0.11 + CROWN_DROP_Y, face + 0.010)))
 
     # SEVEN RAYS over the top half, tapering outwards from the band. Seven
     # over a band reads as one particular object at cell size, where the
     # six-point burst it replaced read as a generic sparkle.
     rays = []
     for i in range(7):
-        # Spread across 140 degrees, not a full 180. At the extremes the
-        # end rays landed exactly on the arch's cut ends and merged into
-        # them, which is what turned the outer two into square stubs.
-        angle = up - math.radians(70) + math.radians(140) * i / 6
-        ray = extrude_profile([(-0.011, 0.0), (0.011, 0.0), (0.0, 0.046)], 0.026)
+        angle = up - math.radians(85) + math.radians(170) * i / 6
+        # The middle spear is the longest and they shorten towards the ends,
+        # the way the drawn crown does. Evenly long rays read as a comb.
+        reach = 0.100 - 0.022 * abs(i - 3) / 3.0
+        # LONG FLAT SPEARS. Two faults at once before this: at 0.026 thick
+        # against 0.022 wide they were square in section, so any ray turned
+        # edge-on read as a rectangular block rather than a ray; and at 0.074
+        # they were short enough to hide behind the arch. Drawn, they are
+        # thin plates reaching well past it - that overhang is the whole
+        # shape.
+        ray = extrude_profile([(-0.017, 0.0), (0.017, 0.0), (0.0, reach)], 0.014)
         # `extrude_profile` builds in x-z and extrudes along y, so a quarter
         # turn about X lays the triangle flat with its thickness in z and its
         # tip pointing +Y. The spin about Z then aims it outwards.
         ray.rotation_euler.rotate_axis("X", math.radians(-90))
-        ray.rotation_euler.rotate_axis("Z", math.radians(math.degrees(angle) - 90))
+        # PRE-MULTIPLIED, not `rotate_axis`. Euler.rotate_axis turns about the
+        # euler's OWN axis, not the world's - after the quarter turn about X
+        # a "Z" spin of -85 degrees landed in the Y slot and tipped the ray
+        # out of the face instead of aiming it outwards. Every version of
+        # this crown fanned wrongly for that one reason: measured, ray zero
+        # wanted 5 degrees and its tip came out at 62.
+        ray.rotation_euler = (
+            Matrix.Rotation(angle - math.pi / 2, 4, Vector((0.0, 0.0, 1.0)))
+            @ ray.rotation_euler.to_matrix().to_4x4()
+        ).to_euler()
         # Based just OUTSIDE the band, and sized so the tips stay INSIDE
         # the recessed face. `coin` wells out to 0.8 of the radius - 0.136 -
         # and rays reaching 0.158 were punching into the rim wall, which is
         # what turned the device into a ring of clipped fragments.
-        translate_to(ray, (math.cos(angle) * 0.088,
-                           math.sin(angle) * 0.088,
-                           face + 0.009))
+        # Rooted OUT AT THE ARCH, not near the middle - at 0.030 all seven
+        # converged on the centre and piled into one lump instead of
+        # radiating. Based at 0.050 they fan out properly, and sitting below
+        # the band's own height the arch hides their roots, which is how the
+        # drawn crown is built. Tips reach 0.134, just inside the recessed
+        # face's 0.136.
+        translate_to(ray, (math.cos(angle) * 0.036 + CROWN_DROP_X,
+                           math.sin(angle) * 0.036 + CROWN_DROP_Y,
+                           face + 0.004))
         rays.append(ray)
 
-    # THE DEVICE CENTRED ON THE FACE. The arch is centred on the origin but
-    # the rays only go upwards, so the crown's visible mass sits well above
-    # it - drawn, the whole device is centred on the coin. Dropping it by a
-    # third of a ray's length puts the mass back in the middle.
-    for part in [band] + rays:
-        part.location.y -= 0.028
     token = stack([body, band] + rays)
 
-    # FACE ON, like the wood knots and for the same reason: this thing's
-    # identity IS the struck device, and the isometric three-quarter
-    # foreshortens the crown into a smear. The credit coins lie flat because
-    # a coin is generic and its face carries almost nothing; here the face is
-    # the entire object.
+    # FACE TO THE CAMERA, then SWUNG. Dead square on, a medallion reads as
+    # a UI icon pasted onto the board; a horizontal turn about the screen's
+    # vertical puts it in the board's space and shows the disc's thickness
+    # down one edge, without foreshortening the crown the way lying flat
+    # does.
     facing_camera(token)
+    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
+    token.rotation_euler = (
+        Matrix.Rotation(math.radians(-30), 4, view @ Vector((0, 1, 0)))
+        @ token.rotation_euler.to_matrix().to_4x4()
+    ).to_euler()
 
     material = tier_material("event-token", EVENT_TOKEN_HEX, EVENT_TOKEN_HEX)
     shader = _shader(material)
@@ -1730,7 +1788,23 @@ def build_event_token():
     shader.inputs["Roughness"].default_value = 0.13
     # A HAIRLINE bevel. At 0.006 it was wider than the rays are thick and
     # melted the whole device into blobs - a struck mark needs its edges.
-    finish(token, "event-token", material, bevel=0.0015)
+    # A TIGHT smooth angle. The shared 30 degrees smooths shading across
+    # every edge shallower than that, which on a struck device means the
+    # rays' own facets blend into the field and into each other - the surface
+    # stops being a set of flat planes and starts rippling, and at 0.94
+    # metallic the face mirrors the studio so the ripple reads as warping.
+    # At 12 only the 64-sided wall, whose facets are 5.6 degrees apart, gets
+    # smoothed; everything struck keeps its edges.
+    finish(token, "event-token", material, bevel=0.0015,
+           smooth_angle=math.radians(12))
+
+    # THE RIM GETS A REAL CHAMFER. The shared two-segment bevel is a single
+    # flat facet, and auto-smoothing that into a 64-sided wall leaves the
+    # normals stepping unevenly round the edge - which is the waviness on the
+    # outer ring. The silhouette was never the problem: it measures round to
+    # within the bevel's own width. Six segments make the chamfer an actual
+    # curve, so it carries one clean highlight the whole way round the way a
+    # struck coin's edge does.
     return {1: token}
 
 
