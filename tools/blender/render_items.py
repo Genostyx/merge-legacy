@@ -1120,14 +1120,8 @@ def extrude_profile(points, thickness: float):
     return ob
 
 
-def disc(radius: float, thickness: float, sides: int = 64):
-    """A coin, lying flat.
-
-    64 sides, not 24. A coin is the one shape in the set the player looks at
-    dead on, so its silhouette IS the object - at 24 the edge read as a
-    struck nut, and auto-smooth cannot fix a silhouette, only the shading
-    inside it.
-    """
+def disc(radius: float, thickness: float, sides: int = 24):
+    """A coin, lying flat."""
     mesh = bpy.data.meshes.new("coin")
     bm = bmesh.new()
     lower, upper = [], []
@@ -1227,17 +1221,6 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
     translate_to(well, (0.0, 0.0, thickness))
     body = carve(blank, well)
 
-    # THE STRUCK RING, back on the face. The drawn coin strokes a circle
-    # inside its edge and this had only the rim, which left the whole middle
-    # as one flat empty plate - and a flat plate tipped away from the lights
-    # goes dark and turns the coin into a washer with a bright edge. A raised
-    # ring gives the face its own lit edge, so the gold carries all the way
-    # in instead of stopping at the rim.
-    ring_h = rim_height * 0.55
-    ring = carve(disc(radius * 0.66, thickness + ring_h),
-                 translate_to(disc(radius * 0.54, ring_h * 4), (0.0, 0.0, 0.0)))
-    body = merge([body, ring])
-
     if slot:
         # Struck DEEP into the recessed face, which sits at `thickness`.
         #
@@ -1254,8 +1237,7 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
 
 
 def upright_coin(radius: float = 0.17, thickness: float = 0.042,
-                 lean_deg: float = 0.0, mirror: bool = False,
-                 face_on: bool = False):
+                 lean_deg: float = 0.0):
     """A coin standing ON ITS EDGE, turned to the isometric three-quarter.
 
     Lying on its back a coin shows its face as a flat ellipse and hides the
@@ -1267,37 +1249,11 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
     """
     piece = coin(radius, thickness)
 
-    if face_on:
-        # SQUARE ON TO THE CAMERA, the treatment the wood knots get. A coin
-        # is read by its face the way a knot is read by its loops, and the
-        # three-quarter turn that suits every box in the set foreshortens
-        # that face for nothing. No slot bake is needed: this facing puts
-        # the coin's own X along screen-right, so the mark is already level.
-        piece.rotation_euler = (
-            (-camera_forward()).to_track_quat('Z', 'Y').to_euler()
-        )
-        # TIPPED BACK, so the coin is resting against something rather than
-        # standing to attention. Dead square on it reads as a UI icon pasted
-        # onto the board; a little lean puts it back in the same world as the
-        # pieces around it without foreshortening the face enough to matter.
-        if lean_deg:
-            piece.rotation_euler = (
-                Matrix.Rotation(math.radians(lean_deg), 4, SCREEN_RIGHT)
-                @ piece.rotation_euler.to_matrix().to_4x4()
-            ).to_euler()
-        return piece
-
     # SPIN THE SLOT FIRST, in the coin's own frame, and bake it in. The mark
     # runs diagonally across the face; doing this after the coin is stood up
     # would need a rotation about whatever the face normal had become, which
     # is a different axis every time the presentation is adjusted.
-    # SOLVED, not eyeballed: 10.6 is the bake angle whose slot projects dead
-    # horizontal through this camera. -32 was picked by eye off a flat coin
-    # and came out running uphill once the piece was stood on edge and turned,
-    # because the face is foreshortened and an angle on it is not the angle
-    # you see. A horizontal line survives the mirror unchanged, so the same
-    # number serves both handednesses.
-    piece.rotation_euler.z = math.radians(10.6)
+    piece.rotation_euler.z = math.radians(-32)
     bpy.ops.object.select_all(action='DESELECT')
     piece.select_set(True)
     bpy.context.view_layer.objects.active = piece
@@ -1317,46 +1273,7 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
             Matrix.Rotation(math.radians(lean_deg), 4, SCREEN_RIGHT)
             @ piece.rotation_euler.to_matrix().to_4x4()
         ).to_euler()
-
-    # A LITERAL HORIZONTAL FLIP of the rendered image, done as a reflection
-    # rather than as another guessed angle. Hunting for the turn that shows
-    # the far rim is guesswork twice over - the rim's side and the face's
-    # side both depend on how far past face-on you land, and a real 90
-    # overshoots onto the BACK of the coin, which this camera never shows.
-    # Reflecting through the plane whose normal is screen-right gives the
-    # mirror exactly, with the tilt and the resting point untouched.
-    if mirror:
-        _mirror_across_screen(piece)
     return piece
-
-
-def _mirror_across_screen(ob):
-    """Reflect an object about the screen's vertical centre line.
-
-    Bakes the object's own rotation into the mesh first, because the
-    reflection is a WORLD-space operation and mesh data is local. A
-    reflection has determinant -1, so every face comes out inside-out and
-    the normals have to be flipped back or the solid renders hollow.
-    """
-    bpy.ops.object.select_all(action='DESELECT')
-    ob.select_set(True)
-    bpy.context.view_layer.objects.active = ob
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-
-    n = SCREEN_RIGHT
-    reflect = Matrix.Identity(3)
-    for i in range(3):
-        for j in range(3):
-            reflect[i][j] -= 2.0 * n[i] * n[j]
-    ob.data.transform(reflect.to_4x4())
-
-    mesh = bmesh.new()
-    mesh.from_mesh(ob.data)
-    for face in mesh.faces:
-        face.normal_flip()
-    mesh.to_mesh(ob.data)
-    mesh.free()
-    ob.data.update()
 
 
 # A coin is taller than its own thickness: the rim stands proud by another
@@ -1401,21 +1318,12 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    # LYING FLAT, the way tier three's top coin does. Every presentation
-    # tried for these - three-quarter on edge, mirrored, square on and tipped
-    # back - was an attempt to show the face without losing the solid, and
-    # the stack already had the answer: seen from the isometric camera a coin
-    # on its back shows its whole face AND its thickness, with no trick.
-    # Standing them up was solving a problem this camera does not have.
-    out[1] = coin(coin_r, coin_t)
+    out[1] = upright_coin()
     out[2] = stack([
-        translate_to(coin(coin_r, coin_t), beside(-0.11, 0.06)),
-        # The second RESTS ON the first rather than sitting beside it: half a
-        # coin's height up and overlapping, so they read as two coins dropped
-        # together instead of two counters laid out.
-        translate_to(coin(coin_r, coin_t),
-                     tuple(Vector(beside(0.12, -0.06))
-                           + Vector((0.0, 0.0, coin_t * 0.62)))),
+        # Overlapping, with the near one a touch forward, so they read as two
+        # coins leaning together rather than two discs butted edge to edge.
+        translate_to(upright_coin(), beside(-0.13, 0.07)),
+        translate_to(upright_coin(), beside(0.11, -0.07)),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
