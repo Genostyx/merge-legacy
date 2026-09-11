@@ -1310,7 +1310,30 @@ def build_credits():
     translate_to(inner, (0.0, 0.0, bundle_h / 2))
     strap = carve(outer, inner)
 
-    out[4] = stack(bills + [strap])
+    # TIPPED ONTO ITS LONG NARROW SIDE, so the bundle stands on the thin edge
+    # and you look at the cut edges of the notes rather than down at the top
+    # one. Lying flat it read as a single slab with a band on it; on edge the
+    # leaves are the silhouette.
+    bundle = stack(bills + [strap])
+    bundle.rotation_euler.rotate_axis("X", math.radians(90))
+    bpy.ops.object.select_all(action='DESELECT')
+    bundle.select_set(True)
+    bpy.context.view_layer.objects.active = bundle
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    # Tipping it put half the bundle under the floor - reseat it on z=0.
+    low = min((bundle.matrix_world @ v.co).z for v in bundle.data.vertices)
+    translate_to(bundle, (0.0, 0.0, -low))
+
+    # A coin RESTING AGAINST the bundle's left end, not floating beside it.
+    #
+    # upright_coin turns about its own origin, so half the disc hangs below
+    # z=0 - it has to be lifted by its radius to stand on the floor at all.
+    # And `back` moves a piece down-screen as well as toward the viewer, so a
+    # large value drops it clear of the thing it is meant to lean on.
+    leaning = upright_coin()
+    translate_to(leaning, tuple(
+        Vector(beside(-0.23, -0.07)) + Vector((0.0, 0.0, 0.19))))
+    out[4] = stack([bundle, leaning])
 
     # 5: a BUNDLE - three stacks of real coins bound by a strap with a seal.
     # Built from discs rather than smooth columns so the coin edges read, the
