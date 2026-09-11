@@ -1223,7 +1223,8 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
     return body
 
 
-def upright_coin(radius: float = 0.17, thickness: float = 0.042):
+def upright_coin(radius: float = 0.17, thickness: float = 0.042,
+                 lean_deg: float = 0.0):
     """A coin standing ON ITS EDGE, turned to the isometric three-quarter.
 
     Lying on its back a coin shows its face as a flat ellipse and hides the
@@ -1249,6 +1250,16 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042):
     # Not 45 - that is dead face-on to this camera. 23 off it keeps the face
     # readable while leaving the rim's thickness in view.
     piece.rotation_euler.rotate_axis("Z", math.radians(23))
+
+    # An optional lean, about the SCREEN horizontal, so the coin tips back
+    # rather than sideways. Applied in world space after the local turns -
+    # rotate_axis only takes the three named axes, and screen-right is not
+    # one of them.
+    if lean_deg:
+        piece.rotation_euler = (
+            Matrix.Rotation(math.radians(lean_deg), 4, SCREEN_RIGHT)
+            @ piece.rotation_euler.to_matrix().to_4x4()
+        ).to_euler()
     return piece
 
 
@@ -1330,9 +1341,20 @@ def build_credits():
     # z=0 - it has to be lifted by its radius to stand on the floor at all.
     # And `back` moves a piece down-screen as well as toward the viewer, so a
     # large value drops it clear of the thing it is meant to lean on.
-    leaning = upright_coin()
+    # SHORTER than the bundle and tipped against it. At full size it stood
+    # taller than the money it was leaning on, which reads as two objects
+    # meeting rather than one propped on the other; and dead upright it was
+    # standing beside the bundle, not resting on it.
+    # Shorter than the bundle and tipped. The lean is about the SCREEN
+    # horizontal, so it tips the coin toward the viewer rather than sideways -
+    # subtle by design, and reversing it only made the coin lie back the other
+    # way, which was worse.
+    leaning = upright_coin(radius=0.115, thickness=0.032, lean_deg=-20)
+    # Moved IN until it actually touches. The tilt was right; the resting
+    # point was not - at -0.22 there was daylight between the coin and the
+    # money, so nothing was resting on anything.
     translate_to(leaning, tuple(
-        Vector(beside(-0.23, -0.07)) + Vector((0.0, 0.0, 0.19))))
+        Vector(beside(-0.155, -0.05)) + Vector((0.0, 0.0, 0.108))))
     out[4] = stack([bundle, leaning])
 
     # 5: a BUNDLE - three stacks of real coins bound by a strap with a seal.
