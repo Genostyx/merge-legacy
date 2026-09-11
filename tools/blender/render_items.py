@@ -76,6 +76,18 @@ MINERAL_MEASURED = {
     6: 0x8d6e73, 7: 0x8d9497, 8: 0x485e71, 9: 0x71808c,
 }
 
+# THE HOUSE SURFACE, taken from mineral tier five.
+#
+# Marble was the one tier whose finish read correctly, so its settings are the
+# baseline for everything and each tier moves off it only as far as it has to.
+# Working the other way - picking a plausible-looking gloss per tier - is how
+# the pebble ended up wetter than stone and the gems ended up mirrors.
+#
+# Roughness 0.46 with a 0.35 specular level. Note 0.35 IS Blender's default,
+# so the sheen was never coming from the specular input; it was roughness.
+HOUSE_ROUGHNESS = 0.46
+HOUSE_SPECULAR = 0.35
+
 BEVEL_WIDTH = 0.016      # a sawn arris, not a moulded edge
 BEVEL_SEGMENTS = 2
 SMOOTH_ANGLE = math.radians(30)
@@ -97,9 +109,9 @@ def tier_material(name: str, want: int, measured: int):
         gain = ((want >> shift) & 255) / max(1, (measured >> shift) & 255)
         rgb.append(min(1.0, base * min(3.0, max(0.4, gain))))
     bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
-    bsdf.inputs["Roughness"].default_value = 0.62
+    bsdf.inputs["Roughness"].default_value = HOUSE_ROUGHNESS
     if "Specular IOR Level" in bsdf.inputs:
-        bsdf.inputs["Specular IOR Level"].default_value = 0.35
+        bsdf.inputs["Specular IOR Level"].default_value = HOUSE_SPECULAR
     return mat
 
 
@@ -231,7 +243,7 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def gemstone(mat, ior=1.77, roughness=0.03, tint_strength=0.86):
+def gemstone(mat, ior=1.77, roughness=0.16, tint_strength=0.86):
     """A cut stone that light goes THROUGH.
 
     This is the one that cannot be faked. A gem is dark where it is thick and
@@ -252,6 +264,11 @@ def gemstone(mat, ior=1.77, roughness=0.03, tint_strength=0.86):
     shader.inputs["Base Color"].default_value = (*lifted, 1.0)
     shader.inputs["Transmission Weight"].default_value = 1.0
     shader.inputs["IOR"].default_value = ior
+    # NOT a mirror. At 0.02 every facet returned a hard white clip and the
+    # stone read as chrome rather than as a gem; the refraction underneath was
+    # being buried by its own highlights. Kept within sight of the house
+    # roughness so a cut stone is the shiniest thing on the board without
+    # being a different order of shiny.
     shader.inputs["Roughness"].default_value = roughness
     return mat
 
@@ -638,6 +655,9 @@ def build_wood():
 
     for tier, ob in out.items():
         material = tier_material("wood-tier-%d" % tier, WOOD_HEX[tier], WOOD_MEASURED[tier])
+        # Timber is the mattest thing here, but only a little - it sits just
+        # off the house surface rather than somewhere of its own.
+        _shader(material).inputs["Roughness"].default_value = HOUSE_ROUGHNESS + 0.08
         grain(material, _shader(material).inputs["Base Color"].default_value[:3])
         finish(ob, "wood%d" % tier, material)
 
@@ -741,14 +761,15 @@ def build_mineral():
         bevel = 0.0 if tier >= 6 else (0.085 if tier == 4 else 0.012)
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
-        _shader(material).inputs["Roughness"].default_value = (
-            0.14 if tier >= 7 else (0.24 if tier == 4 else 0.46)
-        )
+        # Everything sits on the house surface. The pebble is smooth because
+        # of its heavy bevel, not because it is wet - dropping its roughness
+        # to 0.24 made it look glazed rather than worn.
+        _shader(material).inputs["Roughness"].default_value = HOUSE_ROUGHNESS
         base = _shader(material).inputs["Base Color"].default_value[:3]
         if tier >= 7:
             # Quartz is the plainest cut and the least refractive of the three.
             gemstone(material, ior=1.55 if tier == 7 else 1.77,
-                     roughness=0.05 if tier == 7 else 0.02)
+                     roughness=0.20 if tier == 7 else 0.15)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
         elif tier == 5:
@@ -822,7 +843,10 @@ def build_lights():
     dim.inputs[0].default_value = (0.055, 0.052, 0.05, 1.0)
     bright = nodes.new("ShaderNodeBackground")
     bright.inputs[0].default_value = (0.92, 0.94, 1.0, 1.0)
-    bright.inputs[1].default_value = 1.4
+    # Dialled back with the roughness: a bright sky plus mirror facets was
+    # clipping to white, and the highlight is meant to reveal the cut, not
+    # erase it.
+    bright.inputs[1].default_value = 1.0
     path = nodes.new("ShaderNodeLightPath")
     mix = nodes.new("ShaderNodeMixShader")
     out = nodes.new("ShaderNodeOutputWorld")
