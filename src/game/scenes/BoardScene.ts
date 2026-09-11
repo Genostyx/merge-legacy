@@ -1584,7 +1584,16 @@ export class BoardScene extends Phaser.Scene {
         // with no error visible to the player. The drag flags stranded the
         // same way, which also stopped the auto merge dead.
         try {
-          await this.onPointerUp({ x: target.x, y: target.y } as Phaser.Input.Pointer);
+          // BOTH pairs, because this is a fake pointer and a fake pointer
+          // only satisfies the contract it is told about. The input path
+          // reads `worldX/worldY` - a camera-converted, CSS-pixel coordinate
+          // - since the renderer moved to device pixels. This object carried
+          // only `x/y`, so every synthetic release resolved its target cell
+          // from `undefined` and the auto merge tapped sources happily while
+          // never merging anything.
+          await this.onPointerUp({
+            x: target.x, y: target.y, worldX: target.x, worldY: target.y
+          } as Phaser.Input.Pointer);
         } catch (error) {
           console.error('[auto-merge] step failed; releasing input', error);
           this.inputLocked = false;
