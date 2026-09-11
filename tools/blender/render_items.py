@@ -1259,6 +1259,15 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
         piece.rotation_euler = (
             (-camera_forward()).to_track_quat('Z', 'Y').to_euler()
         )
+        # TIPPED BACK, so the coin is resting against something rather than
+        # standing to attention. Dead square on it reads as a UI icon pasted
+        # onto the board; a little lean puts it back in the same world as the
+        # pieces around it without foreshortening the face enough to matter.
+        if lean_deg:
+            piece.rotation_euler = (
+                Matrix.Rotation(math.radians(lean_deg), 4, SCREEN_RIGHT)
+                @ piece.rotation_euler.to_matrix().to_4x4()
+            ).to_euler()
         return piece
 
     # SPIN THE SLOT FIRST, in the coin's own frame, and bake it in. The mark
@@ -1375,12 +1384,14 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = upright_coin(face_on=True)
+    out[1] = upright_coin(face_on=True, lean_deg=20)
     out[2] = stack([
         # Overlapping, with the near one a touch forward, so they read as two
         # coins leaning together rather than two discs butted edge to edge.
-        translate_to(upright_coin(face_on=True), beside(-0.13, 0.07)),
-        translate_to(upright_coin(face_on=True), beside(0.11, -0.07)),
+        translate_to(upright_coin(face_on=True, lean_deg=20),
+                     beside(-0.13, 0.07)),
+        translate_to(upright_coin(face_on=True, lean_deg=20),
+                     beside(0.11, -0.07)),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
