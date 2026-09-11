@@ -535,7 +535,20 @@ def lean(ob, degrees: float):
 
 
 def finish(ob, name: str, material, bevel: float = BEVEL_WIDTH,
-           smooth_angle: float = SMOOTH_ANGLE):
+           smooth_angle: float = SMOOTH_ANGLE, subdivide: int = 0):
+    # SUBDIVISION FIRST, and it is the only thing that fixes a silhouette.
+    #
+    # Shade-smooth and a wider auto-smooth angle only change how existing
+    # faces are SHADED - the outline is still the polygon it always was, so
+    # the little points survive every one of those settings. Subdivision adds
+    # real geometry, so the edge of the shape actually curves.
+    #
+    # Before the bevel, so the bevel runs on the finished surface rather than
+    # on a cage that is about to move.
+    if subdivide:
+        sub = ob.modifiers.new("Subdivision", 'SUBSURF')
+        sub.levels = sub.render_levels = subdivide
+
     mod = ob.modifiers.new("Bevel", 'BEVEL')
     mod.width, mod.segments = bevel, BEVEL_SEGMENTS
     mod.limit_method, mod.angle_limit = 'ANGLE', SMOOTH_ANGLE
@@ -1032,7 +1045,12 @@ def build_mineral():
             weathered(material, strength=0.34 if tier < 4 else 0.12)
             if tier == 4:
                 polished(material)
-        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth)
+        # The found rock subdivides; everything else keeps its exact outline,
+        # because a cut stone's silhouette IS its facets and a slab's is its
+        # edges. Rounding those off would be destroying the shape, not
+        # smoothing it.
+        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth,
+               subdivide=2 if 2 <= tier <= 4 else 0)
     return out
 
 
