@@ -768,9 +768,19 @@ export function advanceOrder(
   // THE TWO FACILITIES, one per order, and only once the board is clear of
   // locked cells. `boardIsClear` is passed in because OrderState knows
   // nothing about the grid - the caller is the only thing that can answer it.
-  // Only ever attached to a delivery worth doing, so the machine arrives as
-  // the reward for real work rather than for whatever came up next.
-  if (boardIsClear && replacement.type === 'deliver-items' && work >= typicalOrderWork(level)) {
+  //
+  // NO WORK THRESHOLD. This used to also require the order to be worth at
+  // least `typicalOrderWork(level)`, so that a machine arrived as the reward
+  // for real work. Measured on a level-20 save, that took NINE completed
+  // orders to land the first one: "typical" is the average over every line
+  // count and item count an order can have, and most actual orders fall
+  // below their own average. A gate that reads as "a decent order" in prose
+  // was in practice "one order in nine".
+  //
+  // These are the two machines that unlock the rest of the endgame and they
+  // are given ONCE each. Arriving promptly matters more than arriving
+  // attached to an impressive delivery.
+  if (boardIsClear && replacement.type === 'deliver-items') {
     const next = (['shredder', 'crucible'] as const)
       .find((id) => !state.facilitiesAwarded.includes(id));
     // Cleared first, so a slot that carried a facility last time cannot pay
