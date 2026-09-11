@@ -1234,8 +1234,19 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042):
     an angle, not square to anything.
     """
     piece = coin(radius, thickness)
+
+    # SPIN THE SLOT FIRST, in the coin's own frame, and bake it in. The mark
+    # runs diagonally across the face; doing this after the coin is stood up
+    # would need a rotation about whatever the face normal had become, which
+    # is a different axis every time the presentation is adjusted.
+    piece.rotation_euler.z = math.radians(-32)
+    bpy.ops.object.select_all(action='DESELECT')
+    piece.select_set(True)
+    bpy.context.view_layer.objects.active = piece
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+
     piece.rotation_euler.rotate_axis("X", math.radians(-90))
-    # Not 45 - that is dead face-on to this camera. 22 off it keeps the face
+    # Not 45 - that is dead face-on to this camera. 23 off it keeps the face
     # readable while leaving the rim's thickness in view.
     piece.rotation_euler.rotate_axis("Z", math.radians(23))
     return piece
