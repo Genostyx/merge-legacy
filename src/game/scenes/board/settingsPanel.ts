@@ -217,6 +217,16 @@ export function buildDevResetButton(scene: BoardScene): void {
  */
 export function buildDevLevelStepper(scene: BoardScene): void {
   const y = scene.viewH - 8;
+  // Tucked against the left edge of `auto:`, in the same dev strip, rather
+  // than alone in the opposite corner - the two are the same kind of switch
+  // and a tester reaches for them together. Measured off that text instead of
+  // guessed, because `auto: on` and `auto: off` are different widths.
+  // Depth 10, matching it, so the strip draws OVER the action tray it now
+  // overlaps rather than disappearing behind it.
+  const right = scene.autoMergeText
+    ? scene.autoMergeText.x - scene.autoMergeText.width - 12
+    : scene.viewW - 60;
+  const left = right - 66;
   const style = {
     resolution: textResolution,
     fontFamily: Theme.fontMono,
@@ -224,7 +234,8 @@ export function buildDevLevelStepper(scene: BoardScene): void {
     color: hex(Theme.textOnDarkMuted)
   };
 
-  const label = scene.add.text(30, y, '', style).setOrigin(0, 1).setAlpha(0.5);
+  const label = scene.add.text(left + 22, y, '', style)
+    .setOrigin(0, 1).setAlpha(0.5).setDepth(10);
   const redraw = (): void => {
     label.setText(`lv${playerLevel(scene.orderState)}`);
   };
@@ -244,7 +255,7 @@ export function buildDevLevelStepper(scene: BoardScene): void {
 
   const button = (x: number, text: string, onTap: () => void): void => {
     const t = scene.add.text(x, y, text, style)
-      .setOrigin(0, 1).setAlpha(0.5).setInteractive({ useHandCursor: true });
+      .setOrigin(0, 1).setAlpha(0.5).setDepth(10).setInteractive({ useHandCursor: true });
     // A generous hit box: these are 10px glyphs and the target is a thumb.
     t.input!.hitArea = new Phaser.Geom.Rectangle(-8, -10, t.width + 16, t.height + 16);
     t.on('pointerover', () => t.setAlpha(1));
@@ -252,8 +263,8 @@ export function buildDevLevelStepper(scene: BoardScene): void {
     t.on('pointerdown', onTap);
   };
 
-  button(8, '-', () => step(-1));
-  button(58, '+', () => step(1));
+  button(left, '-', () => step(-1));
+  button(left + 50, '+', () => step(1));
   redraw();
 }
 

@@ -918,8 +918,10 @@ export class BoardScene extends Phaser.Scene {
     // deleted in one line without touching any other header element's math.
     this.buildSettingsButton();
     this.buildDevResetButton();
-    this.buildDevLevelStepper();
+    // The auto-merge toggle FIRST: the level stepper parks itself against
+    // that text's left edge, so it has to exist and know its own width.
     this.buildAutoMergeButton();
+    this.buildDevLevelStepper();
     this.time.addEvent({ delay: 240, loop: true, callback: () => void this.runAutoMergeStep() });
 
     this.buildCrateMeter();
