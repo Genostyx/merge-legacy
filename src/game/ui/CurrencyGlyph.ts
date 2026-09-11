@@ -87,7 +87,8 @@ export function drawCurrencyGlyph(
  * with different padding and its number here has to be remeasured: this is a
  * property of the art file, not of the shape it draws.
  */
-export const CURRENCY_FILL_RATIO = { credit: 0.649, gem: 0.591, energy: 0.779 } as const;
+export const CURRENCY_FILL_RATIO: Record<CurrencyKind, number> =
+  { credit: 0.649, gem: 0.591, energy: 0.779 };
 
 /** Display size that draws `height` pixels of actual mark. */
 export function currencyBoxFor(kind: CurrencyKind, height: number): number {
@@ -124,6 +125,50 @@ export function currencyTexture(scene: Phaser.Scene, kind: CurrencyKind): string
 }
 
 /**
+ * Share of its 384px canvas each RENDERED mark's art fills, longest side.
+ *
+ * The same measurement as CURRENCY_FILL_RATIO and needed for the same
+ * reason, but the renders fill far less of their box than the SVGs did -
+ * 0.55 against 0.65 for the coin - because a family is framed at ONE scale
+ * so its tiers keep their size order, and tier one is the smallest thing in
+ * the chain. Feeding a display size sized for the SVG straight to a render
+ * therefore draws a noticeably smaller mark.
+ *
+ * Measured off public/assets/items/<family>/1.png. Re-render a chain with a
+ * different ladder and these have to be measured again.
+ */
+const RENDER_FILL_RATIO: Record<CurrencyKind, number> = {
+  credit: 0.547, gem: 0.589, energy: 0.615
+};
+
+/**
+ * Display size that draws the same amount of MARK as `size` did on the SVG.
+ *
+ * Every call site sizes its icon through `currencyBoxFor`, which is written
+ * against the SVG's own fill. Correcting here keeps all of them - the HUD
+ * chips, the price pills, the order cards - at the size they were tuned to,
+ * rather than making each one know which art it ended up with.
+ */
+function renderDisplaySize(kind: CurrencyKind, size: number): number {
+  return size * (CURRENCY_FILL_RATIO[kind] / RENDER_FILL_RATIO[kind]);
+}
+
+/**
+ * The display size to give an Image for `kind`, whichever art it resolves to.
+ *
+ * For the places that build their own Image rather than calling
+ * `currencyIcon` - the HUD chips stack three copies for a shadow, the mark
+ * and a gloss, so they cannot use it.
+ */
+export function currencyDisplaySize(
+  scene: Phaser.Scene, kind: CurrencyKind, size: number
+): number {
+  return currencyTexture(scene, kind) === CURRENCY_TEXTURE[kind]
+    ? size
+    : renderDisplaySize(kind, size);
+}
+
+/**
  * One currency icon, as a display object.
  *
  * ALWAYS the real SVG art when it is loaded - the icons on the HUD bars are
@@ -147,7 +192,8 @@ export function currencyIcon(
   const key = currencyTexture(scene, kind);
   const muted = color !== undefined && color !== CURRENCY_COLOR[kind];
   if (scene.textures.exists(key)) {
-    const image = scene.add.image(0, 0, key).setDisplaySize(size, size);
+    const drawn = key === CURRENCY_TEXTURE[kind] ? size : renderDisplaySize(kind, size);
+    const image = scene.add.image(0, 0, key).setDisplaySize(drawn, drawn);
     if (muted) image.setAlpha(0.45);
     return image;
   }
@@ -226,8 +272,10 @@ export function currencyLabel(
 export function applyCurrencyIcon(
   image: Phaser.GameObjects.Image, kind: CurrencyKind, size: number, color?: number
 ): void {
-  image.setTexture(currencyTexture(image.scene, kind))
-    .setDisplaySize(size, size)
+  const key = currencyTexture(image.scene, kind);
+  const drawn = key === CURRENCY_TEXTURE[kind] ? size : renderDisplaySize(kind, size);
+  image.setTexture(key)
+    .setDisplaySize(drawn, drawn)
     .setAlpha(color !== undefined && color !== CURRENCY_COLOR[kind] ? 0.45 : 1);
 }
 

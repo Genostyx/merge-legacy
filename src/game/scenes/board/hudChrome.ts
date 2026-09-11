@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { AUTO_MERGE_KEY, ROWS, formatHudValue, type HudChip } from './config';
 import { Theme, hex, materialLighting, textResolution, toneAt } from '../../ui/Theme';
-import { currencyBoxFor, currencyTexture } from '../../ui/CurrencyGlyph';
+import { currencyBoxFor, currencyTexture, currencyDisplaySize } from '../../ui/CurrencyGlyph';
 import type { CurrencyKind } from '../../ui/CurrencyGlyph';
 import { loadedItemSprite } from '../../objects/itemSprites';
 import { playerLevel, playerXpProgress } from '../../levels/Orders';
@@ -27,7 +27,7 @@ export function buildEnergyChip(scene: BoardScene, y: number): HudChip {
   // the traced SVG when it is not.
   const boltRendered = loadedItemSprite(scene, 'currency-energy', 1);
   const boltKey = currencyTexture(scene, 'energy');
-  const iconSize = boltRendered ? 19 * s : currencyBoxFor('energy', 17 * s);
+  const iconSize = currencyDisplaySize(scene, 'energy', currencyBoxFor('energy', 17 * s));
   const iconShadow = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
   const icon = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setDepth(22);
   const iconGloss = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(boltRendered ? 0 : 0.2).setDepth(23);
@@ -125,10 +125,15 @@ scene: BoardScene,
   const kind: CurrencyKind = glyph === 'coin' ? 'credit' : 'gem';
   const rendered = loadedItemSprite(scene, `currency-${kind}`, 1);
   const iconKey = currencyTexture(scene, kind);
+  // `currencyBoxFor` for BOTH, not a hand-picked size for the render. The
+  // rendered marks fill less of their canvas than the SVGs did, so a size
+  // guessed here came out visibly smaller than the art it replaced; the
+  // correction belongs with the ratios in CurrencyGlyph, where every other
+  // surface picks it up too.
   // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
   // why that is not the same as a 24px display size. The render fills almost
   // its whole box, so it needs no such correction.
-  const iconSize = rendered ? 17 * s : currencyBoxFor(kind, 15 * s);
+  const iconSize = currencyDisplaySize(scene, kind, currencyBoxFor(kind, 15 * s));
   const iconShadow = scene.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
   const icon = scene.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
   // No gloss pass over a render: it is already lit, and a white wash across
