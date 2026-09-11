@@ -534,7 +534,8 @@ def lean(ob, degrees: float):
     return ob
 
 
-def finish(ob, name: str, material, bevel: float = BEVEL_WIDTH):
+def finish(ob, name: str, material, bevel: float = BEVEL_WIDTH,
+           smooth_angle: float = SMOOTH_ANGLE):
     mod = ob.modifiers.new("Bevel", 'BEVEL')
     mod.width, mod.segments = bevel, BEVEL_SEGMENTS
     mod.limit_method, mod.angle_limit = 'ANGLE', SMOOTH_ANGLE
@@ -542,27 +543,56 @@ def finish(ob, name: str, material, bevel: float = BEVEL_WIDTH):
     bpy.ops.object.select_all(action='DESELECT')
     ob.select_set(True)
     bpy.context.view_layer.objects.active = ob
-    bpy.ops.object.shade_auto_smooth(angle=SMOOTH_ANGLE)
+    bpy.ops.object.shade_auto_smooth(angle=smooth_angle)
     ob.name = name
     ob.data.materials.clear()
     ob.data.materials.append(material)
     return ob
 
 
-def rock(width: float, height: float, seed: int, jitter: float = 0.26):
-    """An irregular angular chunk, sitting on z=0.
+def coherent_noise(v: Vector, seed: int, frequency: float = 1.7) -> float:
+    """Smooth 3D noise in [-1, 1], from a handful of offset sine waves.
 
-    A low icosphere pushed about: few enough faces that every one reads as a
-    flat plane, which is the difference between STONE and a sphere. Wood is
-    milled and rectilinear; if mineral were built from boxes too, the two
-    families would differ only in hue - the exact failure FAMILIES_ROADMAP
-    records for the event chain.
+    COHERENT is the whole point: nearby points must move TOGETHER. Displacing
+    each vertex by its own independent random number is what turned these
+    rocks into sea urchins - neighbours pulled opposite ways, so every vertex
+    became a spike and the mesh's polygons showed as hard points instead of
+    reading as a surface.
+
+    A few octaves of sine is not proper Perlin noise, but it is continuous,
+    which is the property that matters here, and it needs nothing outside the
+    standard library.
     """
-    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.5)
-    ob = bpy.context.active_object
     rng = random.Random(seed)
+    phase = [rng.uniform(0, 6.283) for _ in range(9)]
+    total, amplitude, weight = 0.0, 1.0, 0.0
+    for octave in range(3):
+        f = frequency * (2 ** octave)
+        total += amplitude * (
+            math.sin(v.x * f + phase[octave * 3])
+            * math.sin(v.y * f + phase[octave * 3 + 1])
+            * math.sin(v.z * f + phase[octave * 3 + 2])
+        )
+        weight += amplitude
+        amplitude *= 0.5
+    return total / weight
+
+
+def rock(width: float, height: float, seed: int, jitter: float = 0.26):
+    """An irregular chunk, sitting on z=0.
+
+    An icosphere pushed about by COHERENT noise, so the surface undulates
+    instead of spiking. Two subdivisions rather than one: at 80 faces the
+    facets were large enough to read as a cut crystal, and stone is not
+    faceted. Wood is milled and rectilinear; if mineral were built from boxes
+    too the families would differ only in hue - the exact failure
+    FAMILIES_ROADMAP records for the event chain - but the answer to that is
+    an irregular SURFACE, not a spiky one.
+    """
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.5)
+    ob = bpy.context.active_object
     for v in ob.data.vertices:
-        v.co *= 1.0 + rng.uniform(-jitter, jitter)
+        v.co *= 1.0 + jitter * coherent_noise(v.co, seed)
         v.co.x *= width
         v.co.y *= width * 0.86
         v.co.z *= height
@@ -947,6 +977,17 @@ def build_mineral():
         # What makes an edge read is a band of shading with WIDTH, so the
         # rocks get roughly what the timber gets.
         bevel = 0.008 if tier >= 7 else (0.085 if tier == 4 else 0.032)
+        # THE ROCKS ONLY, and not all the way.
+        #
+        # Their small facets are an artefact of how finely the sphere was
+        # subdivided rather than real edges, so a wider angle merges them -
+        # but at 88 degrees it merges EVERYTHING, and rubble came out as
+        # smooth pebbles. 52 keeps the large planes a broken stone actually
+        # has while losing the tessellation.
+        #
+        # Tier one is excluded: it is a plate, not a chunk, and its edges are
+        # as real as a cut's.
+        smooth = math.radians(52) if 2 <= tier <= 4 else SMOOTH_ANGLE
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
         roughness, ior = MINERAL_SURFACE[tier]
@@ -991,7 +1032,7 @@ def build_mineral():
             weathered(material, strength=0.34 if tier < 4 else 0.12)
             if tier == 4:
                 polished(material)
-        finish(ob, "mineral%d" % tier, material, bevel=bevel)
+        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth)
     return out
 
 
