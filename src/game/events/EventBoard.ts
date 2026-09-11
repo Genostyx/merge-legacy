@@ -86,6 +86,14 @@ export interface EventBoardState {
    */
   orders: number[];
   /**
+   * Which slots have been filled in the CURRENT round.
+   *
+   * A round is all three orders. A filled slot stays filled until its two
+   * neighbours are done too, and only then do all three refresh together -
+   * see `submitEventOrder`.
+   */
+  filled: boolean[];
+  /**
    * The undealt remainder of each slot's shuffled bag.
    *
    * Saved rather than rebuilt, or closing the panel would reshuffle and the
@@ -109,7 +117,10 @@ export interface EventBoardState {
 }
 
 export function createDefaultEventBoardState(): EventBoardState {
-  return { energy: 0, grid: [], seeded: false, orders: [], orderBags: [], seenTier: 0, overflowPaid: 0 };
+  return {
+    energy: 0, grid: [], seeded: false, orders: [], orderBags: [], filled: [],
+    seenTier: 0, overflowPaid: 0
+  };
 }
 
 /**
@@ -132,6 +143,9 @@ export function normalizeEventBoardState(
       .map((bag) => bag
         .filter((tier): tier is number => Number.isFinite(tier))
         .map((tier) => Math.min(EVENT_MAX_TIER, Math.max(1, Math.floor(tier)))));
+  }
+  if (Array.isArray(raw.filled)) {
+    state.filled = raw.filled.map((done) => done === true);
   }
   if (Number.isFinite(raw.seenTier)) {
     state.seenTier = Math.min(EVENT_MAX_TIER, Math.max(0, Math.floor(raw.seenTier as number)));

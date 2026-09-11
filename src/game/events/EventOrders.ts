@@ -6,6 +6,19 @@ import type { EventBoardState } from './EventBoard';
 /**
  * EVENT ORDERS - the only thing on the event board that pays points.
  *
+ * THEY ARE A ROUND, NOT A QUEUE. Filling one does not replace it: it stays
+ * filled until the other two are done, and then all three refresh together.
+ *
+ * That is the whole anti-farming rule, and it is structural rather than
+ * economic. Points are flat - a tier N pays N - while a tier-N piece costs
+ * 2^(N-1) taps to build, so the cheapest order is by far the most efficient.
+ * When each slot refilled on its own, the entire event was: fill the cheap
+ * slot, get another cheap one, repeat, and never touch the other two. No
+ * pricing fixed that without also making the top of the chain compulsory and
+ * unaffordable. Requiring the set does fix it, and it is visible on the row
+ * rather than hidden in a formula: three cards, fill all three, get three
+ * more.
+ *
  * Three slots, always full, each drawing from a band of the chain: something
  * you can fill now, something worth working toward, and something that needs
  * most of the window. A single order queue would either be trivial for a
@@ -113,7 +126,12 @@ export function rollEventOrders(
  */
 export function visibleEventOrders(state: EventBoardState, grid: Grid): number[] {
   const slots = state.orders.slice(0, EVENT_ORDER_SLOTS);
-  if (findEventItem(grid, EVENT_MAX_TIER)) slots[EVENT_ORDER_SLOTS - 1] = EVENT_MAX_TIER;
+  // A slot already filled this round keeps showing what it asked for - it is
+  // a receipt, not an offer - so the auto-order may not take it over.
+  const hardest = EVENT_ORDER_SLOTS - 1;
+  if (!isSlotFilled(state, hardest) && findEventItem(grid, EVENT_MAX_TIER)) {
+    slots[hardest] = EVENT_MAX_TIER;
+  }
   return slots;
 }
 
@@ -148,8 +166,19 @@ export interface EventOrderResult {
   /** Where the item was taken from, so the caller can animate it leaving. */
   from: GridPosition;
   points: number;
-  /** What the slot asks for now. */
-  rerolledTo: number;
+  /** True when this fill completed the round and a fresh three were dealt. */
+  roundComplete: boolean;
+}
+
+/** Whether a slot has already been filled in the current round. */
+export function isSlotFilled(state: EventBoardState, slot: number): boolean {
+  return state.filled[slot] === true;
+}
+
+/** Every slot filled, so the next fill deals a new round. */
+export function isRoundComplete(state: EventBoardState): boolean {
+  return Array.from({ length: EVENT_ORDER_SLOTS }, (_, slot) => isSlotFilled(state, slot))
+    .every(Boolean);
 }
 
 /**
@@ -166,13 +195,22 @@ export function submitEventOrder(
   roll: () => number = Math.random
 ): EventOrderResult | null {
   if (slot < 0 || slot >= EVENT_ORDER_SLOTS) return null;
+  // Already done this round. Refused rather than paid twice.
+  if (isSlotFilled(state, slot)) return null;
   const asking = visibleEventOrders(state, grid)[slot];
   if (!asking) return null;
   const from = findEventItem(grid, asking);
   if (!from) return null;
 
   grid.set(from, null);
-  const rerolledTo = drawEventOrder(state, slot, roll);
-  state.orders[slot] = rerolledTo;
-  return { from, points: eventOrderPayout(asking), rerolledTo };
+  while (state.filled.length < EVENT_ORDER_SLOTS) state.filled.push(false);
+  state.filled[slot] = true;
+
+  // THE ROUND REFRESHES AS ONE. Nothing is redealt until every slot is in.
+  const roundComplete = isRoundComplete(state);
+  if (roundComplete) {
+    state.filled = EVENT_ORDER_BANDS.map(() => false);
+    state.orders = rollEventOrders(state, roll);
+  }
+  return { from, points: eventOrderPayout(asking), roundComplete };
 }

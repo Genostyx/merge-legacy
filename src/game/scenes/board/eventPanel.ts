@@ -16,8 +16,8 @@ import {
   markOverflowPaid, noteEventTierSeen, overflowCratesOwed, seedEventBoard, spendEventEnergy
 } from '../../events/EventBoard';
 import {
-  EVENT_ORDER_SLOTS, eventOrderPayout, findEventItem, rollEventOrders, submitEventOrder,
-  visibleEventOrders
+  EVENT_ORDER_SLOTS, eventOrderPayout, findEventItem, isSlotFilled, rollEventOrders,
+  submitEventOrder, visibleEventOrders
 } from '../../events/EventOrders';
 import {
   addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
@@ -332,6 +332,7 @@ function buildChrome(
     layer.add(root);
 
     hit.on('pointerup', () => {
+      if (isSlotFilled(scene.eventBoard, slot)) return;
       const asking = visibleEventOrders(scene.eventBoard, state.grid)[slot];
       const from = asking ? findEventItem(state.grid, asking) : null;
       if (!from) {
@@ -362,7 +363,11 @@ function buildChrome(
       floatPayout(scene, layer, root.x + cardW / 2, ordersY + 8, result.points);
       const finished = payEventPoints(scene, result.points);
       opts.onSave();
-      requeue(cards[slot]);
+      // The whole ROW leaves when the round closes - three cards out, three
+      // in. A single card departing would say this slot was replaced, which
+      // is the thing that is no longer true.
+      if (result.roundComplete) deck.slice().forEach((c) => requeue(c));
+      else refresh();
       // Only ever fires once - `addEventProgress` reports completion on the
       // call that crosses the goal and never again.
       if (finished) track.celebrate();
@@ -441,7 +446,8 @@ function buildChrome(
 
     // Order cards, laid out in queue order rather than by slot.
     const asking = visibleEventOrders(scene.eventBoard, state.grid);
-    const fillable = cards.map((c) => !!findEventItem(state.grid, asking[c.slot]));
+    const fillable = cards.map((c) =>
+      !isSlotFilled(scene.eventBoard, c.slot) && !!findEventItem(state.grid, asking[c.slot]));
     deck.forEach((card, position) => slideTo(card, slotX(position)));
 
     cards.forEach((card) => {
@@ -458,8 +464,12 @@ function buildChrome(
       // a card and then discovering you cannot pay it is the difference
       // between a board that answers you and one you have to interrogate.
       const canFill = fillable[slot];
+      // A FILLED CARD IS A RECEIPT. It keeps showing what it took - dimmed,
+      // unlit, untappable - so the row reads as "one of three done" rather
+      // than as a card that has gone quiet for no reason.
+      const done = isSlotFilled(scene.eventBoard, slot);
       card.bg.clear();
-      card.bg.fillStyle(canFill ? Theme.bg : Theme.bgElevated, 1);
+      card.bg.fillStyle(canFill ? Theme.bg : Theme.bgElevated, done ? 0.45 : 1);
       card.bg.fillRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
       card.bg.lineStyle(
         canFill ? Theme.borderWidthStrong : Theme.borderWidth,
@@ -468,6 +478,7 @@ function buildChrome(
       );
       card.bg.strokeRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
       card.pay.setColor(hex(canFill ? EVENT_TOKEN_COLOR : Theme.textOnDarkMuted));
+      card.pay.setAlpha(done ? 0.35 : 1);
 
       // ...and breathes while it stays fillable, the same signal the track's
       // ready prizes use. One idiom for "this is waiting for you", not two.
@@ -490,7 +501,7 @@ function buildChrome(
         );
         const present = iconPresentation(EVENT_CHAIN.typeId, tier, size);
         cardScale.set(card, present.scale);
-        card.icon.setAlpha(render.materialAlpha)
+        card.icon.setAlpha(render.materialAlpha * (done ? 0.3 : 1))
           .setScale(card.lit ? card.icon.scaleX : present.scale)
           .setPosition(
             cardW / 2 + present.offsetX,

@@ -4,6 +4,8 @@ import {
   EVENT_ORDER_SLOTS,
   eventOrderPayout,
   drawEventOrder,
+  isRoundComplete,
+  isSlotFilled,
   findEventItem,
   rollEventOrders,
   submitEventOrder,
@@ -103,18 +105,52 @@ describe('event orders', () => {
     expect(submitEventOrder(stateWith([3, 4, 6]), grid, 0)).toBeNull();
   });
 
-  it('takes the item, pays, and rerolls the slot it filled', () => {
+  it('takes the item and pays, but does NOT replace the card', () => {
     const grid = createEventGrid();
-    put(grid, 1, 2, 3);
-    const state = stateWith([3, 4, 6]);
+    put(grid, 1, 2, 2);
+    const state = stateWith([2, 4, 6]);
     const result = submitEventOrder(state, grid, 0, () => 0);
 
     expect(result?.from).toEqual({ col: 1, row: 2 });
-    expect(result?.points).toBe(eventPointsForTier(3));
+    expect(result?.points).toBe(eventPointsForTier(2));
     expect(grid.get({ col: 1, row: 2 })).toBeNull();
-    expect(state.orders[0]).toBe(EVENT_ORDER_BANDS[0][0]);
-    // The other slots are untouched.
-    expect(state.orders.slice(1)).toEqual([4, 6]);
+    expect(result?.roundComplete).toBe(false);
+    // The row is untouched: a filled slot is a receipt until the round ends.
+    expect(state.orders).toEqual([2, 4, 6]);
+    expect(isSlotFilled(state, 0)).toBe(true);
+  });
+
+  it('refuses a slot that is already filled this round', () => {
+    // Without this the cheap slot could be handed a second item and paid
+    // again, which is the farming the round exists to stop.
+    const grid = createEventGrid();
+    put(grid, 0, 0, 2);
+    put(grid, 1, 0, 2);
+    const state = stateWith([2, 4, 6]);
+    expect(submitEventOrder(state, grid, 0)).not.toBeNull();
+    expect(submitEventOrder(state, grid, 0)).toBeNull();
+    // ...and the second item is still on the board, not consumed.
+    expect(findEventItem(grid, 2)).not.toBeNull();
+  });
+
+  it('deals a fresh three only when all three are in', () => {
+    const grid = createEventGrid();
+    put(grid, 0, 0, 2);
+    put(grid, 1, 0, 4);
+    put(grid, 2, 0, 6);
+    const state = stateWith([2, 4, 6]);
+
+    expect(submitEventOrder(state, grid, 0)?.roundComplete).toBe(false);
+    expect(submitEventOrder(state, grid, 1)?.roundComplete).toBe(false);
+    expect(state.orders).toEqual([2, 4, 6]);
+
+    const last = submitEventOrder(state, grid, 2);
+    expect(last?.roundComplete).toBe(true);
+    // A new round: nothing filled, and every slot asking again.
+    expect(isRoundComplete(state)).toBe(false);
+    state.orders.forEach((tier, slot) => {
+      expect(EVENT_ORDER_BANDS[slot]).toContain(tier);
+    });
   });
 
   it('retargets the hardest slot the moment a top-tier item exists', () => {
