@@ -155,14 +155,14 @@ CURRENCY_HEX = {
     "currency-gem": {1: 0x9d70c2, 2: 0xaa7dca, 3: 0xb789d2,
                      4: 0xc497db, 5: 0xd2a6e3},
 }
-# DELIBERATELY EMPTY: the currencies take no colour correction.
-#
-# Measuring credits and correcting for the gap made every tier worse. A metal
-# has no diffuse colour - it tints what it reflects - so the measured render
-# sits well below the swatch by nature, not by error, and "fixing" that pushes
-# the base toward white until gold stops being gold. The uncorrected material
-# was right; the number it renders at is not supposed to match the swatch.
-CURRENCY_MEASURED: dict = {}
+# Measured off a render. A metal has no diffuse colour - it tints what it
+# reflects - so it renders well below its swatch by nature, and the gain is
+# capped hard (see below) rather than closing that gap: gold at 3x drives red
+# and green to 1.0, leaves blue behind, and stops being gold.
+CURRENCY_MEASURED = {
+    "currency-credit": {1: 0x4d3613, 2: 0x503714, 3: 0x6c5129,
+                        4: 0x684f26, 5: 0x7d6032, 6: 0x635435},
+}
 
 CURRENCY_RGB = {
     kind: {tier: tuple(((c >> shift) & 255) / 255.0 for shift in (16, 8, 0))
@@ -1479,7 +1479,8 @@ def dress_currency(kind: str, out):
     for tier, ob in out.items():
         measured = CURRENCY_MEASURED.get(kind, CURRENCY_HEX[kind])
         material = tier_material("%s-tier-%d" % (kind, tier),
-                                 CURRENCY_HEX[kind][tier], measured[tier])
+                                 CURRENCY_HEX[kind][tier], measured[tier],
+                                 max_gain=1.45)
         shader = _shader(material)
         if kind == "currency-credit":
             # A coin is the one genuinely METALLIC thing in the game. Every
@@ -1488,7 +1489,9 @@ def dress_currency(kind: str, out):
             # tints its own reflection, which is why gold looks like gold from
             # any angle and a yellow plastic does not.
             shader.inputs["Metallic"].default_value = 1.0
-            shader.inputs["Roughness"].default_value = 0.22
+            # Polish, not tint: reflection is the only lever on a metal that
+            # does not cost hue.
+            shader.inputs["Roughness"].default_value = 0.13
         elif kind == "currency-energy":
             # A spark makes its own light. Nothing else here does, and it is
             # the whole read - an unlit blue zigzag is a blue zigzag.
