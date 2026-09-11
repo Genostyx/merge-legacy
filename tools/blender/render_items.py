@@ -1846,8 +1846,14 @@ def build_chip_coin():
     material = tier_material("credit-mark", CURRENCY_HEX["currency-credit"][1],
                              measured, max_gain=1.45)
     shader = _shader(material)
-    shader.inputs["Metallic"].default_value = 0.94
-    shader.inputs["Roughness"].default_value = 0.13
+    # The owner's values, taken off the scene after they adjusted it, not
+    # mine. Fully metallic and MUCH rougher than the board's coins - 0.54
+    # against 0.13. A mirror finish is right on a board item, where the
+    # reflection is most of what says gold; on a 17px mark it just collects
+    # bright and dark blotches from the studio and the shape stops reading.
+    # Satin keeps the value even across the face.
+    shader.inputs["Metallic"].default_value = 1.0
+    shader.inputs["Roughness"].default_value = 0.541
     finish(body, "credit-mark", material, bevel=0.0015,
            smooth_angle=math.radians(12))
     return {1: body}
