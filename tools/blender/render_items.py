@@ -36,18 +36,25 @@ MARGIN = 1.16                        # frame padding, as a multiple of the fit
 # times the download and four times the GPU memory for detail no surface in
 # the game is big enough to show. Every fill ratio in the TypeScript is a
 # RATIO, so none of them move with this.
-RESOLUTION = 192
+# POWERS OF TWO, and that is not a stylistic choice.
+#
+# The game runs on WebGL1, which cannot build mipmaps for a non-power-of-two
+# texture - so main.ts asking for LINEAR_MIPMAP_LINEAR was being silently
+# downgraded to plain LINEAR, and minifying a sprite to tile size sampled
+# four texels out of the whole image however large it was. That is the
+# pixel-crawling edge on the event token, and it is why raising the
+# resolution from 192 to 384 to 768 never fixed it and never could.
+#
+# 256 gives every board item a real mipmap chain down to the ~74px tile.
+RESOLUTION = 256
 
 # Families that need more than the default, and why.
 #
-# The board's items are chunky solids - planks, blocks, rocks - and survive
-# 192 easily. These two do not: they are seen FACE ON and read by fine
-# detail, the token's crown being thin diagonal rays a couple of pixels wide
-# at 192, where they step visibly. 384 still stepped along the top left of
-# the rim, so these two sit at 768 - the resolution the whole set used to
-# render at, twice over. Two files, 1.05 MB, against the 2.87 MB the blanket
-# drop to 192 saved on the other 34.
-FAMILY_RESOLUTION = {"event-token": 768, "credit-mark": 768}
+# The board's items are chunky solids - planks, blocks, rocks - and 256 is
+# ample. These two are seen FACE ON and read by fine detail: the token's
+# crown is thin diagonal rays, which are the first thing to break up. 512,
+# still a power of two so they mipmap properly.
+FAMILY_RESOLUTION = {"event-token": 512, "credit-mark": 512}
 
 # Screen-horizontal in world terms, for this camera. Anything that has to
 # splay left and right on screen leans along this, NOT along +X and +Y - those
