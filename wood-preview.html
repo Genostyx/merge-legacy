@@ -15,7 +15,7 @@
   // WebGL contexts and silently kills the oldest past that, so a grid of
   // twenty-seven little Phaser instances renders as a grid of dead canvases.
   import Phaser from 'phaser';
-  import { drawTierIcon } from '/src/game/objects/TierIcons.ts';
+  import { drawTierIcon, drawSourceBuilding } from '/src/game/objects/TierIcons.ts';
   import { materialLighting } from '/src/game/ui/Theme.ts';
   import { CHAINS } from '/src/game/data/chains.ts';
 
@@ -27,7 +27,7 @@
   // Every row holds every tier, so the canvas is sized for the WIDEST row.
   // Sizing it off the first five left the big row silently clipped, which
   // is the one row worth looking at.
-  const W = 40 + TIERS.length * (Math.max(...ROWS) + 40);
+  const W = 40 + (TIERS.length + 1) * (Math.max(...ROWS) + 40);
   const H = ROWS.reduce((t, s) => t + s + 56, 0) + 40;
 
   new Phaser.Game({
@@ -50,6 +50,14 @@
             }).setOrigin(0.5, 0);
             x += size + 40;
           }
+          // The DISPENSER at the end of each row, as the reference camera.
+          // Comparing an item against the buildings is the only way to tell
+          // whether the meshes share the board's angle or merely look plausible.
+          const gs = this.add.graphics().setPosition(x, y + size / 2);
+          drawSourceBuilding(gs, 'wood', 1, size * 0.44, materialLighting(chain.tiers[0].color, 5), false);
+          this.add.text(x, y + size + 8, 'src', {
+            fontFamily: 'ui-monospace, monospace', fontSize: '13px', color: '#8a857c'
+          }).setOrigin(0.5, 0);
           y += size + 56;
         }
       }

@@ -192,36 +192,6 @@ export function rotateZ(mesh: Mesh, turns: number): Mesh {
   return applyBasis(mesh, [c, s, 0], [-s, c, 0], [0, 0, 1]);
 }
 
-/**
- * Stands a flat-lying mesh UP so the viewer sees its face, not its edge.
- *
- * A knot is a plate: all its structure lives in one plane. Left lying on the
- * ground, the camera squashes that plane to 31% of its height and the weave
- * becomes an oval smear - the shape reads as a ring rather than as a knot.
- *
- * The basis is DERIVED, not dialled in. The object's +z goes onto the view
- * axis, so its plane is square to the viewer; its +y goes onto whatever is
- * left of world-up once the view axis is taken out of it, so the object is
- * upright rather than rolled to an arbitrary angle; and +x completes the set.
- * Upright is the half that a hand-tuned pair of rotations kept getting wrong,
- * because aiming an axis at the camera says nothing about the spin around it.
- */
-export function faceViewer(mesh: Mesh): Mesh {
-  const az = VIEW_N;
-  const up: Vec3 = [0, 0, 1];
-  const ay = norm([
-    up[0] - az[0] * dot(up, az),
-    up[1] - az[1] * dot(up, az),
-    up[2] - az[2] * dot(up, az)
-  ]);
-  const ax: Vec3 = norm([
-    ay[1] * az[2] - ay[2] * az[1],
-    ay[2] * az[0] - ay[0] * az[2],
-    ay[0] * az[1] - ay[1] * az[0]
-  ]);
-  return applyBasis(mesh, ax, ay, az);
-}
-
 /** One mesh from several, so a whole object sorts and culls as one thing. */
 export function group(...meshes: Mesh[]): Mesh {
   const verts: Vec3[] = [];
