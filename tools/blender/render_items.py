@@ -866,12 +866,40 @@ def build_lights():
     # bright one. Nothing but the inside of a gem can tell the difference.
     dim = nodes.new("ShaderNodeBackground")
     dim.inputs[0].default_value = (0.055, 0.052, 0.05, 1.0)
+
+    # A STUDIO FOR THE TRANSMISSION RAYS TO FIND.
+    #
+    # A cut stone has no appearance of its own - what you see is its
+    # surroundings, folded and multiplied by its facets. Against a FLAT sky
+    # every facet returns the same value, so the stone comes back evenly
+    # bright and reads as polished metal, which is exactly what it looked
+    # like. The variation is the whole point: jewellery renders put a stone in
+    # a lit box for this reason, and the bright and dark bands of that box are
+    # what a facet has to catch and miss.
+    #
+    # So the transmission sky is banded by ray height: a dark floor, a bright
+    # horizon band standing in for a softbox, a mid sky and a bright zenith.
+    coords = nodes.new("ShaderNodeTexCoord")
+    axis = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(coords.outputs["Generated"], axis.inputs["Vector"])
+    bands = nodes.new("ShaderNodeValToRGB")
+    bands.color_ramp.interpolation = 'B_SPLINE'
+    stops = bands.color_ramp.elements
+    stops[0].position = 0.0
+    stops[0].color = (0.02, 0.02, 0.03, 1.0)     # floor, so facets have darks
+    stops[1].position = 0.34
+    stops[1].color = (1.0, 1.0, 1.0, 1.0)        # the softbox
+    for position, value in ((0.52, (0.10, 0.11, 0.14)),
+                            (0.74, (0.62, 0.66, 0.78)),
+                            (1.0, (0.16, 0.17, 0.20))):
+        element = stops.new(position)
+        element.color = (*value, 1.0)
+    links.new(axis.outputs["Z"], bands.inputs["Fac"])
+
     bright = nodes.new("ShaderNodeBackground")
-    bright.inputs[0].default_value = (0.92, 0.94, 1.0, 1.0)
-    # Dialled back with the roughness: a bright sky plus mirror facets was
-    # clipping to white, and the highlight is meant to reveal the cut, not
-    # erase it.
-    bright.inputs[1].default_value = 1.0
+    bright.inputs[1].default_value = 1.6
+    links.new(bands.outputs["Color"], bright.inputs["Color"])
+
     path = nodes.new("ShaderNodeLightPath")
     mix = nodes.new("ShaderNodeMixShader")
     out = nodes.new("ShaderNodeOutputWorld")
@@ -892,6 +920,14 @@ def configure_render():
     sc.cycles.transmission_bounces = 12
     sc.cycles.max_bounces = 16
     sc.cycles.blur_glossy = 0.6
+    # NOT film_transparent_glass. That flag makes glass ignore the world and
+    # come back cleanly transparent, which is Blender's answer to the fact
+    # that refraction cannot be written into an alpha channel - correct when
+    # you intend to composite something behind the glass later, and wrong
+    # here. These are sprites dropped onto a board: the stone has to carry its
+    # own interior, so it must refract the studio rather than the board it
+    # will eventually sit on.
+    sc.cycles.film_transparent_glass = False
     sc.render.film_transparent = True
     sc.render.resolution_x = sc.render.resolution_y = RESOLUTION
     sc.render.resolution_percentage = 100
