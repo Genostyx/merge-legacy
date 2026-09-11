@@ -1562,7 +1562,14 @@ def build_credits():
     # each tier's own proportions are untouched. Even is the point: the rise
     # has to be visible at a glance but never leave the low tiers looking
     # like specks on their tiles.
-    for tier, factor in ((1, 1.45), (3, 1.48), (4, 1.17),
+    #
+    # Tiers one and two are deliberately OFF that climb, by request: the
+    # single coin a touch bigger, at about 60 percent of frame, and the pair
+    # a lot bigger at about 74. That puts the pair past tier three and level
+    # with tier four, so the low end of this chain no longer reads as a size
+    # ladder. Recorded here so it is not "corrected" back by someone reading
+    # the numbers rather than the intent.
+    for tier, factor in ((1, 1.61), (2, 1.19), (3, 1.48), (4, 1.17),
                          (5, 0.92), (6, 1.16)):
         out[tier].scale = (factor, factor, factor)
     return out
