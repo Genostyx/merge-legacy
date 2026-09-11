@@ -38,6 +38,15 @@ MARGIN = 1.16                        # frame padding, as a multiple of the fit
 # RATIO, so none of them move with this.
 RESOLUTION = 192
 
+# Families that need more than the default, and why.
+#
+# The board's items are chunky solids - planks, blocks, rocks - and survive
+# 192 easily. These two do not: they are seen FACE ON and read by fine
+# detail, the token's crown being thin diagonal rays a couple of pixels wide
+# at 192, where they step visibly. Two files at four times the area is a
+# cheap exception to make.
+FAMILY_RESOLUTION = {"event-token": 384, "credit-mark": 384}
+
 # Screen-horizontal in world terms, for this camera. Anything that has to
 # splay left and right on screen leans along this, NOT along +X and +Y - those
 # are opposite axes in the world but fall to the SAME side of the frame here,
@@ -2172,6 +2181,9 @@ def main(only: str = ""):
                 bpy.data.objects.remove(ob, do_unlink=True)
         family_dir = os.path.join(root, "public", "assets", "items", family)
         os.makedirs(family_dir, exist_ok=True)
+        sc = bpy.context.scene
+        sc.render.resolution_x = sc.render.resolution_y = FAMILY_RESOLUTION.get(
+            family, RESOLUTION)
         tiers = sorted(build().items())
         # ONE SCALE FOR THE WHOLE FAMILY - but only where the family was
         # modelled to be compared. Fitting each tier to the canvas on its own
