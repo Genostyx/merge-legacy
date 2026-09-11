@@ -1671,13 +1671,16 @@ def dress_currency(kind: str, out):
             #
             # The bolt was always opaque, which is why it only ever needed
             # its angle corrected.
-            shader.inputs["Roughness"].default_value = 0.34
+            # POLISHED, not satin. 0.34 was the bolt's kind of surface and
+            # it cost the stone the one thing transmission had been doing
+            # well: a cut gem is glossy, and losing the sharp highlight for
+            # a broad soft one made it read as painted. A dielectric only
+            # reflects about 5 percent face on, so the gloss has to come
+            # from a full clear COAT over the colour rather than from base
+            # roughness, the same way the polished stones get theirs.
+            shader.inputs["Roughness"].default_value = 0.14
             shader.inputs["IOR"].default_value = 1.75
-            # The highlight the drawing puts on the face, as a real coat
-            # rather than a painted-on blob. Light, like the bolt's.
-            shader.inputs["Coat Weight"].default_value = 0.25
-            shader.inputs["Coat Roughness"].default_value = 0.05
-            shader.inputs["Coat IOR"].default_value = 1.5
+            polished(material, coat_roughness=0.03)
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read
