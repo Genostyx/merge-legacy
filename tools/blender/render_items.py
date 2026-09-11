@@ -736,33 +736,6 @@ def rect_ring(w: float, d: float, chamfer: float = 0.22):
             (-hw + cw, hd), (-hw, hd - cd), (-hw, -hd + cd), (-hw + cw, -hd)]
 
 
-def plate(radius: float, thickness: float, seed: int, sides: int = 6, jitter: float = 0.22):
-    """One irregular flat sheet with its own thickness.
-
-    Slate's real habit is splitting into PLATES, and being a sheet rather than
-    a lump is what separates tier one from the broken chunks above it.
-    """
-    rng = random.Random(seed)
-    outline = [(math.cos(2 * math.pi * i / sides) * radius * (1 + rng.uniform(-jitter, jitter)),
-                math.sin(2 * math.pi * i / sides) * radius * 0.78 * (1 + rng.uniform(-jitter, jitter)))
-               for i in range(sides)]
-    mesh = bpy.data.meshes.new('plate')
-    bm = bmesh.new()
-    low = [bm.verts.new((x, y, 0.0)) for x, y in outline]
-    high = [bm.verts.new((x, y, thickness)) for x, y in outline]
-    for i in range(len(outline)):
-        j = (i + 1) % len(outline)
-        bm.faces.new((low[i], low[j], high[j], high[i]))
-    bm.faces.new(tuple(high))
-    bm.faces.new(tuple(reversed(low)))
-    bm.to_mesh(mesh)
-    bm.free()
-    ob = bpy.data.objects.new('plate', mesh)
-    bpy.context.collection.objects.link(ob)
-    bpy.context.view_layer.objects.active = ob
-    return ob
-
-
 def torus_knot(p: int, q: int, samples: int, sides: int, radius: float, z_amp: float):
     """A knot as a swept tube.
 
@@ -911,7 +884,11 @@ def build_mineral():
     # chunks, three chips. That is how the genre encodes chain position, it is
     # why Slate sits at 1 and Gravel at 3, and the existing art is built on
     # it. My first pass gave tier three FOUR pieces and broke the convention.
-    out[1] = plate(0.40, 0.09, seed=11)
+    # Slate is a SPLIT PLATE, which is a broken chunk that happens to be
+    # flat - so it is a hull like the rubble, pressed down. plate() drew a
+    # tidy hexagon and the bevel rounded its corners into a lozenge; a hull
+    # gives the straight irregular edges a cleaved sheet actually has.
+    out[1] = rock(0.82, 0.055, seed=11, points=9, jitter=0.20)
     out[2] = stack([
         rock(0.52, 0.30, seed=21),
         translate_to(rock(0.40, 0.24, seed=22), beside(0.34, -0.10)),
