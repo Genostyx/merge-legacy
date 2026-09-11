@@ -199,11 +199,15 @@ export function openCollection(scene: BoardScene, initialScroll = 0): void {
       }
 
       const iconSize = slotSize * 0.9;
-      const icon = scene.add.graphics();
-      const render = drawTierIcon(icon, chain.typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
-      const present = iconPresentation(chain.typeId, def.tier, iconSize);
+      const spriteKey = `wood-render-${def.tier}`;
+      const useSprite = chain.typeId === 'wood' && scene.textures.exists(spriteKey);
+      const icon = useSprite ? scene.add.image(cx, cy, spriteKey).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
+      const render = useSprite ? { materialAlpha: 1 } : drawTierIcon(icon as Phaser.GameObjects.Graphics, chain.typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
       icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
-      icon.setScale(present.scale).setPosition(cx + present.offsetX, cy + present.offsetY);
+      if (!useSprite) {
+        const present = iconPresentation(chain.typeId, def.tier, iconSize);
+        icon.setScale(present.scale).setPosition(cx + present.offsetX, cy + present.offsetY);
+      }
       content.add(icon);
 
       if (!claimed) {

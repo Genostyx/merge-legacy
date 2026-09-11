@@ -495,6 +495,10 @@ scene: BoardScene,
   const cancel = button(cx - 68, 'CANCEL', Theme.textOnDarkMuted);
   const confirm = button(cx + 68, 'SPLIT', Theme.currencyGem);
   overlay.add([dim, panel, title, subtitle, icon, cancel.bg, cancel.text, cancel.zone, confirm.bg, confirm.text, confirm.zone]);
+  if (target.typeId === 'wood' && scene.textures.exists(`wood-render-${target.tier}`)) {
+    icon.setVisible(false);
+    overlay.add(scene.add.image(cx, cy - 20, `wood-render-${target.tier}`).setDisplaySize(iconSize, iconSize));
+  }
 
   const close = (): void => {
     overlay.destroy(true);

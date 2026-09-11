@@ -2119,7 +2119,7 @@ function drawBeveledCrystal(g: Phaser.GameObjects.Graphics, s: number, p: Palett
 }
 
 function drawCrystalObelisk(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
-  return drawGlassSolid(g, s, p, [[0, -0.38], [0.13, -0.23], [0.16, 0.29], [0, 0.36], [-0.16, 0.29], [-0.13, -0.23]], 0.045);
+  return drawGlassSolid(g, s, p, [[0, -0.38], [0.15, -0.23], [0.19, 0.29], [0, 0.36], [-0.19, 0.29], [-0.15, -0.23]], 0.045);
 }
 
 function drawCrystalLattice(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {

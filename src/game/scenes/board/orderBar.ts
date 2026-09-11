@@ -474,6 +474,12 @@ export function refreshOrderBar(scene: BoardScene): void {
     }
 
     const token = scene.add.container(0, rowY, [plate, shadow, icon]);
+    const woodKey = `wood-render-${line.tier}`;
+    if (line.typeId === 'wood' && scene.textures.exists(woodKey)) {
+      icon.setVisible(false);
+      shadow.setVisible(false);
+      token.add(scene.add.image(px, 0, woodKey).setDisplaySize(reqArt, reqArt));
+    }
     // The plate is its own press target, sitting above the card's zone so
     // `topOnly` routes the press here. It still arms the bar's horizontal
     // drag, or the bar could not be flicked from an icon - only the TAP

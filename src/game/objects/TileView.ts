@@ -142,6 +142,18 @@ export class TileView extends Phaser.GameObjects.Container {
     this.icon.clear();
     for (const image of this.currencyIcons) image.destroy();
     this.currencyIcons = [];
+    if (this.typeId === 'wood' && this.scene.textures.exists(`wood-render-${this.tier}`)) {
+      this.icon.setVisible(false);
+      this.bg.clear();
+      const art = this.scene.add.image(0, 0, `wood-render-${this.tier}`);
+      art.setDisplaySize(size, size);
+      if (this.locked) art.setTint(0x555555);
+      this.bg.setScale(1).setPosition(0, 0);
+      this.drawContactShadow({ width: size * 0.55, height: size * 0.5, centerX: 0, centerY: 0, baselineY: size * 0.3 });
+      this.currencyIcons.push(art);
+      this.add(art);
+      return;
+    }
     if (this.typeId.startsWith('currency-') && !(this.typeId === 'currency-credit' && this.tier >= 3)) {
       this.icon.setVisible(false);
       this.bg.clear();

@@ -449,6 +449,10 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
       } else if (item.kind === 'spawner-piece') {
         drawSpawnerPieceIcon(icon, item.typeId, item.tier, size);
         icon.setPosition(cx, cy - 2);
+      } else if (item.typeId === 'wood' && scene.textures.exists(`wood-render-${item.tier}`)) {
+        const image = scene.add.image(cx, cy, `wood-render-${item.tier}`).setDisplaySize(size, size);
+        visual = image;
+        content.add(image);
       } else if (item.typeId.startsWith('currency-') && !(item.typeId === 'currency-credit' && item.tier >= 3)) {
         const textureKey = item.typeId === 'currency-credit'
           ? 'currency-coin'

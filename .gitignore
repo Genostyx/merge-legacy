@@ -28,3 +28,6 @@ tools/debug/out/
 
 # Local medallion preview page, written by tools/debug on demand.
 public/event-token-preview.html
+
+# Bytecode from running the Blender pipeline scripts.
+tools/blender/__pycache__/

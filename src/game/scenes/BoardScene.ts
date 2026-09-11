@@ -752,6 +752,9 @@ export class BoardScene extends Phaser.Scene {
       if (!this.textures.exists(key)) this.load.image(key, file);
     };
 
+    for (let tier = 1; tier <= 9; tier++) {
+      imageOnce(`wood-render-${tier}`, `assets/items/wood/${tier}.png`);
+    }
     svgOnce('energy-basket', 'energy-basket.svg', iconPx);
     svgOnce('producer-coin-pouch', 'coin-pouch.svg', iconPx);
     svgOnce('producer-coin-basket', 'coin-basket.svg', iconPx);

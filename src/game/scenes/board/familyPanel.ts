@@ -125,11 +125,15 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
     }
 
     const iconSize = slot * 0.9;
-    const icon = scene.add.graphics();
-    const render = drawTierIcon(icon, typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
-    const present = iconPresentation(typeId, def.tier, iconSize);
+    const spriteKey = `wood-render-${def.tier}`;
+    const useSprite = typeId === 'wood' && scene.textures.exists(spriteKey);
+    const icon = useSprite ? scene.add.image(cx, cy, spriteKey).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
+    const render = useSprite ? { materialAlpha: 1 } : drawTierIcon(icon as Phaser.GameObjects.Graphics, typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
     icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
-    icon.setScale(present.scale).setPosition(cx + present.offsetX, cy + present.offsetY);
+    if (!useSprite) {
+      const present = iconPresentation(typeId, def.tier, iconSize);
+      icon.setScale(present.scale).setPosition(cx + present.offsetX, cy + present.offsetY);
+    }
     overlay.add(icon);
 
     if (claimed) return;

@@ -734,6 +734,11 @@ export function openProject(scene: BoardScene): void {
         const present = iconPresentation(row.req.typeId, row.req.tier, art);
         icon.setScale(present.scale).setPosition(left + 20 + present.offsetX, y + present.offsetY);
         footer.add(icon);
+        if (row.req.typeId === 'wood' && scene.textures.exists(`wood-render-${row.req.tier}`)) {
+          icon.setVisible(false);
+          footer.add(scene.add.image(left + 20, y, `wood-render-${row.req.tier}`)
+            .setDisplaySize(art, art).setAlpha(row.met ? 1 : 0.55));
+        }
         textX = left + 40;
       }
 
