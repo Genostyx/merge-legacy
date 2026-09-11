@@ -4,6 +4,7 @@ import { Theme, materialLighting, toneAt, toneForNormal } from '../ui/Theme';
 import { fillPoly, makeIso, type IsoFn } from './Isometric';
 import { box, faceViewer, group, renderMesh, rotateX, rotateY, rotateZ, translate, type Mesh } from './Mesh3D';
 import { WOVEN_KNOT_3, WOVEN_KNOT_5 } from './meshes/knots';
+import { WOOD_MESHES } from './meshes/wood';
 import { CHAINS, getTierDef } from '../data/chains';
 import { GraphicsRecorder } from './GraphicsRecorder';
 
@@ -1800,93 +1801,44 @@ const GILT = 0xa8843f;
 // ---- Wood chain ----
 
 /**
- * Every wood tier is a SOLID, described in 3D and handed to the one camera.
+ * Every wood tier below the knots is one Blender mesh.
  *
- * The shapes are the ones that were already here - a cut billet, two planks,
- * three planks, the crossed X block, the V, the burr puzzle. Nothing is
- * redesigned. What changed is that they are no longer polygons drawn to look
- * like solids: each is real geometry, so which faces you see, what hides what,
- * and how bright each plane is all come out of the projection instead of
- * being decided by hand per tier. The burr in particular was never going to
- * work the old way - six bars passing through each other is a question about
- * occlusion, and flat polygons cannot answer it.
+ * They were box primitives assembled here in TypeScript, and that bought
+ * nothing visible: a bevel-less box filled with three flat values is exactly
+ * the hand-drawn isometric polygon it replaced. The bevel is the whole point -
+ * a lit line along every arris facing the key and a dark one along every arris
+ * facing away is what says "solid" rather than "three shapes in three tones".
  */
-function woodSolid(g: Phaser.GameObjects.Graphics, s: number, p: Palette, mesh: Mesh): void {
-  renderMesh(g, mesh, {
+function woodSolid(g: Phaser.GameObjects.Graphics, s: number, p: Palette, tier: number): void {
+  renderMesh(g, WOOD_MESHES[tier], {
     u: s,
     tone: (t) => toneAt(p, t),
-    edge: p.shadow,
-    edgeAlpha: 0.34,
     center: true
   });
 }
 
 function drawScrapWood(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // ONE CUT BILLET, with the trimmed branch nub it always had. Skewed off the
-  // grid a little: stock as FOUND is the tier-one idea, and a bar sitting
-  // square to the camera reads as milled.
-  woodSolid(g, s, p, group(
-    rotateZ(box(0.62, 0.3, 0.24), 0.03),
-    translate(rotateZ(box(0.2, 0.17, 0.13), -0.06), -0.1, -0.03, 0.24)
-  ));
+  woodSolid(g, s, p, 1);
 }
 
 function drawPinePlank(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // TWO planks, staggered so neither hides the other.
-  const plank = box(0.68, 0.3, 0.085);
-  woodSolid(g, s, p, group(
-    plank,
-    translate(box(0.64, 0.28, 0.085), 0.07, -0.07, 0.085)
-  ));
+  woodSolid(g, s, p, 2);
 }
 
 function drawOakPlank(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // THREE, in the compact rising stack. Real stacking now: the one on top
-  // OCCLUDES the one beneath, which is the whole reason a stack reads as a
-  // stack rather than as three outlines.
-  woodSolid(g, s, p, group(
-    ...[0, 1, 2].map((i) => translate(box(0.66, 0.3, 0.085), i * 0.03, -i * 0.03, i * 0.085))
-  ));
+  woodSolid(g, s, p, 3);
 }
 
 function drawMapleBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // THE CROSSED X BLOCK. Two bars at right angles, lying flat and passing
-  // through each other - which as geometry is exactly what it always claimed
-  // to be, and now actually is.
-  //
-  // NOT rotated 45 degrees. That is the reflex from screen space and it is
-  // backwards here: the camera's own axes ARE the screen diagonals, so a bar
-  // left on +x and another on +y come out as a diagonal cross, while turning
-  // them 45 degrees lines them up with the screen and produces a flat plus.
-  woodSolid(g, s, p, group(box(0.86, 0.24, 0.2), box(0.24, 0.86, 0.2)));
+  woodSolid(g, s, p, 4);
 }
 
 function drawWalnutBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // THE V. Two bars meeting at the foot and splaying apart - a real
-  // intersection at the join rather than two shapes butted together.
-  //
-  // The legs lean down DIFFERENT axes, one toward +x and one toward +y,
-  // because those are the two directions that separate on screen. Leaning
-  // both in the same plane, which is what a screen-space instinct suggests,
-  // put one leg behind the other and the V collapsed to a single wedge.
-  const leg = box(0.26, 0.26, 0.7);
-  woodSolid(g, s, p, group(
-    rotateY(leg, 0.075),
-    rotateX(leg, -0.075)
-  ));
+  woodSolid(g, s, p, 5);
 }
 
 function drawMahoganyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // THE BURR PUZZLE, from the saved reference: three square bars on the three
-  // axes, crossing at the centre, giving six protrusions. Centred in z as
-  // well as x and y, since the bars pass THROUGH the middle rather than
-  // standing on it.
-  const L = 0.84, t = 0.26;
-  woodSolid(g, s, p, group(
-    translate(box(L, t, t), 0, 0, -t / 2),
-    translate(box(t, L, t), 0, 0, -t / 2),
-    translate(box(t, t, L), 0, 0, -L / 2)
-  ));
+  woodSolid(g, s, p, 6);
 }
 
 /** Blends a tone toward gilt at the lit end of the ramp only. */
@@ -1902,16 +1854,7 @@ function giltRamp(p: Palette, strength: number): (t: number) => number {
 }
 
 function drawEbonyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // THE LAP LATTICE: two bars one way, two the other, the second pair riding
-  // over the first. The old version faked the over/under by redrawing two of
-  // the four crossings on top; with real solids the crossings resolve
-  // themselves, and the pair that is genuinely higher is the pair that hides
-  // the other.
-  const len = 0.92, bw = 0.2, t = 0.17, gap = 0.2;
-  woodSolid(g, s, p, group(
-    ...[-gap, gap].map((o) => translate(box(bw, len, t), o, 0, 0)),
-    ...[-gap, gap].map((o) => translate(box(len, bw, t), 0, o, t))
-  ));
+  woodSolid(g, s, p, 7);
 }
 
 function drawGildedRosewood(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {

@@ -339,10 +339,20 @@ export function renderMesh(
     .filter(({ n }) => dot(n, VIEW_N) > 0)
     .sort((a, b) => a.depth - b.depth);
 
-  // Half-Lambert: the unlit side lands at 0 rather than at some negative
-  // number clamped flat, so a plane turned right away from the key still
-  // carries its material instead of going to the bottom of the ramp.
-  const lit = (n: Vec3): number => tone((dot(n, KEY_N) + 1) / 2);
+  // LAMBERT WITH AMBIENT, not half-Lambert.
+  //
+  // It was `(dot + 1) / 2`, which puts the terminator - the line where a
+  // surface turns edge-on to the light - at exactly 0.5, the middle of the
+  // material ramp. Everything darker than that is on the far side of the
+  // object, which is back-facing, which is culled. So the bottom half of
+  // every palette was unreachable and every solid came out high-key and
+  // flat, whatever its geometry.
+  //
+  // Clamping at zero and lifting by a fixed ambient instead puts the
+  // terminator down at AMBIENT and gives the form somewhere to fall.
+  const AMBIENT = 0.16;
+  const lit = (n: Vec3): number =>
+    tone(AMBIENT + (1 - AMBIENT) * Math.max(0, dot(n, KEY_N)));
 
   for (const { face, f, n } of visible) {
     const pts = face.map((i) => {
