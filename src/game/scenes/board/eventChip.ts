@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
-import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
+import { EVENT_TOKEN_COLOR, eventTokenMark } from '../../objects/EventTokenView';
 import { drawCrate } from '../../objects/TierIcons';
 import { ORDER_CARD_H } from './config';
 import {
@@ -54,8 +54,8 @@ export function buildEventChip(scene: BoardScene): void {
   // up off the board, so it may only ever mark energy; the points below have
   // a bar instead, because two quantities wearing one piece of art was the
   // confusion this layout exists to end.
-  const token = scene.add.graphics().setPosition(EVENT_CHIP_W / 2 - 9, ENERGY_PILL_CY);
-  drawEventToken(token, 17, materialLighting(EVENT_TOKEN_COLOR, 5));
+  const token = eventTokenMark(scene, 17)
+    .setPosition(EVENT_CHIP_W / 2 - 9, ENERGY_PILL_CY);
   const energy = scene.add.text(EVENT_CHIP_W / 2 + 1, ENERGY_PILL_CY, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '11px', fontStyle: 'bold',

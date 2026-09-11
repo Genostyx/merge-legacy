@@ -9,7 +9,7 @@ import { SpawnerView } from '../../objects/SpawnerView';
 import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { burstParticles, shakeForTier } from '../../fx/MergeFx';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
-import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView';
+import { EVENT_TOKEN_COLOR, eventTokenMark } from '../../objects/EventTokenView';
 import {
   EVENT_BOARD_COLS, EVENT_BOARD_ROWS, EVENT_CHAIN, EVENT_MAX_TIER, EVENT_SPAWN_COST,
   EVENT_SPAWNER_AT, createEventGrid, eventPointsForTier, eventTierDef,
@@ -282,8 +282,8 @@ function buildChrome(
   // number counts, so nothing has to be labelled - and this is the one figure
   // a player checks before every tap, so it sits in the header rather than
   // beside the booth where a dragged item would cover it.
-  const energyToken = scene.add.graphics().setPosition(W / 2 - 26, headerH / 2 + 1);
-  drawEventToken(energyToken, 22, materialLighting(EVENT_TOKEN_COLOR, 5));
+  const energyToken = eventTokenMark(scene, 22)
+    .setPosition(W / 2 - 26, headerH / 2 + 1);
   const energyText = scene.add.text(W / 2 - 14, headerH / 2, '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric, fontSize: '13px', fontStyle: 'bold',

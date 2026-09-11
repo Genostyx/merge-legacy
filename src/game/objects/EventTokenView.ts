@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { materialLighting, toneAt, type MaterialLighting } from '../ui/Theme';
+import { loadedItemSprite } from './itemSprites';
 
 /**
  * The event token's own colour. Not borrowed from any family, and not one of
@@ -272,6 +273,38 @@ function drawStruckCrown(
   }
 }
 
+/**
+ * Share of its canvas the RENDERED token's art fills, longest side.
+ *
+ * Same measurement CurrencyGlyph keeps for the currency marks, and needed
+ * for the same reason: the render is framed with margin, so a display size
+ * written for the drawn version draws a smaller medallion. Measured off
+ * public/assets/items/event-token/1.png.
+ */
+const TOKEN_FILL_RATIO = 0.86;
+
+/**
+ * One event token as a display object: the RENDER when it is loaded, the
+ * drawn medallion when it is not.
+ *
+ * Every surface that shows a token goes through this - the board, the chip,
+ * the panel header, the forced-spawn preview - so they cannot end up on
+ * different art from each other. The vector version stays as the fallback,
+ * exactly as the currency marks kept theirs.
+ */
+export function eventTokenMark(
+  scene: Phaser.Scene, size: number
+): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+  const key = loadedItemSprite(scene, 'event-token', 1);
+  if (key) {
+    const drawn = size / TOKEN_FILL_RATIO;
+    return scene.add.image(0, 0, key).setDisplaySize(drawn, drawn);
+  }
+  const g = scene.add.graphics();
+  drawEventToken(g, size, materialLighting(EVENT_TOKEN_COLOR, 5));
+  return g;
+}
+
 /** One event token standing on the board, waiting to be tapped in. */
 export class EventTokenView extends Phaser.GameObjects.Container {
   gridPos: GridPosition;
@@ -287,14 +320,13 @@ export class EventTokenView extends Phaser.GameObjects.Container {
    */
   collected = false;
   cellSize: number;
-  private art: Phaser.GameObjects.Graphics;
+  private art: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
 
   constructor(scene: Phaser.Scene, x: number, y: number, cellSize: number, gridPos: GridPosition) {
     super(scene, x, y);
     this.gridPos = gridPos;
     this.cellSize = cellSize;
-    this.art = scene.add.graphics();
-    drawEventToken(this.art, cellSize, materialLighting(EVENT_TOKEN_COLOR, 6));
+    this.art = eventTokenMark(scene, cellSize);
     this.add(this.art);
     this.setSize(cellSize, cellSize);
     // A slow bob, so a token reads as waiting to be collected rather than as
