@@ -1237,7 +1237,7 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
 
 
 def upright_coin(radius: float = 0.17, thickness: float = 0.042,
-                 lean_deg: float = 0.0):
+                 lean_deg: float = 0.0, mirror: bool = False):
     """A coin standing ON ITS EDGE, turned to the isometric three-quarter.
 
     Lying on its back a coin shows its face as a flat ellipse and hides the
@@ -1253,7 +1253,13 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
     # runs diagonally across the face; doing this after the coin is stood up
     # would need a rotation about whatever the face normal had become, which
     # is a different axis every time the presentation is adjusted.
-    piece.rotation_euler.z = math.radians(-32)
+    # SOLVED, not eyeballed: 10.6 is the bake angle whose slot projects dead
+    # horizontal through this camera. -32 was picked by eye off a flat coin
+    # and came out running uphill once the piece was stood on edge and turned,
+    # because the face is foreshortened and an angle on it is not the angle
+    # you see. A horizontal line survives the mirror unchanged, so the same
+    # number serves both handednesses.
+    piece.rotation_euler.z = math.radians(10.6)
     bpy.ops.object.select_all(action='DESELECT')
     piece.select_set(True)
     bpy.context.view_layer.objects.active = piece
@@ -1273,7 +1279,46 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
             Matrix.Rotation(math.radians(lean_deg), 4, SCREEN_RIGHT)
             @ piece.rotation_euler.to_matrix().to_4x4()
         ).to_euler()
+
+    # A LITERAL HORIZONTAL FLIP of the rendered image, done as a reflection
+    # rather than as another guessed angle. Hunting for the turn that shows
+    # the far rim is guesswork twice over - the rim's side and the face's
+    # side both depend on how far past face-on you land, and a real 90
+    # overshoots onto the BACK of the coin, which this camera never shows.
+    # Reflecting through the plane whose normal is screen-right gives the
+    # mirror exactly, with the tilt and the resting point untouched.
+    if mirror:
+        _mirror_across_screen(piece)
     return piece
+
+
+def _mirror_across_screen(ob):
+    """Reflect an object about the screen's vertical centre line.
+
+    Bakes the object's own rotation into the mesh first, because the
+    reflection is a WORLD-space operation and mesh data is local. A
+    reflection has determinant -1, so every face comes out inside-out and
+    the normals have to be flipped back or the solid renders hollow.
+    """
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+
+    n = SCREEN_RIGHT
+    reflect = Matrix.Identity(3)
+    for i in range(3):
+        for j in range(3):
+            reflect[i][j] -= 2.0 * n[i] * n[j]
+    ob.data.transform(reflect.to_4x4())
+
+    mesh = bmesh.new()
+    mesh.from_mesh(ob.data)
+    for face in mesh.faces:
+        face.normal_flip()
+    mesh.to_mesh(ob.data)
+    mesh.free()
+    ob.data.update()
 
 
 # A coin is taller than its own thickness: the rim stands proud by another
@@ -1318,12 +1363,12 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = upright_coin()
+    out[1] = upright_coin(mirror=True)
     out[2] = stack([
         # Overlapping, with the near one a touch forward, so they read as two
         # coins leaning together rather than two discs butted edge to edge.
-        translate_to(upright_coin(), beside(-0.13, 0.07)),
-        translate_to(upright_coin(), beside(0.11, -0.07)),
+        translate_to(upright_coin(mirror=True), beside(-0.13, 0.07)),
+        translate_to(upright_coin(mirror=True), beside(0.11, -0.07)),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
