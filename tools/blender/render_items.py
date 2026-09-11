@@ -1151,8 +1151,30 @@ def disc(radius: float, thickness: float, sides: int = 24):
 # tiers four and five the cluster closed into a thicket. The drawn art called
 # for energy running SLIGHTLY larger than the round marks, because a zigzag
 # carries less ink at equal width - slightly, not triple.
-BOLT = [(0.04, 0.31), (-0.19, 0.01), (-0.04, 0.01), (-0.11, -0.31),
-        (0.19, -0.03), (0.03, -0.03)]
+# Traced off public/currency-energy.svg. The structure was already right -
+# six points, two limbs, a step between them - but the limbs were far too
+# thin: 0.15 of horizontal run against 0.62 of height made each one a spike,
+# so a bolt read as two loose triangles rather than as one chunky mark. The
+# drawn bolt is nearly as wide as it is tall.
+# TRACED VERTEX BY VERTEX off the drawn bolt, not approximated from the idea
+# of one. Six points: a tip top right, a long edge down to the left extreme,
+# a step in, the second tip straight down, then back out to the right extreme
+# and a step in to close. What was here before had both limbs at the same
+# height and the tips nearly vertical, which is a zigzag, not a bolt - the
+# drawn one leans, with its right extreme ABOVE centre and its left extreme
+# below.
+#
+# The x values are negated because this camera's screen-right is -X: a
+# profile written the way it looks on paper renders mirrored.
+BOLT = [(-0.177, 0.359), (0.211, -0.043), (0.034, -0.055),
+        (0.034, -0.361), (-0.273, 0.077), (-0.095, 0.064)]
+
+# Traced off public/currency-gem.svg, which is NOT a brilliant cut. The drawn
+# gem is a flat rhombus slab with a thick bevelled edge - a shape read by its
+# silhouette, like the bolt - and it was being modelled as a round eight-sided
+# stone with a crown and a pavilion. Different object entirely. The waist sits
+# just above centre, which is what keeps it a gem rather than a lozenge.
+GEM = [(0.00, 0.36), (0.27, 0.04), (0.00, -0.36), (-0.27, 0.04)]
 
 
 # ---- the currency chains ---------------------------------------------------
@@ -1185,6 +1207,33 @@ def facing_camera(ob):
     """
     forward = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion() @ Vector((0, 0, -1))
     ob.rotation_euler = (-forward).to_track_quat('Z', 'Y').to_euler()
+    return ob
+
+
+def facing_profile(ob):
+    """Turns an EXTRUDED OUTLINE to the viewer, then off square.
+
+    `facing_camera` aims local +Z at the camera, which is right for a knot
+    and wrong for anything `extrude_profile` made: those carry their outline
+    in x-z with the depth along y, so aiming +Z stands the slab edge on.
+
+    Lying these flat like the coins does not work either. A coin is round, so
+    it survives being seen from above; a bolt seen from above collapses into
+    a bowtie. Its silhouette IS the object, which is the wood knots' rule.
+
+    Dead on, though, an extruded outline is only its own silhouette and the
+    depth hides behind the face - a flat sticker, which is what the 3D was
+    meant to replace. So it is turned off square, far enough to show the
+    thickness down one side, exactly as the drawn mark does.
+    """
+    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
+    forward = view @ Vector((0, 0, -1))
+    ob.rotation_euler = (-forward).to_track_quat('Y', 'Z').to_euler()
+    swing = Matrix.Rotation(math.radians(26), 4, view @ Vector((0, 1, 0)))
+    drop = Matrix.Rotation(math.radians(-9), 4, view @ Vector((1, 0, 0)))
+    ob.rotation_euler = (
+        drop @ swing @ ob.rotation_euler.to_matrix().to_4x4()
+    ).to_euler()
     return ob
 
 
@@ -1499,12 +1548,9 @@ def build_currency(kind: str):
             if kind == "currency-energy":
                 piece = extrude_profile(BOLT, 0.10)
             else:
-                piece = cut_stone(
-                    ring(8, 0.15),
-                    crown=[(0.82, 0.05), (0.44, 0.11)],
-                    pavilion=[(0.70, -0.09), (0.0, -0.20)],
-                )
-            pieces.append(translate_to(piece, beside(right, back)))
+                piece = extrude_profile(GEM, 0.20)
+            pieces.append(translate_to(facing_profile(piece),
+                                       beside(right, back)))
         out[tier] = stack(pieces)
     return out
 
