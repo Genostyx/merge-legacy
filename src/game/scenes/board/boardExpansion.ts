@@ -92,7 +92,7 @@ export function buildBoardExpansionLocks(scene: BoardScene): void {
         fontStyle: 'bold',
         color: hex(Theme.currencyCredit),
         align: 'center'
-      }).setOrigin(0, 0.5).setDepth(6);
+      }).setOrigin(0.5, 0).setDepth(6);
       const mark = scene.add.image(0, 0, 'currency-coin').setDepth(6);
       const zone = scene.add.zone(world.x, world.y, scene.cellSize, scene.cellSize)
         .setDepth(7)
@@ -120,13 +120,23 @@ export function refreshBoardExpansionLocks(scene: BoardScene): void {
     view.price.setVisible(showPrice).setText(priceLabel);
     view.mark.setVisible(showPrice);
     if (showPrice) {
-      const glyphSize = 15;
-      const gap = 3;
-      const groupW = view.price.width + gap + glyphSize;
-      const startX = world.x - groupW / 2;
-      view.price.setPosition(startX, world.y);
+      // STACKED, not side by side.
+      //
+      // A price and its coin laid out in a row have to share the tile's
+      // WIDTH, which is the one dimension a square cell has none of - at
+      // `64k` the pair ran edge to edge and read as cramped, while the space
+      // above and below it sat empty. Stacking spends the axis that is free.
+      //
+      // The coin goes on top: it is the same size on every tile, so a column
+      // of them lines up, where a column of numbers of different widths does
+      // not.
+      const glyphSize = Math.min(17, scene.cellSize * 0.36);
+      const gap = 1;
+      const groupH = glyphSize + gap + view.price.height;
+      const top = world.y - groupH / 2;
       applyCurrencyIcon(view.mark, 'credit', glyphSize);
-      view.mark.setPosition(startX + view.price.width + gap + glyphSize / 2, world.y);
+      view.mark.setPosition(world.x, top + glyphSize / 2);
+      view.price.setPosition(world.x, top + glyphSize + gap);
     }
   }
   scene.expansionRowLabels.forEach((label, index) => {
