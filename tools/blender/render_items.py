@@ -1707,7 +1707,12 @@ def build_event_token():
     # the crown, whose rays are only 0.014 thick, and soften a struck device
     # into an etched one.
     rim = body.modifiers.new("RimChamfer", 'BEVEL')
-    rim.width, rim.segments = 0.004, 6
+    # 16 SEGMENTS, not 6. Six over a 90 degree corner steps 12.9 degrees at
+    # a time, and a low-roughness metal returns a distinct highlight off each
+    # of those steps - which is the banding round the rim. At 16 the step is
+    # 5.3 degrees, well inside the auto-smooth angle, so the chamfer shades
+    # as one continuous curve and the sheen can stay.
+    rim.width, rim.segments = 0.004, 16
     rim.limit_method, rim.angle_limit = 'ANGLE', SMOOTH_ANGLE
     rim.use_clamp_overlap = True
     bpy.ops.object.select_all(action='DESELECT')
@@ -1800,21 +1805,25 @@ def build_event_token():
 
     material = tier_material("event-token", EVENT_TOKEN_HEX, EVENT_TOKEN_HEX)
     shader = _shader(material)
-    # Struck metal, same treatment as the credits - the token is a coin
-    # before it is anything else.
-    shader.inputs["Metallic"].default_value = 0.94
-    shader.inputs["Roughness"].default_value = 0.13
+    # 0.22 keeps a real metallic sheen. Roughing the surface to 0.38, or to
+    # the chip coin's 0.541, also hides the banding - but it hides it by
+    # throwing away the reflection that makes metal look like metal, and the
+    # banding was never a reflection problem. It is the rim chamfer's facets
+    # being picked out one by one, which is fixed below in the geometry so
+    # the finish does not have to pay for it.
+    shader.inputs["Metallic"].default_value = 1.0
+    shader.inputs["Roughness"].default_value = 0.22
     # A HAIRLINE bevel. At 0.006 it was wider than the rays are thick and
     # melted the whole device into blobs - a struck mark needs its edges.
-    # A TIGHT smooth angle. The shared 30 degrees smooths shading across
-    # every edge shallower than that, which on a struck device means the
-    # rays' own facets blend into the field and into each other - the surface
-    # stops being a set of flat planes and starts rippling, and at 0.94
-    # metallic the face mirrors the studio so the ripple reads as warping.
-    # At 12 only the 64-sided wall, whose facets are 5.6 degrees apart, gets
-    # smoothed; everything struck keeps its edges.
+    # 20 DEGREES, and the number is not free. Too high and the rays' facets
+    # blend into the field and into each other, which is the rippling the
+    # shared 30 sets off. Too low and the CHAMFERS stop being curves: a 90
+    # degree corner cut into six segments steps about 12.9 degrees per
+    # segment, so at 12 every segment shaded as its own flat band and the rim
+    # came out quilted, with the same stepping round the inner lip. 20 clears
+    # the chamfer's 12.9 and stays far below the 90 the struck edges meet at.
     finish(token, "event-token", material, bevel=0.0015,
-           smooth_angle=math.radians(12))
+           smooth_angle=math.radians(20))
 
     # SEGMENTS, not width. The disc's outer edge gets its own six-segment
     # chamfer above and reads perfectly round; the rim's INNER lip had only
@@ -1843,13 +1852,20 @@ def build_chip_coin():
     wanted at once - the board keeps its flat coin and the chip gets a mark.
     """
     radius, thickness = 0.17, 0.042
-    body = coin(radius, thickness, sides=64)
+    # 128 sides, matching the token: this is the other piece seen face on,
+    # so both of its circles are full circles rather than the ellipses the
+    # board's coins show.
+    body = coin(radius, thickness, sides=128)
 
     # The disc's own chamfer, six segments, exactly as the token's - a
     # two-segment bevel auto-smoothed into a 64-sided wall is what makes an
     # outer ring look wavy.
     rim = body.modifiers.new("RimChamfer", 'BEVEL')
-    rim.width, rim.segments = 0.004, 6
+    # 16 segments, matching the token. Six over a 90 degree corner steps
+    # 12.9 degrees at a time and a low-roughness metal returns a distinct
+    # highlight off each step, which bands the rim; at 16 the step is 5.3 and
+    # the chamfer shades as one curve.
+    rim.width, rim.segments = 0.004, 16
     rim.limit_method, rim.angle_limit = 'ANGLE', SMOOTH_ANGLE
     rim.use_clamp_overlap = True
     bpy.ops.object.select_all(action='DESELECT')
@@ -1868,16 +1884,15 @@ def build_chip_coin():
     material = tier_material("credit-mark", CURRENCY_HEX["currency-credit"][1],
                              measured, max_gain=1.45)
     shader = _shader(material)
-    # The owner's values, taken off the scene after they adjusted it, not
-    # mine. Fully metallic and MUCH rougher than the board's coins - 0.54
-    # against 0.13. A mirror finish is right on a board item, where the
-    # reflection is most of what says gold; on a 17px mark it just collects
-    # bright and dark blotches from the studio and the shape stops reading.
-    # Satin keeps the value even across the face.
+    # Same finish as the event token. 0.541 was the right call while the rim
+    # was banding, because roughness was the only lever that hid it - but it
+    # hid it by throwing away the reflection that makes metal read as metal.
+    # With the chamfer fixed above the banding is gone from the geometry, so
+    # the sheen can come back.
     shader.inputs["Metallic"].default_value = 1.0
-    shader.inputs["Roughness"].default_value = 0.541
+    shader.inputs["Roughness"].default_value = 0.22
     finish(body, "credit-mark", material, bevel=0.0015,
-           smooth_angle=math.radians(12))
+           smooth_angle=math.radians(20))
     return {1: body}
 
 
