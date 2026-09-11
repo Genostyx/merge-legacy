@@ -105,9 +105,13 @@ MINERAL_SURFACE = {
     1: (0.88, 1.55),   # slate, split and dry
     2: (0.91, 1.55),   # rubble, freshly broken
     3: (0.91, 1.55),   # gravel
-    4: (0.55, 1.55),   # a pebble worn smooth, not a polished one
-    5: (0.30, 1.60),   # marble, the only POLISHED tier below the gems
-    6: (0.78, 1.70),   # granite, honed rather than shined
+    # 4-6 ARE THE POLISHED TIERS. That is not a departure from reference -
+    # polished stone is a real finish and these three are literally named for
+    # it - and it is what turns the ladder into a story: rough rock is picked
+    # up, worked, and finally polished, before being cut at 7.
+    4: (0.22, 1.55),   # polished stone
+    5: (0.18, 1.60),   # polished marble
+    6: (0.26, 1.70),   # polished granite, like a countertop
     7: (0.10, 1.54),   # quartz
     8: (0.06, 1.77),   # sapphire
     9: (0.06, 1.77),   # star sapphire
@@ -246,6 +250,33 @@ def veins(mat, base_rgb, scale=(3.0, 3.0, 3.0)):
     ramp.color_ramp.elements[0].color = (*base_rgb, 1.0)
     ramp.color_ramp.elements[1].position = 0.56
     ramp.color_ramp.elements[1].color = (*pale, 1.0)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], _shader(mat).inputs["Base Color"])
+    return mat
+
+
+def mottle(mat, base_rgb, scale=9.0, strength=0.16):
+    """Broad colour variation across a rock face.
+
+    `weathered` only ever varied ROUGHNESS, which is invisible on a matte
+    surface - so tiers one to four had no texture at all, just a flat fill
+    with a bump. Stone is not one colour: it is blotched at a scale you can
+    see across the whole piece, and that is what the eye reads as rock.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = scale
+    noise.inputs["Detail"].default_value = 8.0
+    noise.inputs["Roughness"].default_value = 0.58
+    links.new(_texture_coords(mat), noise.inputs["Vector"])
+
+    ramp = nodes.new("ShaderNodeValToRGB")
+    dark = [max(0.0, c * (1.0 - strength)) for c in base_rgb]
+    light = [min(1.0, c * (1.0 + strength)) for c in base_rgb]
+    ramp.color_ramp.elements[0].position = 0.30
+    ramp.color_ramp.elements[0].color = (*dark, 1.0)
+    ramp.color_ramp.elements[1].position = 0.70
+    ramp.color_ramp.elements[1].color = (*light, 1.0)
     links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
     links.new(ramp.outputs["Color"], _shader(mat).inputs["Base Color"])
     return mat
@@ -783,10 +814,12 @@ def build_mineral():
         # Tier five takes a deliberately HEAVY chamfer - that is the dressing.
         # Crystal and gems take none: a bevel on a cut stone rounds off the
         # only thing that says it was cut.
-        # A cut stone takes NO bevel - rounding its arrises removes the only
-        # thing that says it was cut. The pebble takes a heavy one, because
-        # smooth is its entire identity.
-        bevel = 0.0 if tier >= 6 else (0.085 if tier == 4 else 0.012)
+        # EVERY TIER GETS ONE. Zero bevel was over-correcting: an edge with
+        # no width at all catches no light, so the cut stones and the granite
+        # slab had none of the bright arrises that make wood read as solid.
+        # A cut stone's edges really are slightly softened at this scale - the
+        # error is a WIDE bevel, which rounds the facets away, not a bevel.
+        bevel = 0.006 if tier >= 7 else (0.085 if tier == 4 else 0.016)
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
         roughness, ior = MINERAL_SURFACE[tier]
@@ -800,7 +833,13 @@ def build_mineral():
         elif tier == 5:
             veins(material, base)            # marble
         else:
-            weathered(material)              # found and dressed rock
+            # Colour variation FIRST - that is the part you can see - with the
+            # roughness break on top of it. The rough tiers get a coarser,
+            # stronger mottle than the polished pebble.
+            mottle(material, base,
+                   scale=9.0 if tier < 4 else 6.0,
+                   strength=0.20 if tier < 4 else 0.11)
+            weathered(material, strength=0.34 if tier < 4 else 0.12)
         finish(ob, "mineral%d" % tier, material, bevel=bevel)
     return out
 
