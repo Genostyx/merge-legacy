@@ -563,56 +563,52 @@ def finish(ob, name: str, material, bevel: float = BEVEL_WIDTH,
     return ob
 
 
-def coherent_noise(v: Vector, seed: int, frequency: float = 1.7) -> float:
-    """Smooth 3D noise in [-1, 1], from a handful of offset sine waves.
+def rock(width: float, height: float, seed: int, jitter: float = 0.26,
+         points: int = 13):
+    """A broken chunk: the convex hull of scattered points.
 
-    COHERENT is the whole point: nearby points must move TOGETHER. Displacing
-    each vertex by its own independent random number is what turned these
-    rocks into sea urchins - neighbours pulled opposite ways, so every vertex
-    became a spike and the mesh's polygons showed as hard points instead of
-    reading as a surface.
+    THE HULL IS THE POINT. Every previous version started from a sphere and
+    pushed its vertices about, which forces a choice between two failures -
+    per-vertex randomness makes spikes, and smoothing or subdividing the
+    spikes away leaves a pebble with no stone left in it. Neither is broken
+    rock, because a sphere has no flat faces to begin with and displacement
+    cannot invent them.
 
-    A few octaves of sine is not proper Perlin noise, but it is continuous,
-    which is the property that matters here, and it needs nothing outside the
-    standard library.
+    A hull has nothing but flat faces and sharp edges, by construction. There
+    are no spikes to remove, no tessellation to hide, and no silhouette
+    artefacts - the outline is made of the same real edges as the surface.
+    Fewer points give chunkier facets.
     """
     rng = random.Random(seed)
-    phase = [rng.uniform(0, 6.283) for _ in range(9)]
-    total, amplitude, weight = 0.0, 1.0, 0.0
-    for octave in range(3):
-        f = frequency * (2 ** octave)
-        total += amplitude * (
-            math.sin(v.x * f + phase[octave * 3])
-            * math.sin(v.y * f + phase[octave * 3 + 1])
-            * math.sin(v.z * f + phase[octave * 3 + 2])
-        )
-        weight += amplitude
-        amplitude *= 0.5
-    return total / weight
+    mesh = bpy.data.meshes.new("rock")
+    bm = bmesh.new()
+    for _ in range(points):
+        # A direction on the sphere, then a radius that varies - the radius is
+        # what makes facets differ in size, and equal radii would give
+        # something close to a regular solid.
+        z = rng.uniform(-1.0, 1.0)
+        theta = rng.uniform(0.0, 2.0 * math.pi)
+        ring = math.sqrt(max(0.0, 1.0 - z * z))
+        radius = 0.5 * (1.0 + rng.uniform(-jitter, jitter))
+        bm.verts.new((math.cos(theta) * ring * radius * width,
+                      math.sin(theta) * ring * radius * width * 0.86,
+                      # Not doubled. Broken rock sits LOW - a chunk taller than it
+                      # is wide reads as a shard or a crystal, which is tier six's
+                      # job, not tier two's.
+                      z * radius * height))
+    bmesh.ops.convex_hull(bm, input=bm.verts)
+    # convex_hull leaves the points it did not use behind; they are inside the
+    # solid and invisible, but they upset the bevel and the bounds.
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(mesh)
+    bm.free()
 
-
-def rock(width: float, height: float, seed: int, jitter: float = 0.26):
-    """An irregular chunk, sitting on z=0.
-
-    An icosphere pushed about by COHERENT noise, so the surface undulates
-    instead of spiking. Two subdivisions rather than one: at 80 faces the
-    facets were large enough to read as a cut crystal, and stone is not
-    faceted. Wood is milled and rectilinear; if mineral were built from boxes
-    too the families would differ only in hue - the exact failure
-    FAMILIES_ROADMAP records for the event chain - but the answer to that is
-    an irregular SURFACE, not a spiky one.
-    """
-    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=0.5)
-    ob = bpy.context.active_object
-    for v in ob.data.vertices:
-        v.co *= 1.0 + jitter * coherent_noise(v.co, seed)
-        v.co.x *= width
-        v.co.y *= width * 0.86
-        v.co.z *= height
-    low = min(v.co.z for v in ob.data.vertices)
-    for v in ob.data.vertices:
+    ob = bpy.data.objects.new("rock", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    low = min(v.co.z for v in mesh.vertices)
+    for v in mesh.vertices:
         v.co.z -= low
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     return ob
 
 
@@ -990,17 +986,11 @@ def build_mineral():
         # What makes an edge read is a band of shading with WIDTH, so the
         # rocks get roughly what the timber gets.
         bevel = 0.008 if tier >= 7 else (0.085 if tier == 4 else 0.032)
-        # THE ROCKS ONLY, and not all the way.
-        #
-        # Their small facets are an artefact of how finely the sphere was
-        # subdivided rather than real edges, so a wider angle merges them -
-        # but at 88 degrees it merges EVERYTHING, and rubble came out as
-        # smooth pebbles. 52 keeps the large planes a broken stone actually
-        # has while losing the tessellation.
-        #
-        # Tier one is excluded: it is a plate, not a chunk, and its edges are
-        # as real as a cut's.
-        smooth = math.radians(52) if 2 <= tier <= 4 else SMOOTH_ANGLE
+        # One angle for everything now. A hull's facets are REAL faces, so
+        # there is no tessellation to merge and nothing to widen the angle
+        # for - the wide angles and the subdivision only ever existed to hide
+        # a sphere pretending to be a rock.
+        smooth = SMOOTH_ANGLE
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
         roughness, ior = MINERAL_SURFACE[tier]
@@ -1045,12 +1035,7 @@ def build_mineral():
             weathered(material, strength=0.34 if tier < 4 else 0.12)
             if tier == 4:
                 polished(material)
-        # The found rock subdivides; everything else keeps its exact outline,
-        # because a cut stone's silhouette IS its facets and a slab's is its
-        # edges. Rounding those off would be destroying the shape, not
-        # smoothing it.
-        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth,
-               subdivide=2 if 2 <= tier <= 4 else 0)
+        finish(ob, "mineral%d" % tier, material, bevel=bevel, smooth_angle=smooth)
     return out
 
 
