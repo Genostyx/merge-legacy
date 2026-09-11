@@ -61,25 +61,59 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
   g.lineStyle(r * 0.12, p.light, 1);
   g.strokeCircle(0, 0, r * 0.9);
 
-  // THE FACE, sunk inside the rim and a shade under the family colour, so
-  // the pale device on it has something to be pale against.
-  g.fillStyle(toneAt(p, 0.42), 1);
-  g.fillCircle(0, 0, r * 0.8);
-
-  // The sheen, as rings stepped along the material's ramp - Phaser gradients
-  // only fill rectangles and triangles, so a disc has to be built this way.
-  // FOUR rings at real strength rather than seven at a whisper: at cell size
-  // a 0.3-alpha step is not a step at all.
-  const SHEEN = 4;
-  for (let i = 1; i <= SHEEN; i++) {
-    const t = i / SHEEN;
-    const rad = r * 0.8 * (1 - t * 0.72);
-    const drift = -r * 0.15 * t;
-    g.fillStyle(toneAt(p, 0.5 + t * 0.4), 0.55);
-    g.fillCircle(drift, drift, rad);
-  }
+  drawPolishedFace(g, r * 0.8, p);
 
   drawStruckCrown(g, crownR, p);
+}
+
+/**
+ * THE FACE: one clean gradient across the disc, not rings.
+ *
+ * It was built as concentric circles stepping up the material ramp, and that
+ * is a stepped RADIAL fill - at any size the steps read as contour rings,
+ * which is nothing a polished coin does.
+ *
+ * Phaser's gradient fill only applies to rectangles and triangles, but a
+ * triangle takes a colour PER VERTEX and the GPU interpolates between them.
+ * So the disc is a fan of triangles, and each rim vertex is toned by how far
+ * it faces the light. That is a real directional gradient, smooth by
+ * construction rather than by using enough steps to hide the seams.
+ *
+ * The specular goes on top: an elongated blur across the upper left, which is
+ * the one mark that makes metal read as polished rather than painted.
+ */
+function drawPolishedFace(
+  g: Phaser.GameObjects.Graphics, radius: number, p: MaterialLighting
+): void {
+  const SEGMENTS = 48;
+  // Upper-left, the key every object in this game shares.
+  const key = -Math.PI * 0.75;
+  // How lit a rim point is: full facing the light, darkest opposite it. The
+  // range is deliberately short of the ramp's ends - a coin's face is one
+  // material catching one light, not a sphere.
+  const litAt = (angle: number): number => 0.5 + 0.5 * Math.cos(angle - key);
+
+  for (let i = 0; i < SEGMENTS; i++) {
+    const a0 = (Math.PI * 2 * i) / SEGMENTS;
+    const a1 = (Math.PI * 2 * (i + 1)) / SEGMENTS;
+    const x0 = Math.cos(a0) * radius;
+    const y0 = Math.sin(a0) * radius;
+    const x1 = Math.cos(a1) * radius;
+    const y1 = Math.sin(a1) * radius;
+    // Centre vertex first, then the two rim vertices - Phaser maps the four
+    // gradient corners onto a triangle's three points in that order.
+    g.fillGradientStyle(toneAt(p, 0.52), toneAt(p, litAt(a0)), toneAt(p, litAt(a1)), toneAt(p, litAt(a1)), 1);
+    g.fillTriangle(0, 0, x0, y0, x1, y1);
+  }
+
+  // NO SEPARATE HIGHLIGHT SHAPE.
+  //
+  // A blob and then a band were both tried on top of this gradient, and both
+  // read as something stuck to the metal rather than as the metal. A polished
+  // disc under one light IS a gradient - the bright part is simply the end of
+  // it, not a mark laid over it. The ramp above runs the full width of the
+  // material now, from its lightest tone to its darkest, which is the whole
+  // reflection.
 }
 
 /**

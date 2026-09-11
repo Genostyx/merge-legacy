@@ -25,3 +25,6 @@ Thumbs.db
 
 # Icon contact sheets from tools/debug/icon-sheet.ts - regenerated on demand.
 tools/debug/out/
+
+# Local medallion preview page, written by tools/debug on demand.
+public/event-token-preview.html

@@ -46,14 +46,26 @@ class SvgRecorder {
   fillStyle(color: number, alpha = 1): this {
     this.fill = hex(color);
     this.fillAlpha = alpha;
+    this.grad = null;
     return this;
   }
 
-  // Gradients flatten to their first stop. SVG could carry a real gradient,
-  // but the four corner colours Phaser takes do not map onto one linear
-  // definition, and a wrong gradient would be worse than a flat one.
-  fillGradientStyle(tl: number, _tr: number, _bl: number, _br: number, alpha = 1): this {
-    return this.fillStyle(tl, alpha);
+  /**
+   * Gradient stops are REMEMBERED, not discarded.
+   *
+   * They still flatten for rectangles - Phaser's four corner colours do not
+   * map onto one linear SVG definition, and a wrong gradient would be worse
+   * than a flat one. But a TRIANGLE takes one colour per vertex, and that is
+   * how the smooth shapes in this game are actually built; flattening those
+   * to a single stop showed a flat disc where the renderer draws a gradient,
+   * which is a preview that lies about the thing it exists to check.
+   */
+  private grad: [number, number, number] | null = null;
+
+  fillGradientStyle(tl: number, tr: number, bl: number, _br: number, alpha = 1): this {
+    this.fillStyle(tl, alpha);
+    this.grad = [tl, tr, bl];
+    return this;
   }
 
   lineStyle(width: number, color: number, alpha = 1): this {
@@ -156,9 +168,13 @@ class SvgRecorder {
   }
 
   fillTriangle(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number): this {
+    // SVG has no per-vertex fill, so a gradient triangle takes the MEAN of
+    // its three vertex colours. Across a fan of forty-odd segments that reads
+    // as the same ramp the GPU interpolates, one step coarser.
+    const fill = this.grad ? hex(mean(this.grad)) : this.fill;
     this.out.push(
       `<polygon points="${r(x1)},${r(y1)} ${r(x2)},${r(y2)} ${r(x3)},${r(y3)}" ` +
-      `fill="${this.fill}" fill-opacity="${this.fillAlpha}"/>`
+      `fill="${fill}" fill-opacity="${this.fillAlpha}"/>`
     );
     return this;
   }
@@ -174,6 +190,13 @@ class SvgRecorder {
 }
 
 const r = (n: number): number => Math.round(n * 100) / 100;
+
+/** The average of some packed RGB colours, channel by channel. */
+function mean(colors: readonly number[]): number {
+  const ch = (shift: number): number =>
+    Math.round(colors.reduce((sum, c) => sum + ((c >> shift) & 0xff), 0) / colors.length);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
 
 /** A bare recorder, for drawing one thing rather than a whole ladder. */
 export function iconSheetRecorder(): SvgRecorder {
