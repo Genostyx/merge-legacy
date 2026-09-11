@@ -48,3 +48,51 @@ This rule applies to Codex, Claude, and any other coding agent working in this p
 
 - Keep responses as short as possible, even down to one word answers.
 - Do not explain things unless asked.
+
+## Look at the reference before building anything
+
+- The reference art is almost always already in the repo. `public/*.svg` holds
+  the drawn marks; they are vector traces, so RENDER them (a throwaway HTML
+  page of `<img>` tags in the preview) rather than trying to read the paths.
+- Do not model, restyle or resize from an idea of what a thing looks like. The
+  gem currency was built as a round brilliant-cut stone and the energy bolt as
+  a multi-peak zigzag; the drawn art is a flat rhombus slab and a six-point
+  leaning bolt. Thirty seconds of looking would have saved hours of iteration.
+- For a material, look up what the real surface does - roughness, IOR, how the
+  texture actually behaves - instead of dialling values until one looks
+  passable.
+- For anything about size or colour, MEASURE: alpha bounding boxes and mean
+  pixel values off the PNGs, not eyeballing successive renders.
+- Research is read-only and cheap. Guessing is what costs real usage.
+
+## A question is not a task
+
+- When the project owner asks a question, answer it and stop - one or two
+  sentences - even when the answer makes an obvious fix apparent. Say what you
+  would do, then wait.
+- "Is X the same as Y?", "is this meant to look like that?", "am I crazy or..."
+  are requests for information. Rebuilding something in reply is not an answer.
+- This extends the existing rule about offhand remarks: an observation, a
+  hunch, or a question is information, never an instruction.
+
+## One approval, one change
+
+- An approved change carries only itself. Do not bundle anything else into it,
+  however obviously broken the other thing is.
+- If the approved work exposes a second problem, NAME it and leave it. Ask
+  before touching it.
+- Bundling means a revert of the approved change cannot cleanly undo the rest,
+  and each extra brings its own debugging.
+
+## Isolate before iterating
+
+- When something changed and the cause is unknown, run ONE control test that
+  proves whether the suspect is even involved - revert the suspect and re-run,
+  or render a single tier rather than a family.
+- Do not iterate candidate fixes through a slow operation. Eight guessed
+  renders once chased a colour shift that one control render identified
+  immediately, and the material being "fixed" was innocent throughout.
+- Blender's LIVE SCENE keeps state the repo does not: `view_transform`,
+  `cycles.device`, sample counts, light energies. A `git reset` reverts the
+  code that sets them, not the running session. When a render changes and the
+  code did not, suspect scene state first.
