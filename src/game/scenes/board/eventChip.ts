@@ -84,7 +84,7 @@ export function buildEventChip(scene: BoardScene): void {
   // not open the track when the player was swiping the row sideways.
   zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     scene.orderDrag = {
-      active: true, slot: -1, startX: pointer.x,
+      active: true, slot: -1, startX: pointer.worldX,
       startScroll: scene.orderScroll, moved: 0, describe: null, openEvent: true
     };
   });
@@ -210,18 +210,18 @@ export function openEventTrack(scene: BoardScene, overPanel = false): void {
   };
 
   const shade = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height, 0x000000, 0.68
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH, 0x000000, 0.68
   ).setInteractive();
   shade.on('pointerup', close);
   overlay.add(shade);
 
   const rowH = 54;
-  const panelW = Math.min(scene.scale.width - 32, 320);
+  const panelW = Math.min(scene.viewW - 32, 320);
   const headerH = 66;
   const panelH = headerH + event.milestones.length * rowH + 18;
-  const left = scene.scale.width / 2 - panelW / 2;
-  const top = scene.scale.height / 2 - panelH / 2;
+  const left = scene.viewW / 2 - panelW / 2;
+  const top = scene.viewH / 2 - panelH / 2;
 
   const bg = scene.add.graphics();
   bg.fillStyle(Theme.bgElevated, 1);
@@ -233,14 +233,14 @@ export function openEventTrack(scene: BoardScene, overPanel = false): void {
 
   // The event's NAME is kept, which the show-don't-tell rule allows: a name
   // the player has to learn, and no artwork can spell it.
-  overlay.add(scene.add.text(scene.scale.width / 2, top + 24, event.title.toUpperCase(), {
+  overlay.add(scene.add.text(scene.viewW / 2, top + 24, event.title.toUpperCase(), {
     resolution: textResolution,
     fontFamily: Theme.fontHeading, fontSize: '16px', fontStyle: 'bold',
     color: hex(EVENT_TOKEN_COLOR)
   }).setOrigin(0.5));
   const points = eventProgress(scene.timedEvents, event);
   overlay.add(scene.add.text(
-    scene.scale.width / 2, top + 46,
+    scene.viewW / 2, top + 46,
     `${points}/${event.goal}  ·  ${formatEventCountdown(eventMsRemaining(event, Date.now()))}`,
     {
       resolution: textResolution,

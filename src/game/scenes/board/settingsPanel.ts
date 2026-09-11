@@ -78,8 +78,8 @@ export function buildSettingsButton(scene: BoardScene): void {
 export function openSettings(scene: BoardScene): void {
   if (scene.modalOpen || scene.inputLocked) return;
   scene.modalOpen = true;
-  const w = scene.scale.width;
-  const h = scene.scale.height;
+  const w = scene.viewW;
+  const h = scene.viewH;
   const overlay = scene.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.6)
     .setDepth(3000).setInteractive();
 
@@ -187,7 +187,7 @@ export function openSettings(scene: BoardScene): void {
  * deleted in one line without touching any other header element.
  */
 export function buildDevResetButton(scene: BoardScene): void {
-  const text = scene.add.text(scene.scale.width - 8, scene.scale.height - 8, 'reset', {
+  const text = scene.add.text(scene.viewW - 8, scene.viewH - 8, 'reset', {
     resolution: textResolution,
     fontFamily: Theme.fontMono,
     fontSize: '10px',
@@ -216,7 +216,7 @@ export function buildDevResetButton(scene: BoardScene): void {
  * to level 20 wants the gate open, not twenty crates on the board.
  */
 export function buildDevLevelStepper(scene: BoardScene): void {
-  const y = scene.scale.height - 8;
+  const y = scene.viewH - 8;
   const style = {
     resolution: textResolution,
     fontFamily: Theme.fontMono,
@@ -268,12 +268,12 @@ export function confirmReset(scene: BoardScene): void {
   if (scene.modalOpen || scene.inputLocked) return;
   scene.modalOpen = true;
   const overlay = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height,
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH,
     0x000000, 0.6
   ).setDepth(3000).setInteractive();
 
-  const card = scene.add.container(scene.scale.width / 2, scene.scale.height / 2).setDepth(3001);
+  const card = scene.add.container(scene.viewW / 2, scene.viewH / 2).setDepth(3001);
   const cardBg = scene.add.graphics();
   cardBg.fillStyle(Theme.panel, 1);
   cardBg.fillRoundedRect(-150, -80, 300, 160, Theme.radiusPanel);

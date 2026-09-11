@@ -92,8 +92,8 @@ export function openEventPanel(scene: BoardScene): void {
   const overlay = scene.add.container(0, 0).setDepth(3040);
   scene.eventOverlay = overlay;
 
-  const W = scene.scale.width;
-  const H = scene.scale.height;
+  const W = scene.viewW;
+  const H = scene.viewH;
   // Opaque, not a scrim. This is a place you go, not a dialog over the board -
   // and a half-visible main board behind a second board is unreadable.
   const back = scene.add.rectangle(W / 2, H / 2, W, H, Theme.bg, 1).setInteractive();
@@ -726,7 +726,7 @@ function attachPanelInput(
     // The board is inert while the milestone track is stacked over it -
     // otherwise a drag would run underneath the panel the player is reading.
     if (scene.eventTrackOpen || state.inputLocked) return;
-    const cell = opts.worldToCell(pointer.x, pointer.y);
+    const cell = opts.worldToCell(pointer.worldX, pointer.worldY);
     if (!cell) return;
     const view = state.views.get(keyOf(cell));
     if (!view) return;
@@ -735,20 +735,20 @@ function attachPanelInput(
     if (view instanceof TileView && view.locked) return;
     dragging = view;
     fromCell = cell;
-    startPointer = { x: pointer.x, y: pointer.y };
+    startPointer = { x: pointer.worldX, y: pointer.worldY };
     active = false;
   };
 
   const move = (pointer: Phaser.Input.Pointer): void => {
     if (!dragging) return;
     if (!active) {
-      const travelled = Math.hypot(pointer.x - startPointer.x, pointer.y - startPointer.y);
+      const travelled = Math.hypot(pointer.worldX - startPointer.x, pointer.worldY - startPointer.y);
       if (travelled < DRAG_START_PX) return;
       active = true;
       state.boardLayer.bringToTop(dragging);
       dragging.setScale(1.08);
     }
-    dragging.setPosition(pointer.x, pointer.y);
+    dragging.setPosition(pointer.worldX, pointer.worldY);
   };
 
   const up = (pointer: Phaser.Input.Pointer): void => {
@@ -761,7 +761,7 @@ function attachPanelInput(
     if (!view || !from) return;
     view.setScale(1);
 
-    const target = opts.worldToCell(pointer.x, pointer.y);
+    const target = opts.worldToCell(pointer.worldX, pointer.worldY);
     const home = opts.cellToWorld(from);
 
     // A tap: the booth dispenses, anything else does nothing.
@@ -888,8 +888,8 @@ function openEventLadder(scene: BoardScene): void {
     overlay.destroy(true);
   };
 
-  const W = scene.scale.width;
-  const H = scene.scale.height;
+  const W = scene.viewW;
+  const H = scene.viewH;
   const shade = scene.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.72).setInteractive();
   shade.on('pointerup', close);
   overlay.add(shade);

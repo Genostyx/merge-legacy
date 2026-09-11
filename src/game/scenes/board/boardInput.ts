@@ -56,7 +56,7 @@ export function selectItem(scene: BoardScene, key: string): void {
 
 export function onPointerDown(scene: BoardScene, pointer: Phaser.Input.Pointer): void {
   if (scene.inputLocked || scene.modalOpen) return;
-  const cell = scene.worldToCell(pointer.x, pointer.y);
+  const cell = scene.worldToCell(pointer.worldX, pointer.worldY);
   if (!cell) return;
   const key = scene.keyOf(cell);
   const view = scene.views.get(key);
@@ -71,7 +71,7 @@ export function onPointerDown(scene: BoardScene, pointer: Phaser.Input.Pointer):
   }
   scene.draggingView = view;
   scene.dragFromCell = cell;
-  scene.dragStartPointer = { x: pointer.x, y: pointer.y };
+  scene.dragStartPointer = { x: pointer.worldX, y: pointer.worldY };
   // Deliberately NOT picked up here - see `DRAG_START_PX`. The lift, the
   // scale-up and the raise to the top all wait until the finger has moved
   // far enough to mean it.
@@ -82,7 +82,7 @@ export function onPointerMove(scene: BoardScene, pointer: Phaser.Input.Pointer):
   // Order-bar flick. Checked before the tile drag because the bar sits
   // outside the board and can never own a tile.
   if (scene.orderDrag.active) {
-    const dx = pointer.x - scene.orderDrag.startX;
+    const dx = pointer.worldX - scene.orderDrag.startX;
     scene.orderDrag.moved = Math.max(scene.orderDrag.moved, Math.abs(dx));
     scene.setOrderScroll(scene.orderDrag.startScroll - dx);
     return;
@@ -90,8 +90,8 @@ export function onPointerMove(scene: BoardScene, pointer: Phaser.Input.Pointer):
   if (!scene.draggingView) return;
   if (!scene.dragActive) {
     const travelled = Math.hypot(
-      pointer.x - scene.dragStartPointer.x,
-      pointer.y - scene.dragStartPointer.y
+      pointer.worldX - scene.dragStartPointer.x,
+      pointer.worldY - scene.dragStartPointer.y
     );
     if (travelled < DRAG_START_PX) return;
     scene.dragActive = true;
@@ -99,16 +99,16 @@ export function onPointerMove(scene: BoardScene, pointer: Phaser.Input.Pointer):
     scene.children.bringToTop(scene.draggingView);
     scene.draggingView.setScale(1.08);
   }
-  scene.draggingView.setPosition(pointer.x, pointer.y);
+  scene.draggingView.setPosition(pointer.worldX, pointer.worldY);
 
   // Merge-ready highlight: a thin acid-green pulse on whatever tile is
   // currently under the drag, but only while it's a legal merge target -
   // purely visual, driven by the same typeId+tier check onPointerUp
   // already makes, so it can't diverge from the real merge rule.
   // Live feedback on the drop target, so storage is discoverable at all.
-  scene.setInventoryHover(scene.isOverInventoryButton(pointer.x, pointer.y));
+  scene.setInventoryHover(scene.isOverInventoryButton(pointer.worldX, pointer.worldY));
 
-  const hoverCell = scene.worldToCell(pointer.x, pointer.y);
+  const hoverCell = scene.worldToCell(pointer.worldX, pointer.worldY);
   const hoverView = hoverCell ? scene.views.get(scene.keyOf(hoverCell)) : undefined;
   const isLegalTarget = !!hoverView && canMergeViews(scene, scene.draggingView, hoverView);
 
@@ -164,7 +164,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
   // that selected it also dispensed from it, so the button only appeared
   // after the crate had already given something up.
   scene.setInventoryHover(false);
-  if (scene.isOverInventoryButton(pointer.x, pointer.y)) {
+  if (scene.isOverInventoryButton(pointer.worldX, pointer.worldY)) {
     if (scene.storeDraggedView(view, fromCell)) return;
     view.setScale(1);
     await view.snapTo(fromWorld.x, fromWorld.y);
@@ -172,7 +172,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     return;
   }
 
-  const targetCell = scene.worldToCell(pointer.x, pointer.y);
+  const targetCell = scene.worldToCell(pointer.worldX, pointer.worldY);
 
   if (!targetCell || (targetCell.col === fromCell.col && targetCell.row === fromCell.row)) {
     view.setScale(1);
@@ -453,11 +453,11 @@ scene: BoardScene,
   if (!def || !lower) return;
   scene.modalOpen = true;
   const overlay = scene.add.container(0, 0).setDepth(3300);
-  const cx = scene.scale.width / 2;
-  const cy = scene.scale.height / 2;
-  const w = Math.min(340, scene.scale.width - 36);
+  const cx = scene.viewW / 2;
+  const cy = scene.viewH / 2;
+  const w = Math.min(340, scene.viewW - 36);
   const h = 280;
-  const dim = scene.add.rectangle(cx, cy, scene.scale.width, scene.scale.height, 0x000000, 0.7).setInteractive();
+  const dim = scene.add.rectangle(cx, cy, scene.viewW, scene.viewH, 0x000000, 0.7).setInteractive();
   const panel = scene.add.graphics();
   panel.fillStyle(Theme.bgElevated, 1);
   panel.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, Theme.radiusPanel);

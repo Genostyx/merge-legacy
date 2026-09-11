@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BoardScene } from './game/scenes/BoardScene';
+import { renderScale } from './game/ui/Theme';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.WEBGL,
@@ -19,15 +20,48 @@ const config: Phaser.Types.Core.GameConfig = {
     mipmapFilter: 'LINEAR_MIPMAP_LINEAR'
   },
   scale: {
-    // Match the real viewport so text remains a readable CSS-pixel size on
-    // phones instead of shrinking the entire 720x1280 scene to fit.
-    mode: Phaser.Scale.RESIZE,
-    autoCenter: Phaser.Scale.CENTER_BOTH
+    // DEVICE PIXELS IN, CSS PIXELS OUT.
+    //
+    // The game is sized in device pixels and zoomed back down by the same
+    // factor, so the canvas backing store matches the screen's real
+    // resolution while the element still occupies the right space on the
+    // page. Under RESIZE the backing store was CSS-sized, so every shape was
+    // rasterised at half or a third of the screen's resolution and stretched.
+    //
+    // NONE rather than RESIZE because RESIZE overwrites the game size with
+    // the parent's CSS size on every tick, which is precisely what has to be
+    // scaled here. `fitCanvasToViewport` below does that job instead.
+    mode: Phaser.Scale.NONE,
+    zoom: 1 / renderScale,
+    width: Math.max(2, Math.floor(window.innerWidth * renderScale)),
+    height: Math.max(2, Math.floor(window.innerHeight * renderScale))
   },
   scene: [BoardScene]
 };
 
 const game = new Phaser.Game(config);
+
+/**
+ * Keeps the canvas matched to the viewport, in device pixels.
+ *
+ * This is what RESIZE mode would have done, except it multiplies by the
+ * render scale first. The zoom in the config divides it back out again for
+ * the CSS size, so the element measures the same as it always did.
+ */
+function fitCanvasToViewport(): void {
+  const w = Math.max(2, Math.floor(window.innerWidth * renderScale));
+  const h = Math.max(2, Math.floor(window.innerHeight * renderScale));
+  if (game.scale.width === w && game.scale.height === h) return;
+  game.scale.resize(w, h);
+}
+
+window.addEventListener('resize', fitCanvasToViewport);
+window.addEventListener('orientationchange', fitCanvasToViewport);
+// A phone's browser bar collapsing resizes the visual viewport without firing
+// a window resize, and the scene's own canvas observer cannot fix the backing
+// store - only this can.
+window.visualViewport?.addEventListener('resize', fitCanvasToViewport);
+game.events.once(Phaser.Core.Events.READY, fitCanvasToViewport);
 
 // Dev-only handle, so the running scene can be inspected from a console or a
 // browser-automation tool. Stripped from production builds by the `DEV`

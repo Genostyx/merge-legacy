@@ -70,21 +70,21 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
   scene.shopOverlay = overlay;
 
   const dim = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height,
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH,
     0x000000, 0.6
   ).setInteractive();
   dim.on('pointerdown', () => scene.time.delayedCall(0, () => closeShop(scene)));
 
   const focused = mode !== 'full';
-  const panelW = Math.min(scene.scale.width - 40, 420);
+  const panelW = Math.min(scene.viewW - 40, 420);
   // The panel now takes as much height as the viewport allows and its
   // content SCROLLS, so spacing no longer has to be squeezed to fit a
   // fixed box. Sections can breathe evenly and a fourth section could be
   // added without re-tuning every gap above it.
-  const panelH = Math.min(scene.scale.height - 24, focused ? 420 : 620);
-  const panelX = scene.scale.width / 2;
-  const panelY = scene.scale.height / 2;
+  const panelH = Math.min(scene.viewH - 24, focused ? 420 : 620);
+  const panelX = scene.viewW / 2;
+  const panelY = scene.viewH / 2;
 
   const panelBg = scene.add.graphics();
   panelBg.fillStyle(Theme.bgElevated, 1);
@@ -643,16 +643,16 @@ ${formatCrateWait(offer.cooldownMs)}`,
   // doesn't buy anything. `dragMoved` is reset on pointerdown only, so it
   // is still readable by a button's pointerup regardless of handler order.
   const onDown = (pointer: Phaser.Input.Pointer): void => {
-    if (pointer.y < viewTop || pointer.y > viewBottom) return;
-    if (Math.abs(pointer.x - panelX) > panelW / 2) return;
+    if (pointer.worldY < viewTop || pointer.worldY > viewBottom) return;
+    if (Math.abs(pointer.worldX - panelX) > panelW / 2) return;
     scrollHandlers.dragging = true;
-    scrollHandlers.startY = pointer.y;
+    scrollHandlers.startY = pointer.worldY;
     scrollHandlers.startScroll = scroll;
     scrollHandlers.moved = 0;
   };
   const onMove = (pointer: Phaser.Input.Pointer): void => {
     if (!scrollHandlers.dragging) return;
-    const dy = pointer.y - scrollHandlers.startY;
+    const dy = pointer.worldY - scrollHandlers.startY;
     scrollHandlers.moved = Math.max(scrollHandlers.moved, Math.abs(dy));
     scrollHandlers.apply(scrollHandlers.startScroll - dy);
   };

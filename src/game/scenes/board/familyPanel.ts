@@ -37,8 +37,8 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
 
   // Tap anywhere outside closes, as well as the X.
   const shade = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height,
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH,
     0x000000, 0.68
   ).setInteractive();
   shade.on('pointerup', close);
@@ -49,11 +49,11 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   const slot = 62;
   const gap = 8;
   const gridW = COLS * slot + (COLS - 1) * gap;
-  const panelW = Math.min(scene.scale.width - 32, gridW + 44);
+  const panelW = Math.min(scene.viewW - 32, gridW + 44);
   const headerH = 62;
   const panelH = headerH + rows * slot + (rows - 1) * gap + 22;
-  const left = scene.scale.width / 2 - panelW / 2;
-  const top = scene.scale.height / 2 - panelH / 2;
+  const left = scene.viewW / 2 - panelW / 2;
+  const top = scene.viewH / 2 - panelH / 2;
 
   const bg = scene.add.graphics();
   bg.fillStyle(Theme.bgElevated, 1);
@@ -69,13 +69,13 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   // The name IS kept, against the show-don't-tell rule, because a single
   // tier's icon does not tell you whether you are looking at Stone or Glass -
   // the art cannot carry it, which is exactly the exception that rule allows.
-  const title = scene.add.text(scene.scale.width / 2, top + 24, FAMILY_NAMES[typeId] ?? typeId.toUpperCase(), {
+  const title = scene.add.text(scene.viewW / 2, top + 24, FAMILY_NAMES[typeId] ?? typeId.toUpperCase(), {
     resolution: textResolution,
     fontFamily: Theme.fontHeading, fontSize: '17px', fontStyle: 'bold',
     color: hex(familyColor)
   }).setOrigin(0.5);
   const count = scene.add.text(
-    scene.scale.width / 2, top + 44,
+    scene.viewW / 2, top + 44,
     `${claimedInFamily(scene.collection, typeId)}/${chain.tiers.length}`,
     {
       resolution: textResolution,
@@ -92,7 +92,7 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   xHit.on('pointerup', close);
   overlay.add([x, xHit]);
 
-  const gridLeft = scene.scale.width / 2 - gridW / 2;
+  const gridLeft = scene.viewW / 2 - gridW / 2;
   const gridTop = top + headerH;
 
   chain.tiers.forEach((def, index) => {

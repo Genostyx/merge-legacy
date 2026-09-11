@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { renderScale } from '../ui/Theme';
 import { CURRENCY_COLOR, currencyKindFor, currencyLabel } from '../ui/CurrencyGlyph';
 import { Theme, hex, textResolution } from '../ui/Theme';
 
@@ -149,7 +150,7 @@ function mixColor(a: number, b: number, t: number): number {
 }
 
 export function shockwaveRing(scene: Phaser.Scene, x: number, y: number, color: number): void {
-  const reach = Math.max(scene.scale.width, scene.scale.height) * 0.95;
+  const reach = Math.max(scene.scale.width, scene.scale.height) / renderScale * 0.95;
   const SEGMENTS = 72;
   // Fixed per burst, so the shell holds its shape as it grows instead of
   // boiling - it is one cloud expanding, not a new cloud every frame.

@@ -354,8 +354,8 @@ export function openProject(scene: BoardScene): void {
 
   const overlay = scene.add.container(0, 0).setDepth(4000);
   scene.projectOverlay = overlay;
-  const w = scene.scale.width;
-  const h = scene.scale.height;
+  const w = scene.viewW;
+  const h = scene.viewH;
   // Fully TRANSPARENT: it exists to swallow taps that miss the panel's own
   // controls, not to darken anything. It was opaque and went unnoticed only
   // because the board-hiding sweep ran after it and swept it up too; with
@@ -449,8 +449,8 @@ export function openProject(scene: BoardScene): void {
   let pressedHere = false;
   orbitZone.on('pointerdown', () => { orbitMoved = 0; pressedHere = true; });
   orbitZone.on('drag', (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-    const dx = pointer.x - pointer.prevPosition.x;
-    const dy = pointer.y - pointer.prevPosition.y;
+    const dx = pointer.worldX - pointer.prevPosition.x;
+    const dy = pointer.worldY - pointer.prevPosition.y;
     orbitMoved += Math.abs(dx) + Math.abs(dy);
     scene.roomView?.orbitBy(dx, dy);
     // `drag` gives absolute positions we do not use; consuming them keeps
@@ -467,8 +467,8 @@ export function openProject(scene: BoardScene): void {
     // Scene units -> normalised device coordinates. The 3D canvas covers the
     // game canvas exactly, so the two spaces map straight onto each other.
     scene.roomView?.pickAt(
-      (pointer.x / scene.scale.width) * 2 - 1,
-      -(pointer.y / scene.scale.height) * 2 + 1
+      (pointer.worldX / scene.viewW) * 2 - 1,
+      -(pointer.worldY / scene.viewH) * 2 + 1
     );
   });
   // Wheel has to come through Phaser too - the 3D canvas is pointer-events
@@ -821,8 +821,8 @@ export function openProject(scene: BoardScene): void {
 export function confirmProjectPurchase(scene: BoardScene, stageDef: ProjectStage): void {
   if (!scene.projectOverlay || scene.projectStage >= PROJECT_STAGES.length) return;
   const cost = stageDef.coins;
-  const w = scene.scale.width;
-  const h = scene.scale.height;
+  const w = scene.viewW;
+  const h = scene.viewH;
   const confirm = scene.add.container(0, 0).setDepth(4100);
   const dim = scene.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.68).setInteractive();
   const panel = scene.add.graphics();
@@ -942,7 +942,7 @@ scene: BoardScene,
   // rather than on the dark board, and the muted green disappeared into it.
   const NEON = 0x4dff9a;
 
-  const group = scene.add.container(scene.scale.width / 2, scene.scale.height / 2 + 12)
+  const group = scene.add.container(scene.viewW / 2, scene.viewH / 2 + 12)
     .setDepth(4200);
 
   const plus = scene.add.text(0, 0, '+', {

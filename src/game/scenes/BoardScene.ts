@@ -185,7 +185,7 @@ import {
   type CollectMultiplier
 } from '../dispensers/Dispensers';
 import type { DispenserState } from '../dispensers/Dispensers';
-import { Theme, hex, materialLighting, textResolution, toneAt } from '../ui/Theme';
+import { Theme, hex, materialLighting, textResolution, toneAt, renderScale } from '../ui/Theme';
 import {
   SUPPLY_CRATES, SUPPLY_CRATE_MIN_LEVEL, type SupplyCrateOffer, supplyCratePrice,
   supplyCrateReady, supplyCooldownRemaining,
@@ -422,6 +422,22 @@ export class BoardScene extends Phaser.Scene {
   views = new Map<string, BoardView>(); // key = `${col},${row}`
   cellSize = 0;
   boardOriginX = 0;
+  /**
+   * THE VIEWPORT IN CSS PIXELS - what every layout number in this game is
+   * measured in.
+   *
+   * `scale.width` is now DEVICE pixels: the canvas is sized by the screen's
+   * real resolution so shapes rasterise sharply, and the camera is zoomed by
+   * the same factor to put the world back into CSS pixels. Layout reads these
+   * instead, so not one gap, font size or cell measurement had to change when
+   * the renderer started drawing at 2x or 3x.
+   */
+  // Reads the ScaleManager DIRECTLY. A blanket rewrite of `this.scale.width`
+  // to `this.viewW` caught these two lines as well and made each getter call
+  // itself - the game booted to a stack overflow with a perfectly sharp,
+  // perfectly blank canvas.
+  get viewW(): number { return this.scale.width / renderScale; }
+  get viewH(): number { return this.scale.height / renderScale; }
   boardOriginY = 0;
   contentTop = 0;
   boardExpansionUnlocked = new Set<string>();
@@ -775,7 +791,28 @@ export class BoardScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Puts the world back into CSS pixels.
+   *
+   * The canvas is sized in device pixels so shapes rasterise at the screen's
+   * real resolution. Zooming the camera by the same factor means a scene
+   * coordinate is a CSS pixel again - so the whole game lays itself out in
+   * the units it always did, and only the rasteriser works harder.
+   *
+   * Re-applied in create() rather than once at boot: a resize restarts the
+   * scene, and a fresh camera comes back at zoom 1.
+   */
+  private applyRenderScale(): void {
+    const cam = this.cameras.main;
+    cam.setZoom(renderScale);
+    // Zoom is about the camera's centre, so the view has to be re-centred on
+    // the middle of the CSS-pixel world or the top-left corner drifts
+    // off-screen by half the difference.
+    cam.centerOn(this.viewW / 2, this.viewH / 2);
+  }
+
   create(): void {
+    this.applyRenderScale();
     // Phaser keeps the Scene instance when `scene.restart()` is used after a
     // viewport resize. Clear references to display objects that shutdown just
     // destroyed before rebuilding the responsive layout.
@@ -975,8 +1012,8 @@ export class BoardScene extends Phaser.Scene {
     // or not-yet-composited canvas, common during a Capacitor splash
     // transition) are skipped rather than rebuilt against 0x0.
     let resizeDebounce: Phaser.Time.TimerEvent | null = null;
-    let lastW = this.scale.width;
-    let lastH = this.scale.height;
+    let lastW = this.viewW;
+    let lastH = this.viewH;
     // Set by the fullscreen handler: a mode change must rebuild even when the
     // viewport lands within the noise threshold below.
     let forceRebuild = false;
@@ -992,8 +1029,8 @@ export class BoardScene extends Phaser.Scene {
       resizeDebounce?.remove();
       resizeDebounce = this.time.delayedCall(160, () => {
         resizeDebounce = null;
-        const w = this.scale.width;
-        const h = this.scale.height;
+        const w = this.viewW;
+        const h = this.viewH;
         if (w < 2 || h < 2) return; // canvas not composited yet - nothing safe to lay out against
         const changed = Math.abs(w - lastW) >= 2 || Math.abs(h - lastH) >= 2;
         if (!changed && !forceRebuild) return; // no meaningful change
@@ -1022,7 +1059,7 @@ export class BoardScene extends Phaser.Scene {
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
       if (w < 2 || h < 2) return;
-      if (Math.abs(w - this.scale.width) < 2 && Math.abs(h - this.scale.height) < 2) return;
+      if (Math.abs(w - this.viewW) < 2 && Math.abs(h - this.viewH) < 2) return;
       this.scale.resize(w, h);
       onViewportResize();
     });
@@ -1037,7 +1074,7 @@ export class BoardScene extends Phaser.Scene {
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
       if (w < 2 || h < 2) return;
-      if (Math.abs(w - this.scale.width) < 2 && Math.abs(h - this.scale.height) < 2) return;
+      if (Math.abs(w - this.viewW) < 2 && Math.abs(h - this.viewH) < 2) return;
       this.scale.resize(w, h);
       this.scene.restart();
     });
@@ -1096,8 +1133,8 @@ export class BoardScene extends Phaser.Scene {
    * explicitly wants this specific photo, not a vector interpretation of it.
    */
   private drawSceneBackground(): void {
-    const w = this.scale.width;
-    const h = this.scale.height;
+    const w = this.viewW;
+    const h = this.viewH;
     const img = this.add.image(w / 2, h / 2, 'bgPhoto').setDepth(-100);
     // Overscanned. Cover-scaling to the exact viewport left the photo short of
     // the bottom edge whenever the canvas grew after the scene was laid out.
@@ -1115,7 +1152,7 @@ export class BoardScene extends Phaser.Scene {
     // one of those pixels came straight off the cell size. The board is meant
     // to reach for the screen edges; the HUD row above it keeps its own
     // insets, so nothing lands under a rounded corner.
-    const margin = Phaser.Math.Clamp(Math.round(this.scale.width * 0.012), 4, 10);
+    const margin = Phaser.Math.Clamp(Math.round(this.viewW * 0.012), 4, 10);
     // Header row, then the order cards with their GO chips above them. The
     // crate ring shares the cards' row now, so it costs no height of its own.
     // The order row is lifted 10px below, leaving four pixels between its
@@ -1130,13 +1167,13 @@ export class BoardScene extends Phaser.Scene {
     // flat 74 - otherwise the tray keeps its full size on a narrow phone and
     // takes the height out of the board.
     const trayScale = Phaser.Math.Clamp(
-      Math.floor(Math.min(96, (this.scale.width - margin * 2) / COLS)) / CHROME_BASE_CELL,
+      Math.floor(Math.min(96, (this.viewW - margin * 2) / COLS)) / CHROME_BASE_CELL,
       0.82,
       1.15
     );
     this.trayScale = trayScale;
     const trayReserve = Math.round(74 * trayScale);
-    const availW = this.scale.width - margin * 2;
+    const availW = this.viewW - margin * 2;
 
     // TWO passes, because the two sizes depend on each other: the chrome
     // scales off the cell, and the cell has to fit in what the chrome leaves.
@@ -1147,10 +1184,10 @@ export class BoardScene extends Phaser.Scene {
     const widthCellSize = Math.floor(Math.min(96, availW / COLS));
     const cellFor = (header: number): number => Math.max(38, Math.min(
       widthCellSize,
-      Math.floor((this.scale.height - header - trayReserve - trayGap - outerReserve) / ROWS)
+      Math.floor((this.viewH - header - trayReserve - trayGap - outerReserve) / ROWS)
     ));
     const isFullscreen = !!fullscreenElement();
-    const extraPortraitRoom = Math.max(0, this.scale.height - this.scale.width * 1.72);
+    const extraPortraitRoom = Math.max(0, this.viewH - this.viewW * 1.72);
     // THE HEADER SCALES WITH THE BOARD, rather than sitting at a fixed size
     // and pushing what is under it out of the way.
     //
@@ -1161,7 +1198,7 @@ export class BoardScene extends Phaser.Scene {
     // contents spaced relative to each other and hands back the height the band
     // is not using. CHROME_BASE_CELL is the cell it was tuned against.
     this.hudScale = isFullscreen
-      ? Phaser.Math.Clamp(1 + extraPortraitRoom / Math.max(1, this.scale.height), 1.12, 1.2)
+      ? Phaser.Math.Clamp(1 + extraPortraitRoom / Math.max(1, this.viewH), 1.12, 1.2)
       : Phaser.Math.Clamp(widthCellSize / CHROME_BASE_CELL, 0.82, 1.15);
     this.chromeScale = Phaser.Math.Clamp(
       Math.max(cellFor(124) / CHROME_BASE_CELL, this.hudScale),
@@ -1195,7 +1232,7 @@ export class BoardScene extends Phaser.Scene {
     const headerReserve = Math.round(54 * this.hudScale + ORDER_CARD_H * this.chromeScale);
     this.cellSize = cellFor(headerReserve);
     const contentH = headerReserve + ROWS * this.cellSize + trayGap + trayReserve;
-    this.boardOriginX = Math.floor((this.scale.width - COLS * this.cellSize) / 2);
+    this.boardOriginX = Math.floor((this.viewW - COLS * this.cellSize) / 2);
 
     // ONE GAP, USED ON BOTH SIDES OF THE BOARD.
     //
@@ -1212,7 +1249,7 @@ export class BoardScene extends Phaser.Scene {
     // AND below. Any height still left over goes outside the whole block,
     // never into one of the two gaps.
     const boardH = ROWS * this.cellSize;
-    const spare = this.scale.height - headerReserve - boardH - trayReserve - outerReserve * 2;
+    const spare = this.viewH - headerReserve - boardH - trayReserve - outerReserve * 2;
     // TIGHT, and capped. The things nearest the board - the order row above,
     // the inventory button and tray below - should sit right against it, not
     // float. Letting the gap grow with the spare height put 24px there on a
@@ -1230,7 +1267,7 @@ export class BoardScene extends Phaser.Scene {
     // leaving a dead strip at the bottom wasted the only slack the layout has -
     // slack the header needs to stop clipping what sits under it.
     this.contentTop = Phaser.Math.Clamp(
-      Math.floor((this.scale.height - blockH) / 2), 0, 72
+      Math.floor((this.viewH - blockH) / 2), 0, 72
     );
     this.boardOriginY = this.contentTop + headerReserve + gap;
     this.boardToTrayGap = gap;
@@ -2715,7 +2752,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       (entry): entry is [string, SpawnerView] =>
         entry[1] instanceof SpawnerView && entry[1].spawner.typeId === 'decagon'
     );
-    let origin = { x: this.scale.width / 2, y: this.scale.height / 2 };
+    let origin = { x: this.viewW / 2, y: this.viewH / 2 };
     if (machine) origin = this.cellToWorld(machine[1].gridPos);
 
     // THE MEAL. The ten are pulled INTO the machine rather than deleted where

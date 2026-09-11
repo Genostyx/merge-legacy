@@ -47,8 +47,8 @@ export function drawCollectionBook(scene: BoardScene, g: Phaser.GameObjects.Grap
 }
 
 export function buildMainCollectionButton(scene: BoardScene): void {
-  const x = scene.scale.width / 2;
-  const y = scene.scale.height - 18;
+  const x = scene.viewW / 2;
+  const y = scene.viewH - 18;
   const w = 44;
   const h = 30;
   scene.mainCollectionPanel = scene.add.graphics().setDepth(12);
@@ -91,29 +91,29 @@ export function openCollection(scene: BoardScene, initialScroll = 0): void {
   const overlay = scene.add.container(0, 0).setDepth(3001);
   scene.collectionOverlay = overlay;
   const shade = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height,
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH,
     0x000000, 0.68
   ).setInteractive();
 
-  const panelW = Math.min(430, scene.scale.width - 24);
-  const panelH = Math.min(620, scene.scale.height - 28);
-  const left = scene.scale.width / 2 - panelW / 2;
-  const top = scene.scale.height / 2 - panelH / 2;
+  const panelW = Math.min(430, scene.viewW - 24);
+  const panelH = Math.min(620, scene.viewH - 28);
+  const left = scene.viewW / 2 - panelW / 2;
+  const top = scene.viewH / 2 - panelH / 2;
   const bg = scene.add.graphics();
   bg.fillStyle(Theme.bgElevated, 1);
   bg.fillRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
   bg.lineStyle(Theme.borderWidthStrong, Theme.borderOnDark, 1);
   bg.strokeRoundedRect(left, top, panelW, panelH, Theme.radiusPanel);
 
-  const title = scene.add.text(scene.scale.width / 2, top + 24, 'COLLECTION', {
+  const title = scene.add.text(scene.viewW / 2, top + 24, 'COLLECTION', {
     resolution: textResolution,
     fontFamily: Theme.fontHeading,
     fontSize: '19px',
     fontStyle: 'bold',
     color: hex(Theme.textOnDark)
   }).setOrigin(0.5);
-  const subtitle = scene.add.text(scene.scale.width / 2, top + 45, 'DISCOVER ITEMS  ·  CLAIM ONE GEM EACH', {
+  const subtitle = scene.add.text(scene.viewW / 2, top + 45, 'DISCOVER ITEMS  ·  CLAIM ONE GEM EACH', {
     resolution: textResolution,
     fontFamily: Theme.fontMono,
     fontSize: '8px',
@@ -131,7 +131,7 @@ export function openCollection(scene: BoardScene, initialScroll = 0): void {
   const viewportTop = top + 65;
   const viewportBottom = top + panelH - 14;
   const viewportH = viewportBottom - viewportTop;
-  const scrollZone = scene.add.zone(scene.scale.width / 2, viewportTop + viewportH / 2, panelW - 20, viewportH)
+  const scrollZone = scene.add.zone(scene.viewW / 2, viewportTop + viewportH / 2, panelW - 20, viewportH)
     .setInteractive({ useHandCursor: true });
   const content = scene.add.container(0, 0);
   const maskShape = scene.add.graphics().setVisible(false);
@@ -317,20 +317,20 @@ export function openCollection(scene: BoardScene, initialScroll = 0): void {
   };
   setScroll(initialScroll);
   const onDown = (pointer: Phaser.Input.Pointer): void => {
-    if (pointer.x < left + 10 || pointer.x > left + panelW - 10 || pointer.y < viewportTop || pointer.y > viewportBottom) return;
+    if (pointer.worldX < left + 10 || pointer.worldX > left + panelW - 10 || pointer.worldY < viewportTop || pointer.worldY > viewportBottom) return;
     dragging = true;
-    dragStartY = pointer.y;
+    dragStartY = pointer.worldY;
     dragStartScroll = scroll;
     collectionDragMoved = 0;
   };
   const onMove = (pointer: Phaser.Input.Pointer): void => {
     if (!dragging) return;
-    collectionDragMoved = Math.max(collectionDragMoved, Math.abs(pointer.y - dragStartY));
-    setScroll(dragStartScroll + dragStartY - pointer.y);
+    collectionDragMoved = Math.max(collectionDragMoved, Math.abs(pointer.worldY - dragStartY));
+    setScroll(dragStartScroll + dragStartY - pointer.worldY);
   };
   const onUp = (): void => { dragging = false; };
   const onWheel = (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void => {
-    if (pointer.x < left || pointer.x > left + panelW || pointer.y < viewportTop || pointer.y > viewportBottom) return;
+    if (pointer.worldX < left || pointer.worldX > left + panelW || pointer.worldY < viewportTop || pointer.worldY > viewportBottom) return;
     setScroll(scroll + dy * 0.55);
   };
   scene.input.on('pointerdown', onDown);

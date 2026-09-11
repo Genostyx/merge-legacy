@@ -132,6 +132,25 @@ export const Theme = {
  * layout. Capped at 3 so a 4x device doesn't spend texture memory for gain
  * no one can see.
  */
+/**
+ * THE DEVICE PIXEL RATIO the game renders at, capped at 3.
+ *
+ * A phone screen has two or three physical pixels per CSS pixel. Phaser's
+ * RESIZE scale mode sizes the canvas backing store in CSS pixels, so on a
+ * 2x phone every drawn shape was rasterised at half the screen's resolution
+ * and then stretched - which is the entire reason the art looked soft and
+ * blocky beside other mobile games. Text escaped it because Phaser renders
+ * text through its own `resolution` (see `textResolution` below), which is
+ * why the type looked fine while the art did not.
+ *
+ * Capped at 3 because a 4x device costs 16x the fill rate for a difference
+ * nobody can see.
+ */
+export const renderScale = Math.min(
+  typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
+  3
+);
+
 export const textResolution = Math.min(
   typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
   3

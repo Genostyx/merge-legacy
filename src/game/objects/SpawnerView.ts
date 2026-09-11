@@ -4,7 +4,7 @@ import type { GridPosition, TileState } from '../types';
 import type { SpawnerCellData } from '../Grid';
 import { getTierDef } from '../data/chains';
 import { cooldownForTier, isReady, msRemaining, syncDispenser } from '../dispensers/Dispensers';
-import { Theme, materialLighting } from '../ui/Theme';
+import { Theme, materialLighting, renderScale } from '../ui/Theme';
 import { SOURCE_DRAWN_TARGET, drawSourceBuilding, sourceBuildingRadius, sourcePalette } from './TierIcons';
 
 /** A production source that occupies, moves, and merges on the main board. */
@@ -264,7 +264,7 @@ export class SpawnerView extends Phaser.GameObjects.Container {
     // one cell out over 430ms while fading the whole way, which finished
     // before it registered as anything - the throw has to be long enough to
     // read as ten things escaping.
-    const far = Math.max(this.scene.scale.width, this.scene.scale.height);
+    const far = Math.max(this.scene.scale.width, this.scene.scale.height) / renderScale;
     for (let i = 0; i < 10; i++) {
       const a = -Math.PI / 2 + (i / 10) * Math.PI * 2 + spun;
       const pip = this.scene.add.graphics().setDepth(3000);

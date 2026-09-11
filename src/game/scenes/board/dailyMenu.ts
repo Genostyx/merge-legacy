@@ -35,17 +35,17 @@ export function openDailyMenu(scene: BoardScene): void {
   const activeIndex = Math.min(preview.streak, 5) - 1;
   const claimedThrough = Math.min(Math.max(0, preview.streak - 1), 5);
 
-  const W = Math.min(scene.scale.width - 36, 380);
+  const W = Math.min(scene.viewW - 36, 380);
   const H = 336;
-  const cx = scene.scale.width / 2;
-  const cy = scene.scale.height / 2;
+  const cx = scene.viewW / 2;
+  const cy = scene.viewH / 2;
 
   // 0.72, and darker than the other panels' 0.6: this one interrupts the
   // session rather than being opened, so the board behind it should read as
   // switched off. The fill alpha is set here and the OBJECT alpha is what
   // animates - passing 0 as the fill alpha made a rectangle that could
   // never be seen however far its alpha was tweened.
-  const dim = scene.add.rectangle(cx, cy, scene.scale.width, scene.scale.height, 0x000000, 0.72)
+  const dim = scene.add.rectangle(cx, cy, scene.viewW, scene.viewH, 0x000000, 0.72)
     .setDepth(3000).setAlpha(0).setInteractive();
   const card = scene.add.container(cx, cy).setDepth(3001);
 

@@ -483,7 +483,7 @@ export function buildShopIconButton(scene: BoardScene, cx: number, cy: number, o
 }
 
 export function buildAutoMergeButton(scene: BoardScene): void {
-  scene.autoMergeText = scene.add.text(scene.scale.width - 48, scene.scale.height - 8, '', {
+  scene.autoMergeText = scene.add.text(scene.viewW - 48, scene.viewH - 8, '', {
     resolution: textResolution,
     fontFamily: Theme.fontMono,
     fontSize: '10px',

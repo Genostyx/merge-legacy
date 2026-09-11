@@ -284,12 +284,12 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
   // used to be `96 + INVENTORY_GRID * CELL`, which pinned the viewport to
   // three rows on every device - so 35 slots were read three at a time
   // through a letterbox on a phone that had room for twice that.
-  const H = Math.min(scene.scale.height - 40, 96 + rows * CELL);
+  const H = Math.min(scene.viewH - 40, 96 + rows * CELL);
 
   const overlay = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2, scene.scale.width, scene.scale.height, 0x000000, 0.6
+    scene.viewW / 2, scene.viewH / 2, scene.viewW, scene.viewH, 0x000000, 0.6
   ).setDepth(3000).setInteractive();
-  const card = scene.add.container(scene.scale.width / 2, scene.scale.height / 2).setDepth(3001);
+  const card = scene.add.container(scene.viewW / 2, scene.viewH / 2).setDepth(3001);
   // Swallows every pointer inside the panel. The backdrop below is what
   // closes the menu, and a Graphics background is not interactive - so
   // without this, a tap on the panel itself fell straight through to the
@@ -344,18 +344,18 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
   let scrollStartX = 0;
   let scrollStart = 0;
   const onScrollDown = (pointer: Phaser.Input.Pointer): void => {
-    if (pointer.x < card.x - W / 2 + 10 || pointer.x > card.x + W / 2 - 10
-      || pointer.y < card.y + gridTop || pointer.y > card.y + viewportBottom) return;
+    if (pointer.worldX < card.x - W / 2 + 10 || pointer.worldX > card.x + W / 2 - 10
+      || pointer.worldY < card.y + gridTop || pointer.worldY > card.y + viewportBottom) return;
     gesture = 'none';
     scrolling = true;
-    scrollStartY = pointer.y;
-    scrollStartX = pointer.x;
+    scrollStartY = pointer.worldY;
+    scrollStartX = pointer.worldX;
     scrollStart = scroll;
   };
   const onScrollMove = (pointer: Phaser.Input.Pointer): void => {
     if (!scrolling || gesture === 'item') return;
-    const dy = scrollStartY - pointer.y;
-    const dx = scrollStartX - pointer.x;
+    const dy = scrollStartY - pointer.worldY;
+    const dx = scrollStartX - pointer.worldX;
     if (gesture === 'none') {
       if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
       if (Math.abs(dy) <= Math.abs(dx)) return;   // let the item drag claim it
@@ -365,8 +365,8 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
   };
   const onScrollUp = (): void => { scrolling = false; gesture = 'none'; };
   const onScrollWheel = (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number): void => {
-    if (pointer.x < card.x - W / 2 || pointer.x > card.x + W / 2
-      || pointer.y < card.y + gridTop || pointer.y > card.y + viewportBottom) return;
+    if (pointer.worldX < card.x - W / 2 || pointer.worldX > card.x + W / 2
+      || pointer.worldY < card.y + gridTop || pointer.worldY > card.y + viewportBottom) return;
     setScroll(scroll + dy * 0.55);
   };
   scene.input.on('pointerdown', onScrollDown);
@@ -482,24 +482,24 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
       let pressX = 0;
       let pressY = 0;
       hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        pressX = pointer.x;
-        pressY = pointer.y;
+        pressX = pointer.worldX;
+        pressY = pointer.worldY;
       });
       hit.on('drag', (pointer: Phaser.Input.Pointer) => {
         // The list already claimed this gesture as a scroll.
         if (gesture === 'scroll') return;
-        if (!wasDragged && Phaser.Math.Distance.Between(pressX, pressY, pointer.x, pointer.y) <= 6) return;
+        if (!wasDragged && Phaser.Math.Distance.Between(pressX, pressY, pointer.worldX, pointer.worldY) <= 6) return;
         if (!wasDragged) {
           gesture = 'item';
           wasDragged = true;
           content.bringToTop(visual);
           content.bringToTop(hit);
         }
-        visual.setPosition(pointer.x - card.x, pointer.y - card.y - content.y);
+        visual.setPosition(pointer.worldX - card.x, pointer.worldY - card.y - content.y);
       });
       hit.on('dragend', (pointer: Phaser.Input.Pointer) => {
         if (!wasDragged) return;
-        const target = slotAtPointer(pointer.x, pointer.y);
+        const target = slotAtPointer(pointer.worldX, pointer.worldY);
         if (target === null || target === slot) {
           visual.setPosition(cx, cy);
           return;

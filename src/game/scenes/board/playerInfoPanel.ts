@@ -62,17 +62,17 @@ export function openPlayerInfo(scene: BoardScene): void {
   }
 
   const overlay = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height,
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH,
     0x000000, 0.6
   ).setDepth(3000).setInteractive();
 
-  const card = scene.add.container(scene.scale.width / 2, scene.scale.height / 2).setDepth(3001);
-  const panelW = Math.min(360, scene.scale.width - 40);
+  const card = scene.add.container(scene.viewW / 2, scene.viewH / 2).setDepth(3001);
+  const panelW = Math.min(360, scene.viewW - 40);
   // 316, down from 360. The panel was a title row, three blocks and the gaps
   // between them; dropping the title and the advice line took about 60px of
   // nothing out of it, so what is left is denser rather than more cramped.
-  const panelH = Math.min(316, scene.scale.height - 32);
+  const panelH = Math.min(316, scene.viewH - 32);
   const left = -panelW / 2;
   const top = -panelH / 2;
   // Built exactly as the daily menu's panel is - cast shadow, top-lit

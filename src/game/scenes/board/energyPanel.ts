@@ -38,8 +38,8 @@ export function offerEnergyRefill(scene: BoardScene): void {
   const affordable = scene.economy.gems >= refillCost;
 
   const overlay = scene.add.rectangle(
-    scene.scale.width / 2, scene.scale.height / 2,
-    scene.scale.width, scene.scale.height,
+    scene.viewW / 2, scene.viewH / 2,
+    scene.viewW, scene.viewH,
     0x000000, 0.6
   ).setDepth(3000).setInteractive();
 
@@ -54,7 +54,7 @@ export function offerEnergyRefill(scene: BoardScene): void {
   // current energy - carried the same weight as a help string, and a panel
   // ABOUT energy showed no energy.
   const CARD_H = 288;
-  const card = scene.add.container(scene.scale.width / 2, scene.scale.height / 2).setDepth(3001);
+  const card = scene.add.container(scene.viewW / 2, scene.viewH / 2).setDepth(3001);
   const cardBg = scene.add.graphics();
   cardBg.fillStyle(Theme.bgElevated, 1);
   cardBg.fillRoundedRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, Theme.radiusPanel);

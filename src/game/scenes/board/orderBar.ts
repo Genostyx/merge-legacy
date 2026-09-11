@@ -123,7 +123,7 @@ export function buildOrderBar(scene: BoardScene): void {
     // Tap vs. drag, same rule the shop uses: a card must not fire when the
     // player was actually flicking the bar sideways to reach another order.
     zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      scene.orderDrag = { active: true, slot: position, startX: pointer.x, startScroll: scene.orderScroll, moved: 0, describe: null };
+      scene.orderDrag = { active: true, slot: position, startX: pointer.worldX, startScroll: scene.orderScroll, moved: 0, describe: null };
     });
 
     root.add([bg, progress, zone]);
@@ -468,7 +468,7 @@ export function refreshOrderBar(scene: BoardScene): void {
       scene.orderDrag = {
         active: true,
         slot: queueSlot,
-        startX: pointer.x,
+        startX: pointer.worldX,
         startScroll: scene.orderScroll,
         moved: 0,
         // Only an order that CANNOT be delivered describes its items. Once
