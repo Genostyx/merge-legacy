@@ -1889,19 +1889,6 @@ function drawMahoganyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette
   ));
 }
 
-/**
- * Turns a flat-lying mesh to FACE the camera.
- *
- * A knot is a plate in its own coordinates - all its structure is in one
- * plane - so left lying on the ground it projects to a squashed ring and the
- * weave disappears. These two turns take its +z axis onto the view axis, so
- * the plane the knot lives in is the plane the viewer is looking at. The
- * numbers are derived from that axis, `(1, 1, 0.62)`, not chosen by eye.
- */
-function facingCamera(mesh: Mesh): Mesh {
-  return rotateZ(rotateY(mesh, 0.184), 0.125);
-}
-
 /** Blends a tone toward gilt at the lit end of the ramp only. */
 function giltRamp(p: Palette, strength: number): (t: number) => number {
   return (t) => {
@@ -1930,8 +1917,12 @@ function drawEbonyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
 function drawGildedRosewood(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
   // Tier 8's smooth interlocking knot - a real trefoil tube, modelled rather
   // than drawn, so the three crossings are occlusion instead of draw order.
-  renderMesh(g, facingCamera(WOVEN_KNOT_3), {
-    u: s * 0.92, tone: giltRamp(p, 0.75), edge: p.shadow, edgeAlpha: 0.22, center: true
+  // Lying in its own plane, seen from the board's camera like everything
+  // else. It was first turned to face the viewer square on, which is a
+  // flat-art instinct: it made the knot legible by taking it OUT of the
+  // scene every other object shares.
+  renderMesh(g, WOVEN_KNOT_3, {
+    u: s * 1.15, tone: giltRamp(p, 0.75), center: true, smooth: 35
   });
   drawSparkles(g, [[s * 0.24, -s * 0.2, s * 0.016], [-s * 0.25, s * 0.15, s * 0.013]]);
 }
@@ -1939,8 +1930,8 @@ function drawGildedRosewood(g: Phaser.GameObjects.Graphics, s: number, p: Palett
 function drawRosewoodHeirloom(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
   // The capstone: five lobes against tier 8's three. More crossings, a denser
   // weave, and the gilt pushed further up the ramp.
-  renderMesh(g, facingCamera(WOVEN_KNOT_5), {
-    u: s * 0.94, tone: giltRamp(p, 0.9), edge: p.shadow, edgeAlpha: 0.22, center: true
+  renderMesh(g, WOVEN_KNOT_5, {
+    u: s * 1.18, tone: giltRamp(p, 0.9), center: true, smooth: 35
   });
   drawInlayAccent(g, 0, 0, s * 0.05, GILT);
   drawSparkles(g, [[s * 0.26, -s * 0.24, s * 0.017], [-s * 0.27, s * 0.17, s * 0.014], [s * 0.05, s * 0.3, s * 0.012]]);

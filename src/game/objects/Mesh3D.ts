@@ -30,6 +30,20 @@ export interface Mesh {
   verts: Vec3[];
   /** Vertex indices, wound counter-clockwise seen from OUTSIDE the solid. */
   faces: number[][];
+  /**
+   * Shading normal per face CORNER, when the mesh carries its own.
+   *
+   * Baked out of Blender with Shade Auto Smooth on, rather than recomputed
+   * here. The renderer can blend normals by angle perfectly well, but then
+   * what Blender shows and what the game draws are two implementations that
+   * have to agree - and when they disagree there is no way to tell which is
+   * wrong. A mesh that ships its normals shades in the game exactly as it
+   * looked when it was modelled.
+   *
+   * These are directions, not positions: translating and scaling a mesh
+   * leaves them valid, ROTATING one does not.
+   */
+  cornerNormals?: Vec3[][];
 }
 
 /**
@@ -201,6 +215,25 @@ export interface RenderOpts {
    * offset that has to be re-tuned every time its geometry moves.
    */
   center?: boolean;
+  /**
+   * AUTO SMOOTH, by angle - Blender's rule, not a blanket one.
+   *
+   * `true` uses the default threshold; a number sets it in degrees. Faces
+   * meeting at a shallower angle than this are shaded across; anything
+   * sharper keeps its hard edge.
+   *
+   * A blanket smooth is wrong, and wrong in a way that looks like a bug: it
+   * rounds off the corners of the tube's own cross-section as eagerly as it
+   * rounds the sweep along its length, so a solid loses the crease that says
+   * where it actually bends. The threshold is what separates "this facet is
+   * an artefact of how finely I sampled the curve" from "this edge is real".
+   *
+   * Phaser cannot fill an arbitrary polygon with a gradient, but it CAN give
+   * a triangle a colour per vertex. So a smoothed face is fanned into
+   * triangles and each corner takes the tone of its own blended normal -
+   * Gouraud shading, through the one primitive the engine offers.
+   */
+  smooth?: boolean | number;
 }
 
 /**
@@ -223,27 +256,73 @@ export function renderMesh(
     oy -= (b.minY + b.maxY) / 2;
   }
 
+  // Normals, per FACE and per CORNER. A corner's normal is the blend of the
+  // faces meeting there that are within the smoothing angle of this one - so
+  // the same vertex can be smooth along the sweep of a tube and hard across
+  // the crease where it folds, which is the whole point of a threshold.
+  const normals = mesh.faces.map((face) => faceNormal(mesh, face));
+  let corners: Vec3[][] | null = null;
+  if (mesh.cornerNormals) {
+    // The mesh brought its own from Blender. Nothing to work out.
+    corners = mesh.cornerNormals;
+  } else if (opts.smooth) {
+    const limit = Math.cos(
+      ((typeof opts.smooth === 'number' ? opts.smooth : 40) * Math.PI) / 180
+    );
+    const adjacent: number[][] = mesh.verts.map(() => []);
+    mesh.faces.forEach((face, f) => {
+      for (const i of face) adjacent[i].push(f);
+    });
+    corners = mesh.faces.map((face, f) => face.map((i) => {
+      const sum: Vec3 = [0, 0, 0];
+      for (const g of adjacent[i]) {
+        if (dot(normals[g], normals[f]) < limit) continue;
+        sum[0] += normals[g][0];
+        sum[1] += normals[g][1];
+        sum[2] += normals[g][2];
+      }
+      return norm(sum);
+    }));
+  }
+
   const visible = mesh.faces
-    .map((face) => {
-      const n = faceNormal(mesh, face);
-      return { face, n, depth: face.reduce((t, i) => t + dot(mesh.verts[i], VIEW_N), 0) / face.length };
-    })
+    .map((face, f) => ({
+      face,
+      f,
+      n: normals[f],
+      depth: face.reduce((t, i) => t + dot(mesh.verts[i], VIEW_N), 0) / face.length
+    }))
     .filter(({ n }) => dot(n, VIEW_N) > 0)
     .sort((a, b) => a.depth - b.depth);
 
-  for (const { face, n } of visible) {
+  // Half-Lambert: the unlit side lands at 0 rather than at some negative
+  // number clamped flat, so a plane turned right away from the key still
+  // carries its material instead of going to the bottom of the ramp.
+  const lit = (n: Vec3): number => tone((dot(n, KEY_N) + 1) / 2);
+
+  for (const { face, f, n } of visible) {
     const pts = face.map((i) => {
       const [x, y] = project(mesh.verts[i], u);
       return [x + ox, y + oy] as [number, number];
     });
-    // Half-Lambert: the unlit side lands at 0 rather than at some negative
-    // number clamped flat, so a face turned right away from the key still
-    // carries its material instead of going to the bottom of the ramp.
-    g.fillStyle(tone((dot(n, KEY_N) + 1) / 2), alpha);
-    g.beginPath();
-    pts.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
-    g.closePath();
-    g.fillPath();
+
+    if (corners) {
+      const shade = corners[f].map(lit);
+      for (let k = 1; k + 1 < face.length; k++) {
+        // Phaser maps the gradient's four corners onto a triangle's three
+        // points in order, so the last colour is repeated.
+        g.fillGradientStyle(shade[0], shade[k], shade[k + 1], shade[k + 1], alpha);
+        g.fillTriangle(
+          pts[0][0], pts[0][1], pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]
+        );
+      }
+    } else {
+      g.fillStyle(lit(n), alpha);
+      g.beginPath();
+      pts.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
+      g.closePath();
+      g.fillPath();
+    }
 
     if (opts.edge !== undefined) {
       g.lineStyle(1, opts.edge, (opts.edgeAlpha ?? 0.4) * alpha);
