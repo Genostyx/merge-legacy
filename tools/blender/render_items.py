@@ -103,6 +103,159 @@ def tier_material(name: str, want: int, measured: int):
     return mat
 
 
+
+# ---- material texture ------------------------------------------------------
+#
+# A flat base colour on a Principled BSDF is a coloured plastic, whatever the
+# geometry underneath it. Every family in this game is named for a MATERIAL -
+# wood, stone, glass - and the thing that makes one read is surface: grain
+# running one way along a plank, salt-and-pepper flecks through granite, light
+# passing THROUGH a sapphire instead of bouncing off it. Shape alone cannot
+# carry that, which is why these tiers looked like toys.
+#
+# All procedural, so nothing here needs an image file or a UV unwrap.
+
+
+def _shader(mat):
+    return mat.node_tree.nodes["Principled BSDF"]
+
+
+def _texture_coords(mat, scale=(1.0, 1.0, 1.0)):
+    """Object-space coordinates, so a pattern stays put on the mesh."""
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    coords = nodes.new("ShaderNodeTexCoord")
+    mapping = nodes.new("ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = scale
+    links.new(coords.outputs["Object"], mapping.inputs["Vector"])
+    return mapping.outputs["Vector"]
+
+
+def grain(mat, base_rgb, contrast=0.12, scale=(1.0, 26.0, 5.0)):
+    """Wood grain: noise stretched hard along ONE axis.
+
+    Grain is directional - that is the whole of what makes a surface read as
+    timber rather than as stone - so the noise is squashed to near-lines
+    across the board and left long down its length.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 6.0
+    noise.inputs["Detail"].default_value = 6.0
+    links.new(_texture_coords(mat, scale), noise.inputs["Vector"])
+
+    ramp = nodes.new("ShaderNodeValToRGB")
+    dark = [max(0.0, c * (1.0 - contrast)) for c in base_rgb]
+    light = [min(1.0, c * (1.0 + contrast)) for c in base_rgb]
+    ramp.color_ramp.elements[0].position = 0.36
+    ramp.color_ramp.elements[0].color = (*dark, 1.0)
+    ramp.color_ramp.elements[1].position = 0.62
+    ramp.color_ramp.elements[1].color = (*light, 1.0)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], _shader(mat).inputs["Base Color"])
+
+    # Grain is also a texture you can FEEL: a little bump keeps the light from
+    # sliding across a plank as though it were painted.
+    bump = nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.12
+    links.new(noise.outputs["Fac"], bump.inputs["Height"])
+    links.new(bump.outputs["Normal"], _shader(mat).inputs["Normal"])
+    return mat
+
+
+def speckle(mat, base_rgb, density=110.0, amount=0.55):
+    """Granite's salt-and-pepper: sharp light and dark flecks, not a wash.
+
+    The original art called for dark AND light flecks together, since that is
+    granite's real signature; a single tone of noise just looks like dirt.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = density
+    noise.inputs["Detail"].default_value = 2.0
+    noise.inputs["Roughness"].default_value = 0.8
+    links.new(_texture_coords(mat), noise.inputs["Vector"])
+
+    ramp = nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = 'CONSTANT'
+    dark = [c * (1.0 - amount) for c in base_rgb]
+    light = [min(1.0, c + (1.0 - c) * amount) for c in base_rgb]
+    ramp.color_ramp.elements[0].position = 0.0
+    ramp.color_ramp.elements[0].color = (*dark, 1.0)
+    ramp.color_ramp.elements[1].position = 0.46
+    ramp.color_ramp.elements[1].color = (*base_rgb, 1.0)
+    third = ramp.color_ramp.elements.new(0.58)
+    third.color = (*light, 1.0)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], _shader(mat).inputs["Base Color"])
+    return mat
+
+
+def veins(mat, base_rgb, scale=(3.0, 3.0, 3.0)):
+    """Marble: a few pale threads wandering through, not a busy pattern."""
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 3.2
+    noise.inputs["Detail"].default_value = 8.0
+    noise.inputs["Roughness"].default_value = 0.62
+    links.new(_texture_coords(mat, scale), noise.inputs["Vector"])
+
+    ramp = nodes.new("ShaderNodeValToRGB")
+    pale = [min(1.0, c + (1.0 - c) * 0.55) for c in base_rgb]
+    ramp.color_ramp.elements[0].position = 0.46
+    ramp.color_ramp.elements[0].color = (*base_rgb, 1.0)
+    ramp.color_ramp.elements[1].position = 0.56
+    ramp.color_ramp.elements[1].color = (*pale, 1.0)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], _shader(mat).inputs["Base Color"])
+    return mat
+
+
+def weathered(mat, strength=0.30, scale=48.0):
+    """Roughness variation, so a rock is not uniformly matte plastic."""
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = scale
+    noise.inputs["Detail"].default_value = 4.0
+    links.new(_texture_coords(mat), noise.inputs["Vector"])
+    ramp = nodes.new("ShaderNodeValToRGB")
+    base = _shader(mat).inputs["Roughness"].default_value
+    ramp.color_ramp.elements[0].color = (base * (1 - strength),) * 3 + (1.0,)
+    ramp.color_ramp.elements[1].color = (min(1.0, base * (1 + strength)),) * 3 + (1.0,)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], _shader(mat).inputs["Roughness"])
+
+    bump = nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.08
+    links.new(noise.outputs["Fac"], bump.inputs["Height"])
+    links.new(bump.outputs["Normal"], _shader(mat).inputs["Normal"])
+    return mat
+
+
+def gemstone(mat, ior=1.77, roughness=0.03, tint_strength=0.86):
+    """A cut stone that light goes THROUGH.
+
+    This is the one that cannot be faked. A gem is dark where it is thick and
+    bright where a facet catches, and that inversion comes from refraction -
+    an opaque diffuse surface produces the exact opposite and reads as a
+    painted pebble however many facets it has.
+
+    The base colour is lightened first, but only a LITTLE: in transmission the
+    colour multiplies along the whole path through the stone, so a mid-tone
+    base comes out almost black - and lifting it too far costs the stone its
+    hue instead, which turns a sapphire into a lump of clear glass. Keeping
+    most of the saturation and letting the bright transmission sky do the
+    lifting is what holds both.
+    """
+    shader = _shader(mat)
+    colour = shader.inputs["Base Color"].default_value
+    lifted = [min(1.0, c + (1.0 - c) * (1.0 - tint_strength)) for c in colour[:3]]
+    shader.inputs["Base Color"].default_value = (*lifted, 1.0)
+    shader.inputs["Transmission Weight"].default_value = 1.0
+    shader.inputs["IOR"].default_value = ior
+    shader.inputs["Roughness"].default_value = roughness
+    return mat
+
+
 # ---- geometry helpers ------------------------------------------------------
 
 def cube(w: float, d: float, h: float, loc=(0, 0, 0), base=True):
@@ -484,8 +637,9 @@ def build_wood():
     out[9] = torus_knot(2, 5, 90, 10, 0.48, 2.6)
 
     for tier, ob in out.items():
-        finish(ob, "wood%d" % tier,
-               tier_material("wood-tier-%d" % tier, WOOD_HEX[tier], WOOD_MEASURED[tier]))
+        material = tier_material("wood-tier-%d" % tier, WOOD_HEX[tier], WOOD_MEASURED[tier])
+        grain(material, _shader(material).inputs["Base Color"].default_value[:3])
+        finish(ob, "wood%d" % tier, material)
 
     # PAPERWEIGHT: the burr rests on three arms rather than standing one
     # straight up, by tipping its body diagonal onto vertical.
@@ -587,9 +741,20 @@ def build_mineral():
         bevel = 0.0 if tier >= 6 else (0.085 if tier == 4 else 0.012)
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
-        material.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = (
+        _shader(material).inputs["Roughness"].default_value = (
             0.14 if tier >= 7 else (0.24 if tier == 4 else 0.46)
         )
+        base = _shader(material).inputs["Base Color"].default_value[:3]
+        if tier >= 7:
+            # Quartz is the plainest cut and the least refractive of the three.
+            gemstone(material, ior=1.55 if tier == 7 else 1.77,
+                     roughness=0.05 if tier == 7 else 0.02)
+        elif tier == 6:
+            speckle(material, base)          # granite's real signature
+        elif tier == 5:
+            veins(material, base)            # marble
+        else:
+            weathered(material)              # found and dressed rock
         finish(ob, "mineral%d" % tier, material, bevel=bevel)
     return out
 
@@ -640,14 +805,44 @@ def build_lights():
     world = bpy.context.scene.world or bpy.data.worlds.new("World")
     bpy.context.scene.world = world
     world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs[0].default_value = (0.055, 0.052, 0.05, 1.0)
+    nodes, links = world.node_tree.nodes, world.node_tree.links
+    nodes.clear()
+
+    # TWO ENVIRONMENTS, chosen per ray.
+    #
+    # A transmissive stone is lit by whatever its refracted rays find, and with
+    # a transparent film those rays escape into the world - so against a 0.055
+    # background every gem rendered as a black lump, which is the opposite of
+    # the problem transmission was added to solve. Turning the world up instead
+    # would flood the rocks and force the whole calibration to be redone.
+    #
+    # So diffuse and camera rays keep the dim sky, and transmission rays see a
+    # bright one. Nothing but the inside of a gem can tell the difference.
+    dim = nodes.new("ShaderNodeBackground")
+    dim.inputs[0].default_value = (0.055, 0.052, 0.05, 1.0)
+    bright = nodes.new("ShaderNodeBackground")
+    bright.inputs[0].default_value = (0.92, 0.94, 1.0, 1.0)
+    bright.inputs[1].default_value = 1.4
+    path = nodes.new("ShaderNodeLightPath")
+    mix = nodes.new("ShaderNodeMixShader")
+    out = nodes.new("ShaderNodeOutputWorld")
+    links.new(path.outputs["Is Transmission Ray"], mix.inputs["Fac"])
+    links.new(dim.outputs["Background"], mix.inputs[1])
+    links.new(bright.outputs["Background"], mix.inputs[2])
+    links.new(mix.outputs["Shader"], out.inputs["Surface"])
 
 
 def configure_render():
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
-    sc.cycles.samples = 16
+    # Transmission needs both: 16 samples leaves a gem full of fireflies, and
+    # the default bounce limits cut the light off before it has passed through
+    # a stone and back out, which renders a sapphire as a black lump.
+    sc.cycles.samples = 128
     sc.cycles.use_denoising = True
+    sc.cycles.transmission_bounces = 12
+    sc.cycles.max_bounces = 16
+    sc.cycles.blur_glossy = 0.6
     sc.render.film_transparent = True
     sc.render.resolution_x = sc.render.resolution_y = RESOLUTION
     sc.render.resolution_percentage = 100
