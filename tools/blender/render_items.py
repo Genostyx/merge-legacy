@@ -123,6 +123,14 @@ MINERAL_SURFACE = {
 # grain does the work the highlight would otherwise have to.
 WOOD_SURFACE = (0.66, 1.50)
 
+# The chain colours in linear space, for anything that needs the hue rather
+# than a calibrated base colour - the gem volumes take this, not the
+# render-corrected material value.
+MINERAL_HEX_RGB = {
+    tier: tuple(((c >> shift) & 255) / 255.0 for shift in (16, 8, 0))
+    for tier, c in MINERAL_HEX.items()
+}
+
 BEVEL_WIDTH = 0.016      # a sawn arris, not a moulded edge
 BEVEL_SEGMENTS = 2
 SMOOTH_ANGLE = math.radians(30)
@@ -325,6 +333,38 @@ def milky(mat, base_rgb, radius=0.22, weight=0.72):
     shader.inputs["Subsurface Radius"].default_value = (1.0, 0.62, 0.44)
     lifted = [min(1.0, c + (1.0 - c) * 0.45) for c in base_rgb]
     shader.inputs["Base Color"].default_value = (*lifted, 1.0)
+    return mat
+
+
+def absorbing(mat, colour_rgb, density=7.0):
+    """Colour that lives INSIDE the stone, deepening with thickness.
+
+    A tinted surface colours every ray by the same amount however far it
+    travelled, so the whole stone comes out one flat shade - which is why the
+    sapphire read as coloured plastic with highlights on it.
+
+    A real gem is a clear body with a tint dissolved through it: light that
+    only clips a corner comes back bright and saturated, light that crosses
+    the whole stone comes back dark and deep. That gradient IS the look of a
+    gemstone, and it is Beer-Lambert absorption, not a surface property. So
+    the surface goes clear and the colour moves into the volume.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    shader = _shader(mat)
+    # Clear glass on the outside; all the colour is in the body now, and
+    # leaving a tint here as well would filter the light twice.
+    shader.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+
+    absorb = nodes.new("ShaderNodeVolumeAbsorption")
+    # Volume Absorption's colour is what SURVIVES the journey, so it takes
+    # the tier's own hue, pushed saturated - whatever is left after a long
+    # path is what the deep parts of the stone will look like.
+    peak = max(colour_rgb) or 1.0
+    vivid = [min(1.0, c / peak) for c in colour_rgb]
+    absorb.inputs["Color"].default_value = (*vivid, 1.0)
+    absorb.inputs["Density"].default_value = density
+    output = next(n for n in nodes if n.type == 'OUTPUT_MATERIAL')
+    links.new(absorb.outputs["Volume"], output.inputs["Volume"])
     return mat
 
 
@@ -888,7 +928,12 @@ def build_mineral():
             milky(material, base)
             polished(material, coat_roughness=0.06)
         elif tier >= 8:
-            gemstone(material, ior=ior, roughness=roughness)
+            gemstone(material, ior=ior, roughness=roughness, tint_strength=0.0)
+            # Density is per unit of PATH, so a thick stone needs less of it.
+            # The marquise is the deepest cut in the chain - girdle to keel is
+            # most of its height - and at 8 it absorbed almost everything and
+            # came back black.
+            absorbing(material, MINERAL_HEX_RGB[tier], density=3.2 if tier == 8 else 6.0)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
             polished(material)
