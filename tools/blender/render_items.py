@@ -892,8 +892,15 @@ def build_mineral():
         pavilion=[(0.84, -0.09), (0.56, -0.19), (0.0, -0.30)],
     )
     # MARQUISE: the points are the identity of the cut, so the girdle is a
-    # lens and the crown keeps its length as it rises - scaling it down evenly
-    # would round the points off before they reached the table.
+    # lens and the crown keeps its length as it rises.
+    #
+    # DEEP ON PURPOSE, and not a mistake to be corrected. A 63 degree pavilion
+    # leaks - past the critical angle, light entering the table escapes out
+    # the back instead of returning to the eye, which is the bow-tie, and it
+    # is why this stone reads darker in the middle than the brilliant does.
+    # Recutting it to the textbook 41 degrees fixes that and makes the stone
+    # less than half as deep, which changes its silhouette completely. The
+    # owner picked the silhouette. Depth is the deliberate trade.
     out[8] = cut_stone(
         lens(0.80, 0.38),
         crown=[((0.92, 0.74), 0.07), ((0.80, 0.30), 0.15)],
@@ -939,6 +946,8 @@ def build_mineral():
             # most of its height - and at 8 it absorbed almost everything and
             # came back black.
             # Both cut stones take the SAME treatment; only the hue differs.
+            # Density is per unit of PATH, and these are the deep cuts, so it
+            # stays where it was tuned for them.
             absorbing(material, MINERAL_HEX_RGB[tier], density=6.0)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
