@@ -76,17 +76,46 @@ MINERAL_MEASURED = {
     6: 0x8d6e73, 7: 0x8d9497, 8: 0x485e71, 9: 0x71808c,
 }
 
-# THE HOUSE SURFACE, taken from mineral tier five.
+# MEASURED SURFACES, not chosen ones.
 #
-# Marble was the one tier whose finish read correctly, so its settings are the
-# baseline for everything and each tier moves off it only as far as it has to.
-# Working the other way - picking a plausible-looking gloss per tier - is how
-# the pebble ended up wetter than stone and the gems ended up mirrors.
+# Every number below comes from published PBR reference rather than from what
+# looked plausible in the last render, and the gap was not small: dry stone
+# sits at 0.75 roughness and rough stone at 0.85-0.95, while everything here
+# had been sitting at 0.46 - which is the varnish range. A dielectric that
+# glossy, lit by one hard key, is indistinguishable from metal, and that is
+# what it looked like.
 #
-# Roughness 0.46 with a 0.35 specular level. Note 0.35 IS Blender's default,
-# so the sheen was never coming from the specular input; it was roughness.
-HOUSE_ROUGHNESS = 0.46
-HOUSE_SPECULAR = 0.35
+# Roughness: painted/varnished 0.1-0.3, dry concrete 0.5-0.7, sanded wood
+# 0.55-0.70, dry stone 0.75-0.95, cloth and heavily weathered 0.8-1.0.
+# IOR: wood and marble 1.5-1.7, granite 1.65-1.75, quartz 1.54, sapphire 1.77.
+#
+# Sources:
+#   https://sameerbaloch.com/roughness-setting/
+#   https://polycount.com/discussion/164435/physically-accurate-material-values
+#   https://pixelandpoly.com/ior.html
+#
+# SPECULAR IOR LEVEL IS 0.5, not 0.35. 0.5 is Blender's neutral - it means
+# "use the IOR as given". Setting 0.35 quietly pushed reflectance BELOW
+# physical and then the sheen was chased with roughness instead, which is the
+# wrong control and the reason nothing responded the way it should have.
+NEUTRAL_SPECULAR = 0.5
+
+# (roughness, IOR) per mineral tier, by what the tier actually is.
+MINERAL_SURFACE = {
+    1: (0.88, 1.55),   # slate, split and dry
+    2: (0.91, 1.55),   # rubble, freshly broken
+    3: (0.91, 1.55),   # gravel
+    4: (0.55, 1.55),   # a pebble worn smooth, not a polished one
+    5: (0.30, 1.60),   # marble, the only POLISHED tier below the gems
+    6: (0.78, 1.70),   # granite, honed rather than shined
+    7: (0.10, 1.54),   # quartz
+    8: (0.06, 1.77),   # sapphire
+    9: (0.06, 1.77),   # star sapphire
+}
+
+# Sanded timber. Wood is never glossy, and it is the one family where the
+# grain does the work the highlight would otherwise have to.
+WOOD_SURFACE = (0.66, 1.50)
 
 BEVEL_WIDTH = 0.016      # a sawn arris, not a moulded edge
 BEVEL_SEGMENTS = 2
@@ -109,9 +138,9 @@ def tier_material(name: str, want: int, measured: int):
         gain = ((want >> shift) & 255) / max(1, (measured >> shift) & 255)
         rgb.append(min(1.0, base * min(3.0, max(0.4, gain))))
     bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
-    bsdf.inputs["Roughness"].default_value = HOUSE_ROUGHNESS
+    bsdf.inputs["Roughness"].default_value = 0.8
     if "Specular IOR Level" in bsdf.inputs:
-        bsdf.inputs["Specular IOR Level"].default_value = HOUSE_SPECULAR
+        bsdf.inputs["Specular IOR Level"].default_value = NEUTRAL_SPECULAR
     return mat
 
 
@@ -243,7 +272,7 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def gemstone(mat, ior=1.77, roughness=0.16, tint_strength=0.86):
+def gemstone(mat, ior=1.77, roughness=0.06, tint_strength=0.86):
     """A cut stone that light goes THROUGH.
 
     This is the one that cannot be faked. A gem is dark where it is thick and
@@ -264,11 +293,10 @@ def gemstone(mat, ior=1.77, roughness=0.16, tint_strength=0.86):
     shader.inputs["Base Color"].default_value = (*lifted, 1.0)
     shader.inputs["Transmission Weight"].default_value = 1.0
     shader.inputs["IOR"].default_value = ior
-    # NOT a mirror. At 0.02 every facet returned a hard white clip and the
-    # stone read as chrome rather than as a gem; the refraction underneath was
-    # being buried by its own highlights. Kept within sight of the house
-    # roughness so a cut stone is the shiniest thing on the board without
-    # being a different order of shiny.
+    # A polished gem really is this smooth - the reference range is 0.05-0.1
+    # - and unlike the rocks it is SUPPOSED to be. What stopped it reading as
+    # chrome was never the roughness: it was that the rocks around it were
+    # glossy too, so nothing separated them.
     shader.inputs["Roughness"].default_value = roughness
     return mat
 
@@ -655,9 +683,9 @@ def build_wood():
 
     for tier, ob in out.items():
         material = tier_material("wood-tier-%d" % tier, WOOD_HEX[tier], WOOD_MEASURED[tier])
-        # Timber is the mattest thing here, but only a little - it sits just
-        # off the house surface rather than somewhere of its own.
-        _shader(material).inputs["Roughness"].default_value = HOUSE_ROUGHNESS + 0.08
+        roughness, ior = WOOD_SURFACE
+        _shader(material).inputs["Roughness"].default_value = roughness
+        _shader(material).inputs["IOR"].default_value = ior
         grain(material, _shader(material).inputs["Base Color"].default_value[:3])
         finish(ob, "wood%d" % tier, material)
 
@@ -761,15 +789,12 @@ def build_mineral():
         bevel = 0.0 if tier >= 6 else (0.085 if tier == 4 else 0.012)
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
-        # Everything sits on the house surface. The pebble is smooth because
-        # of its heavy bevel, not because it is wet - dropping its roughness
-        # to 0.24 made it look glazed rather than worn.
-        _shader(material).inputs["Roughness"].default_value = HOUSE_ROUGHNESS
+        roughness, ior = MINERAL_SURFACE[tier]
+        _shader(material).inputs["Roughness"].default_value = roughness
+        _shader(material).inputs["IOR"].default_value = ior
         base = _shader(material).inputs["Base Color"].default_value[:3]
         if tier >= 7:
-            # Quartz is the plainest cut and the least refractive of the three.
-            gemstone(material, ior=1.55 if tier == 7 else 1.77,
-                     roughness=0.20 if tier == 7 else 0.15)
+            gemstone(material, ior=ior, roughness=roughness)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
         elif tier == 5:
