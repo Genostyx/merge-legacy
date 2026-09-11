@@ -11,6 +11,17 @@ Newest first.
 
 ## Unreleased
 
+## v0.5.0-beta
+
+- Wood and stone items are redrawn: modelled, lit and rendered rather than
+  drawn flat, so a plank looks like timber and a stone like stone.
+- Every item now sits on the same camera as the buildings, so the board reads
+  as one scene instead of pieces from different games.
+- Polished stone, marble and granite have a real shine; quartz is cloudy and
+  the cut gems have colour that deepens through the stone.
+- Refill is offered on any source that is not full, instead of only when it
+  has run dry.
+
 ## v0.4.0-beta
 
 - Sources drop the odd lower-tier item again, so nothing you still need ever
