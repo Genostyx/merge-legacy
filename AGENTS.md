@@ -89,3 +89,23 @@ This rule applies to Codex, Claude, and any other coding agent working in this p
   `cycles.device`, sample counts, light energies. A `git reset` reverts the
   code that sets them, not the running session. When a render changes and the
   code did not, suspect scene state first.
+
+## Sprite textures must be powers of two
+
+- The game runs on WebGL1, which cannot build mipmaps for a non-power-of-two
+  texture. `mipmapFilter: 'LINEAR_MIPMAP_LINEAR'` in `src/main.ts` is then
+  silently downgraded to plain LINEAR for that texture.
+- Symptom: a crawling, pixel-y edge on any sprite drawn smaller than its
+  source, worst on curved silhouettes and thin diagonal detail. Minification
+  samples four texels out of the whole image however large it is, so RAISING
+  THE SOURCE RESOLUTION DOES NOT HELP AND CANNOT HELP. On the event token,
+  192 -> 384 -> 768 changed nothing; 512 fixed it immediately.
+- Sizes live in `RESOLUTION` and `FAMILY_RESOLUTION` in
+  `tools/blender/render_items.py`: 256 for board items, 512 for the face-on
+  marks.
+- Check it in the game's console:
+  `g.textures.getTextureKeys().filter(k => { const w = g.textures.get(k).getSourceImage().width; return (w & (w-1)) !== 0; })`
+  - an empty array is correct.
+- After ANY re-render: re-measure the fill ratios in `CurrencyGlyph.ts` and
+  `EventTokenView.ts` off the new PNGs, and bump `ITEM_ART_VERSION` in
+  `itemSprites.ts` or browsers keep serving the cached art.
