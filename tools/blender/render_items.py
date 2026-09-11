@@ -1687,10 +1687,13 @@ def build_event_token():
     # a 0.17 disc foreshortens into nothing, and the device is the object.
     CROWN_UP = math.radians(90)
     CROWN_DROP_X, CROWN_DROP_Y = 0.0, -0.030
-    # 64 sides. The credit coins are seen from above where the outline is
-    # an ellipse and 24 is plenty; this one is FACE ON, so its outline is a
-    # full circle and the polygon shows.
-    body = coin(radius, thickness, slot=False, sides=64)
+    # 128 sides. The credit coins are seen from above where the outline is
+    # an ellipse and 24 is plenty; this one is FACE ON, so BOTH its circles
+    # are full ones - the outer silhouette and the rim's inner lip - and a
+    # polished metal returns a separate highlight off every facet. 64 still
+    # showed the polygon on the inner lip, where the chamfer is a hairline
+    # and there is nothing to break the reflection up.
+    body = coin(radius, thickness, slot=False, sides=128)
 
     # THE RIM'S CHAMFER IS THE DISC'S ALONE, applied before anything is
     # joined. The shared two-segment bevel is one flat facet, and
@@ -1813,13 +1816,17 @@ def build_event_token():
     finish(token, "event-token", material, bevel=0.0015,
            smooth_angle=math.radians(12))
 
-    # THE RIM GETS A REAL CHAMFER. The shared two-segment bevel is a single
-    # flat facet, and auto-smoothing that into a 64-sided wall leaves the
-    # normals stepping unevenly round the edge - which is the waviness on the
-    # outer ring. The silhouette was never the problem: it measures round to
-    # within the bevel's own width. Six segments make the chamfer an actual
-    # curve, so it carries one clean highlight the whole way round the way a
-    # struck coin's edge does.
+    # SEGMENTS, not width. The disc's outer edge gets its own six-segment
+    # chamfer above and reads perfectly round; the rim's INNER lip had only
+    # the shared two-segment bevel, which is a single flat facet per side of
+    # a 64-sided ring - and on a 0.94-metallic surface each of those facets
+    # returns its own highlight, so the inner edge showed the polygon the
+    # outer one hides. It does not show in solid viewport shading, which is
+    # matte and has no reflection to break up.
+    #
+    # The width stays a hairline: width is what melts a struck device, and
+    # the crown's rays are only 0.014 thick.
+    token.modifiers["Bevel"].segments = 6
     return {1: token}
 
 
