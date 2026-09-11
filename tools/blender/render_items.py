@@ -305,8 +305,13 @@ def mottle(mat, base_rgb, scale=9.0, strength=0.16):
     links.new(_texture_coords(mat), noise.inputs["Vector"])
 
     ramp = nodes.new("ShaderNodeValToRGB")
+    # The light end blends toward WHITE rather than scaling the base up.
+    # Scaling can only reach base * (1 + strength), so on a mid grey it tops
+    # out at another mid grey and the variation reads as shading. Broken stone
+    # has chalky near-white weathering on it, and that is a different colour,
+    # not a brighter one.
     dark = [max(0.0, c * (1.0 - strength)) for c in base_rgb]
-    light = [min(1.0, c * (1.0 + strength)) for c in base_rgb]
+    light = [c + (1.0 - c) * strength for c in base_rgb]
     ramp.color_ramp.elements[0].position = 0.30
     ramp.color_ramp.elements[0].color = (*dark, 1.0)
     ramp.color_ramp.elements[1].position = 0.70
@@ -884,17 +889,11 @@ def build_mineral():
     # chunks, three chips. That is how the genre encodes chain position, it is
     # why Slate sits at 1 and Gravel at 3, and the existing art is built on
     # it. My first pass gave tier three FOUR pieces and broke the convention.
-    # Slate is a SPLIT PLATE, which is a broken chunk that happens to be
-    # flat - so it is a hull like the rubble, pressed down. plate() drew a
-    # tidy hexagon and the bevel rounded its corners into a lozenge; a hull
-    # gives the straight irregular edges a cleaved sheet actually has.
-    #
-    # THICK ENOUGH TO BE A PLATE. At 0.055 with a wide jitter it came out a
-    # splinter - a sliver with a point on each end, which is neither slate nor
-    # anything you would pick up. A plate has real thickness you can see from
-    # the side and a broad flat face on top; the jitter is tighter too, since
-    # a cleaved sheet breaks along straightish lines rather than into spikes.
-    out[1] = rock(0.74, 0.16, seed=11, points=11, jitter=0.10)
+    # ONE BROKEN CHUNK, the way crushed slate actually comes: roughly as deep
+    # as it is wide, with sharp fractured faces. I had it as a flat plate on
+    # the theory that slate splits into sheets, and that is true of a slate
+    # ROOF tile - the aggregate a game means by "slate" is angular rubble.
+    out[1] = rock(0.60, 0.34, seed=11, points=10, jitter=0.20)
     out[2] = stack([
         rock(0.52, 0.30, seed=21),
         translate_to(rock(0.40, 0.24, seed=22), beside(0.34, -0.10)),
@@ -1023,9 +1022,12 @@ def build_mineral():
             # Colour variation FIRST - that is the part you can see - with the
             # roughness break on top of it. The rough tiers get a coarser,
             # stronger mottle than the polished pebble.
+            # Broken stone is BLOTCHY, strongly. The reference is chalky pale
+            # patches over a much darker grey, not a gentle wash - at 0.20 the
+            # variation was there and read as shading rather than as surface.
             mottle(material, base,
                    scale=9.0 if tier < 4 else 6.0,
-                   strength=0.20 if tier < 4 else 0.11)
+                   strength=0.38 if tier < 4 else 0.11)
             weathered(material, strength=0.34 if tier < 4 else 0.12)
             if tier == 4:
                 polished(material)
