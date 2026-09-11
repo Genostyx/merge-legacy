@@ -416,7 +416,7 @@ import {
   drawShopCard as drawShopCardPanel,
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
-import { SPRITE_FAMILIES, SPRITE_TIERS, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
+import { SPRITE_FAMILIES, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
 
 export class BoardScene extends Phaser.Scene {
   grid = new Grid(COLS, ROWS);
@@ -754,8 +754,8 @@ export class BoardScene extends Phaser.Scene {
     };
 
     // Every converted family, not a hardcoded one. See itemSprites.ts.
-    for (const family of SPRITE_FAMILIES) {
-      for (let tier = 1; tier <= SPRITE_TIERS; tier++) {
+    for (const [family, tiers] of Object.entries(SPRITE_FAMILIES)) {
+      for (let tier = 1; tier <= tiers; tier++) {
         imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
       }
     }

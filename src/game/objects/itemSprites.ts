@@ -13,10 +13,16 @@ import Phaser from 'phaser';
  * meant converting the second one was nine edits with no way to tell whether
  * any had been missed.
  */
-export const SPRITE_FAMILIES: readonly string[] = ['wood', 'mineral'];
-
-/** Tiers rendered per family. Every sprite family covers 1..9. */
-export const SPRITE_TIERS = 9;
+export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
+  wood: 9,
+  mineral: 9,
+  // The currency chains are shorter, and the count matters: preloading nine
+  // tiers for a five-tier chain asks the server for four files that do not
+  // exist on every boot.
+  'currency-credit': 6,
+  'currency-energy': 5,
+  'currency-gem': 5
+};
 
 /** The texture key for a tier, whether or not it has actually been loaded. */
 export function itemSpriteKey(typeId: string, tier: number): string {
@@ -38,7 +44,7 @@ export function itemSpritePath(typeId: string, tier: number): string {
 export function loadedItemSprite(
   scene: Phaser.Scene, typeId: string, tier: number
 ): string | null {
-  if (!SPRITE_FAMILIES.includes(typeId)) return null;
+  if (!(typeId in SPRITE_FAMILIES)) return null;
   const key = itemSpriteKey(typeId, tier);
   return scene.textures.exists(key) ? key : null;
 }
