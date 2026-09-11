@@ -86,26 +86,40 @@ function drawPolishedFace(
   g: Phaser.GameObjects.Graphics, radius: number, p: MaterialLighting
 ): void {
   const SEGMENTS = 48;
-  // Upper-left, the key every object in this game shares.
-  const key = -Math.PI * 0.75;
-  // How lit a rim point is: full facing the light, darkest opposite it. The
-  // range is deliberately short of the ramp's ends - a coin's face is one
-  // material catching one light, not a sphere.
-  const litAt = (angle: number): number => 0.5 + 0.5 * Math.cos(angle - key);
+  // A POOL OF LIGHT, NOT A RAMP.
+  //
+  // A coin does not shade from one edge to the other. It carries a broad
+  // soft pool sitting off-centre toward the light, and the field falls away
+  // toward the rim on EVERY side - the darkest part is a crescent hugging
+  // the inside of the rim on the far side, not the far edge itself.
+  //
+  // The fan gives both at once: the centre vertex is the brightest tone, so
+  // every triangle darkens outward - that is the vignette - and each rim
+  // vertex is toned by how far it faces the light, so the falloff is deeper
+  // on the far side, which is the pool being off-centre.
+  const pool = 0.8;
+  const rimAt = (angle: number): number =>
+    0.4
+    + 0.22 * Math.cos(angle - KEY_ANGLE)
+    // A dimmer second light bouncing back off whatever the coin is lying on.
+    // It stops the far side going flat, and it is plainly there on a real
+    // one: a lift along the bottom-left.
+    + 0.07 * Math.cos(angle - Math.PI * 0.25);
 
   for (let i = 0; i < SEGMENTS; i++) {
     const a0 = (Math.PI * 2 * i) / SEGMENTS;
     const a1 = (Math.PI * 2 * (i + 1)) / SEGMENTS;
-    const x0 = Math.cos(a0) * radius;
-    const y0 = Math.sin(a0) * radius;
-    const x1 = Math.cos(a1) * radius;
-    const y1 = Math.sin(a1) * radius;
     // Centre vertex first, then the two rim vertices - Phaser maps the four
     // gradient corners onto a triangle's three points in that order.
-    g.fillGradientStyle(toneAt(p, 0.52), toneAt(p, litAt(a0)), toneAt(p, litAt(a1)), toneAt(p, litAt(a1)), 1);
-    g.fillTriangle(0, 0, x0, y0, x1, y1);
+    g.fillGradientStyle(
+      toneAt(p, pool), toneAt(p, rimAt(a0)), toneAt(p, rimAt(a1)), toneAt(p, rimAt(a1)), 1
+    );
+    g.fillTriangle(
+      0, 0,
+      Math.cos(a0) * radius, Math.sin(a0) * radius,
+      Math.cos(a1) * radius, Math.sin(a1) * radius
+    );
   }
-
   // NO SEPARATE HIGHLIGHT SHAPE.
   //
   // A blob and then a band were both tried on top of this gradient, and both
@@ -114,6 +128,50 @@ function drawPolishedFace(
   // it, not a mark laid over it. The ramp above runs the full width of the
   // material now, from its lightest tone to its darkest, which is the whole
   // reflection.
+}
+
+/** Upper-left: the one light every object in this game is lit by. */
+const KEY_ANGLE = -Math.PI * 0.75;
+
+/**
+ * The tone a raised face of the device takes.
+ *
+ * THE DEVICE IS THE SAME METAL AS THE FIELD. On a struck coin the relief is
+ * not a different colour - it is the same surface pushed up, legible only
+ * because each raised edge catches a thin bright line on the side facing the
+ * light and drops a thin shadow on the side away from it.
+ *
+ * This was filled in `highlight` on a mid-tone field, which is exactly why it
+ * read as paint on metal rather than as metal. It sits one shade above the
+ * field now and no more; the edges do all the reading.
+ */
+const STRUCK_FACE = 0.6;
+
+/**
+ * Outlines a struck shape the way a coin does: bright where an edge faces the
+ * light, dark where it faces away.
+ *
+ * Per EDGE, by that edge's own normal, rather than one outline in one colour.
+ * An even outline all the way round is the thing that makes a shape look
+ * printed on - real relief is lit on one side and shadowed on the other, and
+ * which side that is changes as the shape turns.
+ */
+function strokeStruckEdges(
+  g: Phaser.GameObjects.Graphics, pts: readonly (readonly [number, number])[],
+  p: MaterialLighting, width: number
+): void {
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    const nx = y2 - y1;
+    const ny = -(x2 - x1);
+    const facing = (nx * Math.cos(KEY_ANGLE) + ny * Math.sin(KEY_ANGLE)) / (Math.hypot(nx, ny) || 1);
+    g.lineStyle(width, facing > 0 ? p.highlight : p.shadow, facing > 0 ? 0.95 : 0.85);
+    g.beginPath();
+    g.moveTo(x1, y1);
+    g.lineTo(x2, y2);
+    g.strokePath();
+  }
 }
 
 /**
@@ -157,32 +215,17 @@ function drawStruckCrown(
     const px = -sin * halfBase;
     const py = cos * halfBase;
 
-    // RELIEF, not an outline. A struck coin's device is raised, so what you
-    // see under it is the face falling away on the side opposite the light -
-    // a displaced dark copy, softened over two passes. A tight line all the
-    // way round reads as a printed sticker, which is what this was.
-    for (const [d, alpha] of RELIEF) {
-      g.fillStyle(p.shadow, alpha);
-      g.beginPath();
-      g.moveTo(bx + px + d * r, by + py + d * r);
-      g.lineTo(cos * tip + d * r, cy + sin * tip + d * r);
-      g.lineTo(bx - px + d * r, by - py + d * r);
-      g.closePath();
-      g.fillPath();
-    }
-
-    g.fillStyle(p.highlight, 1);
+    const face: [number, number][] = [
+      [bx + px, by + py],
+      [cos * tip, cy + sin * tip],
+      [bx - px, by - py]
+    ];
+    g.fillStyle(toneAt(p, STRUCK_FACE), 1);
     g.beginPath();
-    g.moveTo(bx + px, by + py);
-    g.lineTo(cos * tip, cy + sin * tip);
-    g.lineTo(bx - px, by - py);
+    face.forEach(([fx, fy], k) => (k === 0 ? g.moveTo(fx, fy) : g.lineTo(fx, fy)));
     g.closePath();
     g.fillPath();
-    // The shaded flank each ray used to carry is gone. At cell size a ray is
-    // four pixels across, so splitting it into a lit half and a shaded half
-    // left two two-pixel slivers and the crown turned to mush. The relief
-    // under the whole device does that job now, at a size that survives.
-
+    strokeStruckEdges(g, face, p, Math.max(1, r * 0.045));
   }
 
   // THE HALF RING they stand on - open at the bottom, so it is a band around
@@ -192,18 +235,17 @@ function drawStruckCrown(
     const a = Math.PI * 1.02 + (Math.PI * 0.96 * i) / 26;
     band.push(new Phaser.Geom.Point(Math.cos(a) * bandR, cy + Math.sin(a) * bandR));
   }
-  // The same relief under the band, offset the same way, so the whole device
-  // is lit by one light rather than the ring and the rays disagreeing.
-  for (const [d, alpha] of RELIEF) {
-    g.lineStyle(Math.max(1, r * 0.16), p.shadow, alpha);
-    g.strokePoints(
-      band.map((pt) => new Phaser.Geom.Point(pt.x + d * r, pt.y + d * r)), false, false
-    );
-  }
-  g.lineStyle(Math.max(1, r * 0.16), p.highlight, 1);
+  // The band is struck from the same metal too: its body takes the raised
+  // tone, with a lit line along the edge facing the light and a shadow along
+  // the one that does not. Offsetting those two is what gives a stroked arc
+  // a thickness you can read.
+  const lift = r * 0.055;
+  g.lineStyle(Math.max(1, r * 0.05), p.shadow, 0.85);
+  g.strokePoints(band.map((pt) => new Phaser.Geom.Point(pt.x + lift, pt.y + lift)), false, false);
+  g.lineStyle(Math.max(1, r * 0.16), toneAt(p, STRUCK_FACE), 1);
   g.strokePoints(band, false, false);
-  g.lineStyle(Math.max(1, r * 0.06), p.light, 0.9);
-  g.strokePoints(band, false, false);
+  g.lineStyle(Math.max(1, r * 0.045), p.highlight, 0.95);
+  g.strokePoints(band.map((pt) => new Phaser.Geom.Point(pt.x - lift * 0.7, pt.y - lift * 0.7)), false, false);
 }
 
 /** One event token standing on the board, waiting to be tapped in. */
