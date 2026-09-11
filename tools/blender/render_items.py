@@ -1350,11 +1350,15 @@ def build_credits():
     # subtle by design, and reversing it only made the coin lie back the other
     # way, which was worse.
     leaning = upright_coin(radius=0.115, thickness=0.032, lean_deg=-20)
-    # Moved IN until it actually touches. The tilt was right; the resting
-    # point was not - at -0.22 there was daylight between the coin and the
-    # money, so nothing was resting on anything.
+    # Pushed AWAY from the camera until it bites into the bundle.
+    #
+    # A negative `back` pulls a piece toward the viewer, which is what kept
+    # opening a gap: the coin was in front of the money in depth, so no amount
+    # of moving it left or right could make the two meet. Overshooting into a
+    # slight clip is the right error to make - an overlap reads as contact,
+    # while a gap reads as two separate objects.
     translate_to(leaning, tuple(
-        Vector(beside(-0.155, -0.05)) + Vector((0.0, 0.0, 0.108))))
+        Vector(beside(-0.155, 0.12)) + Vector((0.0, 0.0, 0.108))))
     out[4] = stack([bundle, leaning])
 
     # 5: a BUNDLE - three stacks of real coins bound by a strap with a seal.
