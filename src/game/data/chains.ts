@@ -142,12 +142,12 @@ export const DECAGON_CHAIN: ChainDef = {
 export const CREDIT_CHAIN: ChainDef = {
   typeId: 'currency-credit',
   tiers: [
-    { tier: 1, key: 'credit', label: 'Credit', color: 0xe7aa32 },
-    { tier: 2, key: 'twin-credits', label: 'Twin Credits', color: 0xecb33a },
-    { tier: 3, key: 'credit-stack', label: 'Credit Stack', color: 0xf0ba43 },
-    { tier: 4, key: 'credit-roll', label: 'Credit Roll', color: 0xf3c34e },
-    { tier: 5, key: 'credit-bundle', label: 'Credit Bundle', color: 0xf6cc5a },
-    { tier: 6, key: 'credit-vault', label: 'Credit Vault', color: 0xf9d66b }
+    { tier: 1, key: 'credit', label: 'Credit', color: 0xecb63e },
+    { tier: 2, key: 'twin-credits', label: 'Twin Credits', color: 0xeeb943 },
+    { tier: 3, key: 'credit-stack', label: 'Credit Stack', color: 0xefbd48 },
+    { tier: 4, key: 'credit-roll', label: 'Credit Roll', color: 0xf1c04d },
+    { tier: 5, key: 'credit-bundle', label: 'Credit Bundle', color: 0xf2c452 },
+    { tier: 6, key: 'credit-vault', label: 'Credit Vault', color: 0xf4c757 }
   ]
 };
 

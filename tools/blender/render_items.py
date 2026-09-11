@@ -148,8 +148,12 @@ MINERAL_HEX_RGB = {
 # No calibration entries: these are metal, emission and transmission, none of
 # which have a diffuse base colour for a measured correction to act on.
 CURRENCY_HEX = {
-    "currency-credit": {1: 0xe7aa32, 2: 0xecb33a, 3: 0xf0ba43,
-                        4: 0xf3c34e, 5: 0xf6cc5a, 6: 0xf9d66b},
+    # A NARROWER ramp. The old one ran 0xe7aa32 to 0xf9d66b and the ends
+    # pulled apart once rendered - tier one read as dull brass, tier six as
+    # near-white. Lifting the bottom and pulling the top back keeps six
+    # steps that still climb without either end leaving the family.
+    "currency-credit": {1: 0xecb63e, 2: 0xeeb943, 3: 0xefbd48,
+                        4: 0xf1c04d, 5: 0xf2c452, 6: 0xf4c757},
     "currency-energy": {1: 0x24a9e8, 2: 0x2ab3ed, 3: 0x35bef0,
                         4: 0x48c9f2, 5: 0x61d3f4},
     "currency-gem": {1: 0x9d70c2, 2: 0xaa7dca, 3: 0xb789d2,
