@@ -83,93 +83,131 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
 }
 
 /**
- * How far the relief is displaced, and how hard, as a fraction of the coin's
- * radius. Two passes rather than one: a single offset copy has a hard far
- * edge of its own, where two at falling strength read as the face curving
- * away. Down and right, because the light on every object here is upper-left.
+ * How far the struck device is displaced to cast its relief, as a fraction of
+ * the crown's radius, and how hard.
+ *
+ * Two passes at falling strength rather than one: a single offset copy has a
+ * hard far edge of its own, where two read as the face curving away. Down and
+ * right, because the light on every object here is upper-left.
+ *
+ * Kept SHORT. At the first offsets a ray threw a shadow as wide as itself,
+ * which at any size above a board cell read as a second, darker crown behind
+ * the first rather than as depth.
  */
-const RELIEF: readonly (readonly [number, number])[] = [[0.085, 0.55], [0.045, 0.6]];
+const RELIEF: readonly (readonly [number, number])[] = [[0.04, 0.5], [0.02, 0.55]];
 
+/**
+ * The struck device: seven spikes rising from behind a headband.
+ *
+ * THE BAND IS THE FLOOR OF THE DEVICE, NOT AN ARCH OVER IT. It first went in
+ * as the upper half of a circle with the rays radiating around it, which is
+ * not a crown at all - it reads as a sunburst behind a rainbow, and the ray
+ * bases sat ON the arch instead of behind it. A crown seen from the front is
+ * a band curving DOWN across the brow with the spikes standing up behind it,
+ * so that is what this draws: a shallow smile, and seven rays whose feet
+ * disappear behind it.
+ *
+ * Drawn in that order too - rays first, band last - because the band has to
+ * overlap the feet for them to read as going behind it.
+ */
 function drawStruckCrown(
   g: Phaser.GameObjects.Graphics, r: number, p: MaterialLighting
 ): void {
-  // Pushed down a touch: rays are top-heavy, so a device centred on the
-  // geometric middle sits visibly high on the face.
-  const cy = r * 0.16;
-  const bandR = r * 0.3;
-
-  // SEVEN rays, fanned across the upper half. Each is a triangle whose base
-  // sits on the band, so they read as fixed to it rather than laid over it.
-  const RAYS = 7;
-  const from = Math.PI * 1.04;
-  const to = Math.PI * 1.96;
-  // Base width is measured PERPENDICULAR to each ray, not as an angle.
+  const halfW = r * 0.54;
+  const sag = r * 0.2;
+  // CENTRED BY MEASUREMENT, not by a guessed offset.
   //
-  // The first version spread the base by a fixed angle at the band's radius,
-  // which is small - so at cell size every ray came out a sub-pixel sliver
-  // and the device read as a bare arc. An angular width is only a width where
-  // the radius is large, and here it never is.
-  const halfBase = r * 0.125;
-  for (let i = 0; i < RAYS; i++) {
-    const a = from + ((to - from) * i) / (RAYS - 1);
-    const cos = Math.cos(a);
-    const sin = Math.sin(a);
-    // The centre ray is longest and they shorten toward the ends, which is
-    // what makes seven spikes read as a crown rather than a cog.
-    const tip = r * (0.72 - Math.abs(i - 3) * 0.05);
-    const bx = cos * bandR;
-    const by = cy + sin * bandR;
-    // Perpendicular to the ray.
-    const px = -sin * halfBase;
-    const py = cos * halfBase;
+  // The device runs from the tip of the tallest ray down to the bottom of the
+  // band's sag, and that span is not symmetric about the point the rays are
+  // struck from - so placing it by eye left it sitting low, with the spikes
+  // touching the rim and a gap under the band. `browY` is derived below from
+  // the extent the geometry actually has.
+  const reach = r * 1.02;
+  const browY = (reach - sag) / 2 - r * 0.02;
 
-    // RELIEF, not an outline. A struck coin's device is raised, so what you
-    // see under it is the face falling away on the side opposite the light -
-    // a displaced dark copy, softened over two passes. A tight line all the
-    // way round reads as a printed sticker, which is what this was.
-    for (const [d, alpha] of RELIEF) {
-      g.fillStyle(p.shadow, alpha);
+  /** A point along the headband, `t` running -1 (left) to 1 (right). */
+  const band = (t: number): [number, number] => [t * halfW, browY + sag * (1 - t * t)];
+
+  const RAYS = 7;
+  const feet: [number, number][] = [];
+  const tips: [number, number][] = [];
+  for (let i = 0; i < RAYS; i++) {
+    const t = -0.78 + (1.56 * i) / (RAYS - 1);
+    const [bx, by] = band(t);
+    // Each ray leans away from the middle, so the fan opens like a crown
+    // rather than standing up like a comb.
+    const lean = t * 0.62;
+    const dx = Math.sin(lean);
+    const dy = -Math.cos(lean);
+    // Longest in the middle, and the outermost pair shortest - the profile
+    // that makes seven spikes read as a crown instead of a cog.
+    const len = reach - Math.abs(t) * r * 0.42;
+    feet.push([bx, by]);
+    tips.push([bx + dx * len, by + dy * len]);
+  }
+
+  // Base width is measured PERPENDICULAR to each ray, not as an angle. An
+  // angular spread at a small radius is not a width at all: the first version
+  // did that and every ray came out a sub-pixel sliver.
+  const halfBase = r * 0.1;
+  const flanks = feet.map(([bx, by], i): [[number, number], [number, number]] => {
+    const [tx, ty] = tips[i];
+    const dx = tx - bx;
+    const dy = ty - by;
+    const len = Math.hypot(dx, dy) || 1;
+    const px = (-dy / len) * halfBase;
+    const py = (dx / len) * halfBase;
+    return [[bx + px, by + py], [bx - px, by - py]];
+  });
+
+  // RELIEF first, under everything.
+  for (const [d, alpha] of RELIEF) {
+    g.fillStyle(p.shadow, alpha);
+    for (let i = 0; i < RAYS; i++) {
+      const [[ax, ay], [bx2, by2]] = flanks[i];
+      const [tx, ty] = tips[i];
       g.beginPath();
-      g.moveTo(bx + px + d * r, by + py + d * r);
-      g.lineTo(cos * tip + d * r, cy + sin * tip + d * r);
-      g.lineTo(bx - px + d * r, by - py + d * r);
+      g.moveTo(ax + d * r, ay + d * r);
+      g.lineTo(tx + d * r, ty + d * r);
+      g.lineTo(bx2 + d * r, by2 + d * r);
       g.closePath();
       g.fillPath();
     }
+  }
 
+  // THE RAYS.
+  for (let i = 0; i < RAYS; i++) {
+    const [[ax, ay], [bx2, by2]] = flanks[i];
+    const [tx, ty] = tips[i];
     g.fillStyle(p.highlight, 1);
     g.beginPath();
-    g.moveTo(bx + px, by + py);
-    g.lineTo(cos * tip, cy + sin * tip);
-    g.lineTo(bx - px, by - py);
+    g.moveTo(ax, ay);
+    g.lineTo(tx, ty);
+    g.lineTo(bx2, by2);
     g.closePath();
     g.fillPath();
-    // The shaded flank each ray used to carry is gone. At cell size a ray is
-    // four pixels across, so splitting it into a lit half and a shaded half
-    // left two two-pixel slivers and the crown turned to mush. The relief
-    // under the whole device does that job now, at a size that survives.
-
   }
 
-  // THE HALF RING they stand on - open at the bottom, so it is a band around
-  // a head that is not drawn rather than a closed hoop.
-  const band: Phaser.Geom.Point[] = [];
-  for (let i = 0; i <= 26; i++) {
-    const a = Math.PI * 1.02 + (Math.PI * 0.96 * i) / 26;
-    band.push(new Phaser.Geom.Point(Math.cos(a) * bandR, cy + Math.sin(a) * bandR));
+  // THE BAND, last, so it covers the feet.
+  const curve: Phaser.Geom.Point[] = [];
+  for (let i = 0; i <= 24; i++) {
+    const [x, y] = band(-1 + (2 * i) / 24);
+    curve.push(new Phaser.Geom.Point(x, y));
   }
-  // The same relief under the band, offset the same way, so the whole device
-  // is lit by one light rather than the ring and the rays disagreeing.
   for (const [d, alpha] of RELIEF) {
-    g.lineStyle(Math.max(1, r * 0.16), p.shadow, alpha);
+    g.lineStyle(r * 0.17, p.shadow, alpha);
     g.strokePoints(
-      band.map((pt) => new Phaser.Geom.Point(pt.x + d * r, pt.y + d * r)), false, false
+      curve.map((pt) => new Phaser.Geom.Point(pt.x + d * r, pt.y + d * r)), false, false
     );
   }
-  g.lineStyle(Math.max(1, r * 0.16), p.highlight, 1);
-  g.strokePoints(band, false, false);
-  g.lineStyle(Math.max(1, r * 0.06), p.light, 0.9);
-  g.strokePoints(band, false, false);
+  g.lineStyle(r * 0.17, p.highlight, 1);
+  g.strokePoints(curve, false, false);
+  // A thin lit line along its top edge - a band is a strip of metal, and the
+  // edge facing the light is what says so.
+  g.lineStyle(r * 0.05, p.light, 0.9);
+  g.strokePoints(
+    curve.map((pt) => new Phaser.Geom.Point(pt.x, pt.y - r * 0.05)), false, false
+  );
 }
 
 /** One event token standing on the board, waiting to be tapped in. */
