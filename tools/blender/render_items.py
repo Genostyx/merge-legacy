@@ -1263,6 +1263,28 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
     return piece
 
 
+# A coin is taller than its own thickness: the rim stands proud by another
+# third on top. Stacking on `thickness` alone drives each coin a third of the
+# way into the one below it.
+COIN_RIM = 0.34
+
+
+def coin_column(count: int, radius: float = 0.17, thickness: float = 0.042,
+                gap: float = 0.004):
+    """A stack of real coins, slot on the top one only.
+
+    Tiers three and five were stacks of plain DISCS while tiers one and two
+    were struck coins - the same currency, two different objects, and the
+    stacks read as poker chips. Only the top face of a stack is visible, so
+    only that coin needs the slot cut; carving one into each of seven buried
+    coins is boolean work nobody will ever see.
+    """
+    step = thickness * (1 + COIN_RIM) + gap
+    return [translate_to(coin(radius, thickness, slot=(i == count - 1)),
+                         (0.0, 0.0, i * step))
+            for i in range(count)]
+
+
 def build_credits():
     """The credit chain is an OBJECT LADDER, not a growing pile.
 
@@ -1294,11 +1316,7 @@ def build_credits():
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
     # and a highlight arc per layer; stacked solids have those edges already.
     # The top coin keeps its face device, since that face is visible.
-    layers = [translate_to(disc(coin_r, coin_t), (0.0, 0.0, i * (coin_t + 0.005)))
-              for i in range(5)]
-    top_device = disc(coin_r * 0.72, coin_t * 0.34)
-    translate_to(top_device, (0.0, 0.0, 5 * (coin_t + 0.005)))
-    out[3] = stack(layers + [top_device])
+    out[3] = stack(coin_column(5, coin_r, coin_t))
 
     # 4: a BUNDLE OF BILLS with a currency strap round it.
     #
@@ -1369,10 +1387,9 @@ def build_credits():
     # merge into a single heap.
     pieces = []
     for index, right in enumerate((-0.27, 0.0, 0.27)):
-        for layer in range(7 + index % 2):
-            piece = disc(coin_r * 0.72, coin_t)
+        for piece in coin_column(7 + index % 2, coin_r * 0.72, coin_t):
             pieces.append(translate_to(piece,
-                          tuple(Vector(beside(right)) + Vector((0, 0, layer * (coin_t + 0.004))))))
+                          tuple(Vector(beside(right)) + Vector(piece.location))))
     # THE BAR LEANS AGAINST THE COLUMNS, in front of them. It was a slab at
     # the same height as the stacks, so it ran straight through the middle of
     # them - a bar clipping through coins, which is the one thing a solid
