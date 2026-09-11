@@ -1262,7 +1262,8 @@ def facing_profile(ob):
 FRONT_Y = 1.0
 
 
-def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
+def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True,
+         sides: int = 24):
     """A coin: raised inner field, with the credit SLOT struck INTO it.
 
     Two things, both from the art. The drawn tiers stroke a circle at 0.72 of
@@ -1280,8 +1281,8 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
     # A struck coin's edge is the highest part of it; that raised ring is what
     # protects the face and what you see catching the light all the way round.
     rim_height = thickness * 0.34
-    blank = disc(radius, thickness + rim_height)
-    well = disc(radius * 0.80, rim_height * 3)
+    blank = disc(radius, thickness + rim_height, sides)
+    well = disc(radius * 0.80, rim_height * 3, sides)
     translate_to(well, (0.0, 0.0, thickness))
     body = carve(blank, well)
 
@@ -1641,6 +1642,98 @@ def currency_family(kind: str):
     return dress_currency(kind, built)
 
 
+# ---- the event token -------------------------------------------------------
+
+EVENT_TOKEN_HEX = 0x2fb59a
+
+
+def build_event_token():
+    """The event token: a struck medallion with a crown on its face.
+
+    Read off `drawEventToken` in EventTokenView.ts, which is the authority:
+    one round thing on a board of cut solids, a raised rim, a polished face,
+    and a device of SEVEN tapered rays over a half ring. No number and no
+    letter - a struck shape needs no translating.
+
+    Lying flat, like the credit coins. A coin is the one shape this camera
+    shows whole from above, face and thickness at once.
+    """
+    radius, thickness = 0.17, 0.042
+    # 64 sides. The credit coins are seen from above where the outline is
+    # an ellipse and 24 is plenty; this one is FACE ON, so its outline is a
+    # full circle and the polygon shows.
+    body = coin(radius, thickness, slot=False, sides=64)
+    face = thickness          # the recessed face `coin` leaves inside the rim
+
+    # THE ARCH: a half ring standing proud of the face. Built as an annulus
+    # with its lower half carved off rather than as a drawn stroke, because
+    # here it is a raised band and has to catch the light like one.
+    band = carve(translate_to(disc(0.086, 0.030), (0.0, 0.0, face)),
+                 translate_to(disc(0.050, 0.070), (0.0, 0.0, face - 0.02)))
+    # UP ON A FLAT FACE IS 315 DEGREES, not +Y. The token lies down, so the
+    # crown's up has to be the world direction that projects to screen up -
+    # measured, not assumed: +X and -Y both come back at screen y +0.316, and
+    # the direction between them at +0.447. Built round +Y the crown came out
+    # lying on its side.
+    # Face on, the crown's up is simply +Y - none of the flat-face
+    # projection applies once the token is stood square to the camera.
+    up = math.radians(90)
+    cutter = cube(0.44, 0.22, 0.14, base=False)
+    cutter.rotation_euler.rotate_axis("Z", up - math.radians(270))
+    band = carve(band, translate_to(cutter, (
+        -math.cos(up) * 0.11, -math.sin(up) * 0.11, face + 0.010)))
+
+    # SEVEN RAYS over the top half, tapering outwards from the band. Seven
+    # over a band reads as one particular object at cell size, where the
+    # six-point burst it replaced read as a generic sparkle.
+    rays = []
+    for i in range(7):
+        # Spread across 140 degrees, not a full 180. At the extremes the
+        # end rays landed exactly on the arch's cut ends and merged into
+        # them, which is what turned the outer two into square stubs.
+        angle = up - math.radians(70) + math.radians(140) * i / 6
+        ray = extrude_profile([(-0.011, 0.0), (0.011, 0.0), (0.0, 0.046)], 0.026)
+        # `extrude_profile` builds in x-z and extrudes along y, so a quarter
+        # turn about X lays the triangle flat with its thickness in z and its
+        # tip pointing +Y. The spin about Z then aims it outwards.
+        ray.rotation_euler.rotate_axis("X", math.radians(-90))
+        ray.rotation_euler.rotate_axis("Z", math.radians(math.degrees(angle) - 90))
+        # Based just OUTSIDE the band, and sized so the tips stay INSIDE
+        # the recessed face. `coin` wells out to 0.8 of the radius - 0.136 -
+        # and rays reaching 0.158 were punching into the rim wall, which is
+        # what turned the device into a ring of clipped fragments.
+        translate_to(ray, (math.cos(angle) * 0.088,
+                           math.sin(angle) * 0.088,
+                           face + 0.009))
+        rays.append(ray)
+
+    # THE DEVICE CENTRED ON THE FACE. The arch is centred on the origin but
+    # the rays only go upwards, so the crown's visible mass sits well above
+    # it - drawn, the whole device is centred on the coin. Dropping it by a
+    # third of a ray's length puts the mass back in the middle.
+    for part in [band] + rays:
+        part.location.y -= 0.028
+    token = stack([body, band] + rays)
+
+    # FACE ON, like the wood knots and for the same reason: this thing's
+    # identity IS the struck device, and the isometric three-quarter
+    # foreshortens the crown into a smear. The credit coins lie flat because
+    # a coin is generic and its face carries almost nothing; here the face is
+    # the entire object.
+    facing_camera(token)
+
+    material = tier_material("event-token", EVENT_TOKEN_HEX, EVENT_TOKEN_HEX)
+    shader = _shader(material)
+    # Struck metal, same treatment as the credits - the token is a coin
+    # before it is anything else.
+    shader.inputs["Metallic"].default_value = 0.94
+    shader.inputs["Roughness"].default_value = 0.13
+    # A HAIRLINE bevel. At 0.006 it was wider than the rays are thick and
+    # melted the whole device into blobs - a struck mark needs its edges.
+    finish(token, "event-token", material, bevel=0.0015)
+    return {1: token}
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -1904,7 +1997,8 @@ def main(only: str = ""):
     build_lights()
     configure_render()
 
-    families = [("wood", build_wood), ("mineral", build_mineral)]
+    families = [("wood", build_wood), ("mineral", build_mineral),
+                ("event-token", build_event_token)]
     for kind in CURRENCY_HEX:
         families.append((kind, (lambda k: lambda: currency_family(k))(kind)))
     for family, build in families:
