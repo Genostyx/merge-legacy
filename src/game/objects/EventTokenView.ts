@@ -160,11 +160,25 @@ function strokeStruckEdges(
   g: Phaser.GameObjects.Graphics, pts: readonly (readonly [number, number])[],
   p: MaterialLighting, width: number
 ): void {
+  // The normal has to point OUT of the shape, and which way that is depends
+  // on the winding - so it is checked against the centroid rather than
+  // assumed. Assuming it inverted every edge on the rays, whose points happen
+  // to wind the other way from the band's: bright along the lower-right and
+  // dark along the upper-left, which is precisely how a shape pressed INTO a
+  // coin looks. The device is supposed to stand out of it.
+  const cx = pts.reduce((sum, [x]) => sum + x, 0) / pts.length;
+  const cy = pts.reduce((sum, [, y]) => sum + y, 0) / pts.length;
+
   for (let i = 0; i < pts.length; i++) {
     const [x1, y1] = pts[i];
     const [x2, y2] = pts[(i + 1) % pts.length];
-    const nx = y2 - y1;
-    const ny = -(x2 - x1);
+    let nx = y2 - y1;
+    let ny = -(x2 - x1);
+    // Flip it if it points back at the middle of the shape.
+    const mx = (x1 + x2) / 2 - cx;
+    const my = (y1 + y2) / 2 - cy;
+    if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; }
+
     const facing = (nx * Math.cos(KEY_ANGLE) + ny * Math.sin(KEY_ANGLE)) / (Math.hypot(nx, ny) || 1);
     g.lineStyle(width, facing > 0 ? p.highlight : p.shadow, facing > 0 ? 0.95 : 0.85);
     g.beginPath();
@@ -215,6 +229,17 @@ function drawStruckCrown(
     const px = -sin * halfBase;
     const py = cos * halfBase;
 
+    // A CAST SHADOW, first and underneath. Edge lighting alone says a shape
+    // is raised OR recessed depending on which way you read it; a shadow
+    // thrown onto the field beside it can only mean raised.
+    const drop = r * 0.05;
+    g.fillStyle(p.shadow, 0.4);
+    g.beginPath();
+    g.moveTo(bx + px + drop, by + py + drop);
+    g.lineTo(cos * tip + drop, cy + sin * tip + drop);
+    g.lineTo(bx - px + drop, by - py + drop);
+    g.closePath();
+    g.fillPath();
     const face: [number, number][] = [
       [bx + px, by + py],
       [cos * tip, cy + sin * tip],
