@@ -1267,10 +1267,14 @@ def facing_profile(ob):
     view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
     forward = view @ Vector((0, 0, -1))
     ob.rotation_euler = (-forward).to_track_quat('Y', 'Z').to_euler()
-    swing = Matrix.Rotation(math.radians(26), 4, view @ Vector((0, 1, 0)))
-    drop = Matrix.Rotation(math.radians(-9), 4, view @ Vector((1, 0, 0)))
+    # -30 about the screen vertical, and NOTHING else. The same turn the
+    # coins and the event token take, so every face-on piece in the game is
+    # presented at one angle instead of each having its own. The 9 degree
+    # drop that used to go with it is gone for the same reason: the coins do
+    # not have one, and it only tipped these out of line with them.
+    swing = Matrix.Rotation(math.radians(-30), 4, view @ Vector((0, 1, 0)))
     ob.rotation_euler = (
-        drop @ swing @ ob.rotation_euler.to_matrix().to_4x4()
+        swing @ ob.rotation_euler.to_matrix().to_4x4()
     ).to_euler()
     return ob
 
