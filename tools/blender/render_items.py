@@ -890,10 +890,7 @@ def build_wood():
     T = 0.085
     out = {}
 
-    out[1] = merge([
-        cube(0.62, 0.30, 0.24),
-        cube(0.20, 0.17, 0.13, loc=(-0.10, -0.03, 0.24)),
-    ])
+    out[1] = cube(0.62, 0.30, 0.24)
     out[2] = stack([
         cube(0.68, 0.30, T),
         cube(0.64, 0.28, T, loc=(0.07, -0.07, T + STACK_GAP)),
