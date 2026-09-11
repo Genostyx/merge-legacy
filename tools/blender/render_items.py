@@ -37,7 +37,12 @@ RESOLUTION = 384
 # splay left and right on screen leans along this, NOT along +X and +Y - those
 # are opposite axes in the world but fall to the SAME side of the frame here,
 # which is what turned the tier-five V into a single wedge twice.
-SCREEN_RIGHT = Vector((1, 1, 0)).normalized()
+# MEASURED, not assumed. Projecting a unit of this into camera space gives
+# screen x = +1.11; the opposite, (1, 1, 0), gives -0.89. I had it as (1, 1, 0)
+# and so every `beside(right)` in the file meant LEFT - which is invisible on
+# a symmetric scatter and very visible the moment something has to sit in
+# front of something else on a particular side.
+SCREEN_RIGHT = Vector((-1, -1, 0)).normalized()
 LEAN_AXIS = Vector((1, -1, 0)).normalized()
 
 # ---- material --------------------------------------------------------------
@@ -506,6 +511,22 @@ def merge(parts):
         bpy.ops.object.modifier_apply(modifier=mod.name)
         bpy.data.objects.remove(other, do_unlink=True)
     return base
+
+
+def carve(target, tool):
+    """Cuts `tool` out of `target`. The opposite of merge().
+
+    The credit symbol is a slot SUNK into the coin, not a bar sitting on it -
+    a recess catches the key light on its far wall and shadows on its near
+    one, which is what makes a struck coin look struck. A raised bar reads as
+    something glued on.
+    """
+    mod = target.modifiers.new("Carve", 'BOOLEAN')
+    mod.operation, mod.object, mod.solver = 'DIFFERENCE', tool, 'EXACT'
+    bpy.context.view_layer.objects.active = target
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    bpy.data.objects.remove(tool, do_unlink=True)
+    return target
 
 
 def stack(parts):
@@ -1164,19 +1185,60 @@ def facing_camera(ob):
 FRONT_Y = 1.0
 
 
-def coin(radius: float = 0.17, thickness: float = 0.042):
-    """A coin WITH ITS FACE DEVICE - the raised inner ring.
+def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
+    """A coin: raised inner field, with the credit SLOT struck INTO it.
 
-    The drawn art strokes a circle at 0.72 of the radius on every coin it
-    shows, and that ring is most of what separates a coin from a disc. In 2D
-    it is a line; in 3D it has to be geometry, so it is a shallow raised step
-    on the face that catches the key light along one side and shades along the
-    other.
+    Two things, both from the art. The drawn tiers stroke a circle at 0.72 of
+    the radius on every coin, which is the raised field that separates a coin
+    from a disc. And the game's own credit mark is a bar RECESSED across that
+    field - a slot, not a ridge.
+
+    The body and the field are unioned before the slot is cut. Carving a
+    difference out of two disjoint shells that merely sit on each other does
+    not behave: the first attempt came back with the bar standing proud of
+    the face, which is the exact opposite of the mark it was copying.
     """
-    body = disc(radius, thickness)
-    device = disc(radius * 0.72, thickness * 0.34)
-    translate_to(device, (0.0, 0.0, thickness))
-    return stack([body, device])
+    # THE RIM STANDS PROUD AND THE FACE SITS INSIDE IT. I had it inverted -
+    # a raised inner field with the rim below - which is a button, not a coin.
+    # A struck coin's edge is the highest part of it; that raised ring is what
+    # protects the face and what you see catching the light all the way round.
+    rim_height = thickness * 0.34
+    blank = disc(radius, thickness + rim_height)
+    well = disc(radius * 0.80, rim_height * 3)
+    translate_to(well, (0.0, 0.0, thickness))
+    body = carve(blank, well)
+
+    if slot:
+        # Struck DEEP into the recessed face, which sits at `thickness`.
+        #
+        # Measured from the face down rather than centred on it: a box
+        # straddling the surface only sinks half its height, so at 0.36 of the
+        # coin's thickness the cut was barely 18% deep and read as a scratch.
+        # Building it base-up from `thickness - depth` means the number is the
+        # depth.
+        depth = thickness * 0.62
+        bar = cube(radius * 0.82, radius * 0.18, depth + thickness)
+        translate_to(bar, (0.0, 0.0, thickness - depth))
+        body = carve(body, bar)
+    return body
+
+
+def upright_coin(radius: float = 0.17, thickness: float = 0.042):
+    """A coin standing ON ITS EDGE, turned to the isometric three-quarter.
+
+    Lying on its back a coin shows its face as a flat ellipse and hides the
+    rim entirely, so the struck detail - the raised ring, the slot - is read
+    end-on and the piece looks like a token. Stood up and turned part way, the
+    face and the thickness are both visible at once, which is what the game's
+    own coin mark does and what every other item in the set does: presented at
+    an angle, not square to anything.
+    """
+    piece = coin(radius, thickness)
+    piece.rotation_euler.rotate_axis("X", math.radians(-90))
+    # Not 45 - that is dead face-on to this camera. 22 off it keeps the face
+    # readable while leaving the rim's thickness in view.
+    piece.rotation_euler.rotate_axis("Z", math.radians(23))
+    return piece
 
 
 def build_credits():
@@ -1199,10 +1261,12 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = facing_camera(coin())
+    out[1] = upright_coin()
     out[2] = stack([
-        translate_to(facing_camera(coin()), beside(-0.11, 0.05)),
-        translate_to(facing_camera(coin()), beside(0.11, -0.05)),
+        # Overlapping, with the near one a touch forward, so they read as two
+        # coins leaning together rather than two discs butted edge to edge.
+        translate_to(upright_coin(), beside(-0.13, 0.07)),
+        translate_to(upright_coin(), beside(0.11, -0.07)),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
@@ -1214,33 +1278,28 @@ def build_credits():
     translate_to(top_device, (0.0, 0.0, 5 * (coin_t + 0.005)))
     out[3] = stack(layers + [top_device])
 
-    # 4: a wrapped ROLL - a cylinder on its side with a paper band round it,
-    # a seam ridge along the band, and a coin showing at the open end. The
-    # wrapper is what separates a roll from "a taller stack".
-    # crystal() builds from z=0 UPWARD, so after tipping it 90 degrees the
-    # roll runs from y=0 to y=-0.46 rather than straddling the origin - which
-    # is why the end cap, placed at +0.235, floated in space beside it. Move
-    # the roll onto its own centre first and everything else can be measured
-    # from there.
-    roll = crystal(radius=coin_r, height=0.46, tip=0.0, sides=20, taper=1.0)
-    roll.rotation_euler.x = math.radians(90)
-    bpy.context.view_layer.objects.active = roll
-    bpy.ops.object.select_all(action='DESELECT')
-    roll.select_set(True)
-    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-    translate_to(roll, (0.0, 0.23, 0.0))
-    # A PROPER band: wider than the roll by enough to cast its own edge, and
-    # sitting toward the visible end. At 1.07 it merged into the cylinder and
-    # the roll read as a plain tube.
-    wrapper = crystal(radius=coin_r * 1.16, height=0.22, tip=0.0, sides=20, taper=1.0)
-    wrapper.rotation_euler.x = math.radians(90)
-    translate_to(wrapper, (0.0, FRONT_Y * -0.04, 0.0))
-    seam = cube(0.03, 0.23, 0.028, base=False)
-    translate_to(seam, (0.0, FRONT_Y * -0.04, coin_r * 1.16))
-    end_cap = disc(coin_r * 0.74, 0.02)
-    end_cap.rotation_euler.x = math.radians(-90)
-    translate_to(end_cap, (0.0, FRONT_Y * 0.235, 0.0))
-    out[4] = stack([roll, wrapper, seam, end_cap])
+    # 4: a BUNDLE OF BILLS with a currency strap round it.
+    #
+    # Paper, not metal - which is what makes it a step up from the coin
+    # stack below rather than a taller version of it. Built as separate
+    # leaves so the edges read: a solid block with lines on it would be
+    # faking in 3D exactly what 2D had to fake.
+    bill_w, bill_d, leaf = 0.52, 0.27, 0.016
+    leaves = 11
+    bundle_h = leaves * leaf
+    bills = [translate_to(cube(bill_w, bill_d, leaf), (0.0, 0.0, i * leaf))
+             for i in range(leaves)]
+
+    # The strap goes round the SHORT way, over the top and under the bottom,
+    # so it is a rectangular ring in the y-z plane - a band lying flat across
+    # the top would be a ribbon, not a strap. Left blank: no denomination.
+    outer = cube(0.10, bill_d + 0.036, bundle_h + 0.036, base=False)
+    translate_to(outer, (0.0, 0.0, bundle_h / 2))
+    inner = cube(0.26, bill_d + 0.002, bundle_h + 0.002, base=False)
+    translate_to(inner, (0.0, 0.0, bundle_h / 2))
+    strap = carve(outer, inner)
+
+    out[4] = stack(bills + [strap])
 
     # 5: a BUNDLE - three stacks of real coins bound by a strap with a seal.
     # Built from discs rather than smooth columns so the coin edges read, the
@@ -1254,12 +1313,17 @@ def build_credits():
             piece = disc(coin_r * 0.72, coin_t)
             pieces.append(translate_to(piece,
                           tuple(Vector(beside(right)) + Vector((0, 0, layer * (coin_t + 0.004))))))
-    strap = cube(0.74, 0.26, 0.08, base=False)
-    translate_to(strap, (0.0, 0.0, 0.16))
-    seal = disc(0.058, 0.022)
-    seal.rotation_euler.x = math.radians(-90)
-    translate_to(seal, (0.0, FRONT_Y * 0.152, 0.17))
-    out[5] = stack(pieces + [strap, seal])
+    # THE BAR LEANS AGAINST THE COLUMNS, in front of them. It was a slab at
+    # the same height as the stacks, so it ran straight through the middle of
+    # them - a bar clipping through coins, which is the one thing a solid
+    # object must never do.
+    # Leaning ON the columns, not lying on the floor in front of them. At
+    # -0.34 it sat clear of the stacks entirely and hung off the bottom of the
+    # frame; it needs to touch what it leans against.
+    bar = cube(0.44, 0.19, 0.095)
+    bar.rotation_euler.rotate_axis("X", math.radians(-34))
+    translate_to(bar, tuple(Vector(beside(0.0, -0.19)) + Vector((0.0, 0.0, 0.02))))
+    out[5] = stack(pieces + [bar])
 
     # 6: the VAULT - a strongbox, corner-on like every other box in the game,
     # because here the object IS a volume. Door, spokes and dial, all of which
@@ -1338,8 +1402,12 @@ def dress_currency(kind: str, out):
         else:
             gemstone(material, ior=1.75, roughness=0.06, tint_strength=0.0)
             absorbing(material, CURRENCY_RGB[kind][tier], density=9.0)
+        # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
+        # outline inside its edge, and on a solid that is a chamfered rim -
+        # at 0.010 on a 0.042-thick coin it was a hairline and the edge read
+        # as a cut cylinder.
         finish(ob, "%s%d" % (kind, tier), material,
-               bevel=0.004 if kind == "currency-gem" else 0.010)
+               bevel=0.004 if kind == "currency-gem" else 0.018)
     return out
 
 
