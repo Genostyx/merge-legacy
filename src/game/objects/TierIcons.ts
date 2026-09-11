@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { EVENT_CHAIN } from '../events/EventChain';
 import { Theme, materialLighting, toneAt, toneForNormal } from '../ui/Theme';
+import { fillPoly, makeIso, type IsoFn } from './Isometric';
+import { box, group, renderMesh, rotateX, rotateY, rotateZ, translate, type Mesh } from './Mesh3D';
+import { WOVEN_KNOT_3, WOVEN_KNOT_5 } from './meshes/knots';
 import { CHAINS, getTierDef } from '../data/chains';
 import { GraphicsRecorder } from './GraphicsRecorder';
 
@@ -385,54 +388,150 @@ function drawCurrencyTier(g: Phaser.GameObjects.Graphics, typeId: string, tier: 
 /** Cool translucent geometry for the twelve-tier Water chain. */
 function drawWaterTier(g: Phaser.GameObjects.Graphics, tier: number, s: number, p: Palette): void {
   const t = Phaser.Math.Clamp(tier, 1, 12);
-  const ring = (rx: number, ry: number, y = s * 0.14): void => {
-    g.lineStyle(Math.max(1, s * 0.035), p.light, 0.85);
-    g.strokeEllipse(0, y, rx * 2, ry * 2);
+  type XY = [number, number];
+  const path = (pts: XY[], color: number, width: number, alpha = 1) => {
+    g.lineStyle(s * width, color, alpha);
+    g.strokePoints(pts.map(([x,y]) => new Phaser.Geom.Point(x*s,y*s)), false, false);
   };
-  const drop = (x: number, y: number, r: number): void => {
-    g.fillStyle(p.base, 0.84);
-    g.fillCircle(x, y, r);
-    g.fillTriangle(x - r * 0.72, y - r * 0.4, x, y - r * 1.7, x + r * 0.72, y - r * 0.4);
-    g.fillStyle(p.highlight, 0.7);
-    g.fillCircle(x - r * 0.26, y - r * 0.28, Math.max(1, r * 0.2));
-  };
-  if (t === 1) drop(0, s * 0.14, s * 0.16);
-  else if (t === 2) {
-    // Keep the original drop artwork; only compose it as a large foreground
-    // drop with a smaller companion lifted behind it.
-    drop(s * 0.19, -s * 0.08, s * 0.125);
-    drop(-s * 0.11, s * 0.16, s * 0.185);
-  }
-  else if (t === 3) { ring(s * 0.34, s * 0.12); ring(s * 0.23, s * 0.08); ring(s * 0.12, s * 0.04); }
-  else if (t === 4) {
-    g.fillStyle(p.dark, 0.55); g.fillEllipse(0, s * 0.2, s * 0.8, s * 0.26);
-    g.fillStyle(p.base, 0.8); g.fillEllipse(0, s * 0.14, s * 0.72, s * 0.22); ring(s * 0.28, s * 0.07);
-  } else if (t === 5) {
-    g.lineStyle(s * 0.12, p.base, 0.86);
-    g.beginPath(); g.moveTo(-s * 0.38, s * 0.2); g.lineTo(-s * 0.12, 0); g.lineTo(s * 0.1, s * 0.16); g.lineTo(s * 0.38, -s * 0.06); g.strokePath();
-    g.lineStyle(Math.max(1, s * 0.03), p.highlight, 0.7);
-    g.beginPath(); g.moveTo(-s * 0.38, s * 0.14); g.lineTo(-s * 0.12, -s * 0.06); g.lineTo(s * 0.1, s * 0.1); g.lineTo(s * 0.38, -s * 0.12); g.strokePath();
-  } else if (t === 6) {
-    g.fillStyle(p.dark, 0.9); g.fillRoundedRect(-s * 0.38, -s * 0.02, s * 0.76, s * 0.36, s * 0.06);
-    g.fillStyle(p.base, 0.82); g.fillEllipse(0, -s * 0.02, s * 0.68, s * 0.22); ring(s * 0.27, s * 0.07, -s * 0.03);
-  } else if (t === 7) {
-    g.fillStyle(p.base, 0.8); g.fillRoundedRect(-s * 0.08, -s * 0.35, s * 0.16, s * 0.62, s * 0.05);
-    g.fillTriangle(-s * 0.18, -s * 0.25, 0, -s * 0.55, s * 0.18, -s * 0.25); ring(s * 0.25, s * 0.07, s * 0.27);
-  } else if (t === 8) {
-    for (let i = -1; i <= 1; i++) {
-      g.fillStyle(i === 0 ? p.light : p.base, 0.8);
-      g.fillRoundedRect(i * s * 0.18 - s * 0.07, -s * (0.34 - Math.abs(i) * 0.09), s * 0.14, s * 0.58, s * 0.05);
+  // Interpolated faces and narrow reflection bands give the liquid depth.
+  const body = (pts: XY[], center: XY) => {
+    for (let i=0;i<pts.length;i++) {
+      const a=pts[i], b=pts[(i+1)%pts.length];
+      const edge = (v: XY) => v[0]<center[0] && v[1]<center[1] ? p.light : p.dark;
+      g.fillGradientStyle(p.base,edge(a),edge(b),edge(b),0.96);
+      g.fillTriangle(center[0]*s,center[1]*s,a[0]*s,a[1]*s,b[0]*s,b[1]*s);
     }
-    ring(s * 0.32, s * 0.085, s * 0.26);
-  } else if (t === 9) {
-    // A genuine inward funnel rather than tier 3's three concentric ripples:
-    // the continuous spiral tightens into a dark displaced throat, giving
-    // the form direction, rotation and depth at board size.
+  };
+  const oval = (x:number,y:number,rx:number,ry:number): XY[] =>
+    Array.from({length:48},(_,i)=>{const a=Math.PI+i*Math.PI/24;return [x+Math.cos(a)*rx,y+Math.sin(a)*ry];});
+  const ripple = (x:number,y:number,rx:number,ry:number) => {
+    const pts=oval(x,y,rx,ry);
+    path([...pts,pts[0]],p.dark,0.028,0.8);
+    path(pts.slice(0,25),p.highlight,0.012,0.9);
+    path(pts.slice(25),p.light,0.011,0.75);
+  };
+  const softBody = (pts: XY[], center: XY) => {
+    const mix = (a:number,b:number,u:number) => {
+      const c=(shift:number)=>Math.round(((a>>shift)&255)*(1-u)+((b>>shift)&255)*u);
+      return (c(16)<<16)|(c(8)<<8)|c(0);
+    };
+    const shade=(v:XY)=> {
+      const angle=Math.atan2(v[1]-center[1],v[0]-center[0]);
+      return mix(p.dark,p.light,(1+Math.cos(angle+2.2))*0.5);
+    };
+    for(let i=0;i<pts.length;i++){
+      const a=pts[i],b=pts[(i+1)%pts.length];
+      g.fillGradientStyle(p.base,shade(a),shade(b),shade(b),1);
+      g.fillTriangle(center[0]*s,center[1]*s,a[0]*s,a[1]*s,b[0]*s,b[1]*s);
+    }
+  };
+  const drop = (x:number,y:number,r:number) => {
+    // Two cubic sides meet at the tip and round continuously into the base.
+    const pts:XY[]=[];
+    const bez=(a:XY,b:XY,c:XY,d:XY) => {
+      for(let i=0;i<25;i++){
+        const u=i/24,v=1-u;
+        pts.push([x+r*(v*v*v*a[0]+3*v*v*u*b[0]+3*v*u*u*c[0]+u*u*u*d[0]),
+          y+r*(v*v*v*a[1]+3*v*v*u*b[1]+3*v*u*u*c[1]+u*u*u*d[1])]);
+      }
+    };
+    bez([0,-1.4],[-0.16,-0.82],[-1.6,0.65],[0,1.05]);
+    bez([0,1.05],[1.6,0.65],[0.16,-0.82],[0,-1.4]);
+    softBody(pts,[x-r*0.14,y+r*0.2]);
+    const glint:XY[]=Array.from({length:12},(_,i)=>{
+      const u=i/11;return [x+r*(-0.25-0.25*Math.sin(u*Math.PI*0.7)),y+r*(-0.22+u*0.62)];
+    });
+    path(glint,p.highlight,r*0.095,0.92);
+    path(pts.slice(28,38),p.light,r*0.045,0.8);
+  };
+  const bowl = (y:number,rx:number) => {
+    const rim=oval(0,y,rx,rx*0.28);
+    const front:XY[]=Array.from({length:25},(_,i)=>{
+      const u=i/24;return [rx*Math.cos(u*Math.PI),y+rx*0.4*Math.sin(u*Math.PI)+0.025];
+    });
+    softBody([...front,...rim.slice(0,25)],[0,y+0.04]);
+    softBody(rim,[-rx*0.2,y]);
+    ripple(0,y,rx,rx*0.28);
+  };
+  const pool = (y:number,rx:number,ry:number) => {
+    body(oval(0,y,rx,ry),[-rx*0.2,y-ry*0.1]);
+    ripple(0,y,rx,ry);
+    ripple(-0.035,y,rx*0.63,ry*0.56);
+  };
+  if(t<=2) {
+    if(t===2) drop(0.18,-0.1,0.125);
+    drop(t===2?-0.1:0,0.04,t===2?0.19:0.22);
+  } else if(t===3) {
+    for(let i=3;i>=1;i--) ripple(0,0.08,0.12*i,0.045*i);
+  } else if(t===4) {
+    // A PUDDLE, not the basin this used to be. The tidy oval read as water
+    // someone had poured somewhere on purpose; a puddle is shallower than it
+    // is wide, its edge is lopsided, and it has thrown a fleck or two clear
+    // of itself. Those three things are the whole difference.
+    const pts=oval(-0.02,0.11,0.4,0.105).map(([x,y],i):XY=>{
+      const a=i*Math.PI/24;
+      // Two harmonics, out of phase with each other, so no lobe lands
+      // opposite its twin - one wave alone just makes a tidy flower.
+      return [
+        x*(1+0.13*Math.sin(a*3+0.7)+0.07*Math.sin(a*5)),
+        y+0.022*Math.sin(a*2+1.2)+0.01*Math.sin(a*4)
+      ];
+    });
+    softBody(pts,[-0.1,0.09]);
+    path(pts.slice(2,22),p.highlight,0.012,0.85);
+    path(pts.slice(27,43),p.light,0.011,0.7);
+    // One streak of sheen off to the side. A ring of it all the way round is
+    // what depth looks like; a film on a floor catches the light in a band.
+    path(oval(-0.08,0.095,0.2,0.035).slice(0,19),p.highlight,0.009,0.6);
+    for(const [fx,fy,fr] of [[0.29,-0.05,0.05],[-0.32,-0.01,0.036]] as const) {
+      const fleck=oval(fx,fy,fr,fr*0.42);
+      softBody(fleck,[fx,fy]);
+      path(fleck.slice(0,20),p.highlight,0.008,0.7);
+    }
+  } else if(t===5) {
+    const a:XY[]=[],b:XY[]=[];
+    for(let i=0;i<=36;i++){
+      const u=i/36,x=-0.39+u*0.78,y=0.09+Math.sin(u*Math.PI*2)*0.075-u*0.12;
+      a.push([x,y-0.06]);b.unshift([x,y+0.065]);
+    }
+    body([...a,...b],[0,0.04]);path(a,p.highlight,0.019,0.9);
+    path(a.map(([x,y]):XY=>[x,y+0.045]),p.light,0.014,0.8);
+  } else if(t===6) {
+    const front:XY[]=Array.from({length:25},(_,i)=>{
+      const a=i*Math.PI/24;return [Math.cos(a)*0.36,0.15+Math.sin(a)*0.13];
+    });
+    body([...front,[-0.36,-0.08],[0.36,-0.08]],[0,0.08]);
+    pool(-0.08,0.36,0.16);
+    path([[-0.26,0.02],[-0.25,0.18]],p.light,0.024,0.75);
+  } else if(t===7) {
+    bowl(0.24,0.33);
+    const stream:XY[]=Array.from({length:32},(_,i)=>{
+      const u=i/31;return [-0.04+0.15*Math.sin(u*Math.PI),0.23-0.62*Math.sin(u*Math.PI*0.72)];
+    });
+    path(stream,p.dark,0.047);
+    path(stream,p.light,0.03);
+    path(stream.map(([x,y]):XY=>[x-0.008,y]),p.highlight,0.01,0.9);
+    ripple(-0.04,0.24,0.1,0.025);
+  } else if(t===8) {
+    // Three stacked bowls, with spillways falling into the bowl below.
+    bowl(0.3,0.37);
+    path([[0,0.26],[0,-0.32]],p.dark,0.05);
+    for(const [y,rx,nextY] of [[0.03,0.25,0.3],[-0.25,0.14,0.03]]){
+      for(const side of [-1,1]){
+        const flow:XY[]=Array.from({length:20},(_,i)=>{
+          const u=i/19;return [side*(rx*0.78+0.055*Math.sin(u*Math.PI)),y+(nextY-y)*u];
+        });
+        path(flow,p.base,0.041);
+        path(flow,p.highlight,0.011,0.85);
+      }
+      bowl(y,rx);
+    }
+    path([[0,-0.25],[0.015,-0.36],[0,-0.4]],p.light,0.026);
+  } else if(t===9) {
     const cy = s * 0.06;
     g.fillStyle(p.dark, 0.72);
     g.fillEllipse(0, cy + s * 0.06, s * 0.78, s * 0.38);
-    g.fillStyle(p.base, 0.78);
-    g.fillEllipse(0, cy, s * 0.72, s * 0.31);
+    softBody(oval(0, 0.06, 0.36, 0.155), [-0.08, 0.015]);
     const spiral: Phaser.Geom.Point[] = [];
     const turns = Math.PI * 4.25;
     for (let i = 0; i <= 42; i++) {
@@ -450,18 +549,25 @@ function drawWaterTier(g: Phaser.GameObjects.Graphics, tier: number, s: number, 
     g.fillEllipse(s * 0.018, cy + s * 0.07, s * 0.13, s * 0.075);
     g.fillStyle(p.highlight, 0.72);
     g.fillEllipse(-s * 0.18, cy - s * 0.075, s * 0.16, s * 0.035);
-  }
-  else if (t === 10) {
-    g.fillStyle(p.base, 0.75); g.fillCircle(0, 0, s * 0.34); g.fillStyle(p.light, 0.45); g.fillCircle(-s * 0.1, -s * 0.11, s * 0.15);
-    g.lineStyle(Math.max(1, s * 0.025), p.highlight, 0.75); g.strokeCircle(0, 0, s * 0.34);
-  } else if (t === 11) {
-    g.lineStyle(s * 0.12, p.base, 0.84); g.strokeCircle(0, 0, s * 0.31);
-    g.lineStyle(Math.max(1, s * 0.028), p.highlight, 0.8); g.strokeCircle(-s * 0.035, -s * 0.035, s * 0.28);
-  } else {
-    g.fillStyle(p.dark, 0.92); g.fillCircle(0, 0, s * 0.37); g.fillStyle(p.base, 0.84); g.fillCircle(0, 0, s * 0.29);
-    g.fillStyle(p.light, 0.6); g.fillCircle(-s * 0.06, -s * 0.07, s * 0.17); g.fillStyle(p.highlight, 0.9); g.fillCircle(-s * 0.08, -s * 0.1, s * 0.055);
-    g.lineStyle(Math.max(1, s * 0.03), p.highlight, 0.75); g.strokeCircle(0, 0, s * 0.37);
-    g.lineBetween(-s * 0.48, 0, -s * 0.37, 0); g.lineBetween(s * 0.37, 0, s * 0.48, 0);
+  } else {
+    if(t!==11){
+      body(oval(0,0,0.32,0.32),[-0.12,-0.12]);
+      path(oval(-0.015,-0.025,0.265,0.27).slice(2,17),p.highlight,0.027,0.95);
+      path(oval(0.01,0.015,0.26,0.265).slice(28,41),p.light,0.025,0.8);
+    }
+    if(t>=11){
+      const pts:XY[]=Array.from({length:81},(_,i)=>{
+        const a=i*Math.PI/40;return [Math.cos(a)*0.38,Math.sin(a)*0.22+Math.cos(a)*0.1];
+      });
+      path(pts,p.dark,t===11?0.095:0.038);
+      path(pts,p.base,t===11?0.066:0.023);
+      path(pts.slice(0,40),p.highlight,0.014);
+      if(t===12) {
+        drop(0,0,0.095);
+        path([[-0.39,-0.21],[-0.39,-0.13]],p.highlight,0.015);
+        path([[-0.43,-0.17],[-0.35,-0.17]],p.highlight,0.015);
+      }
+    }
   }
 }
 
@@ -1313,162 +1419,6 @@ function drawBlock(g: Phaser.GameObjects.Graphics, w: number, h: number, depth: 
   g.strokePath();
 }
 
-/**
- * A lap-jointed beam lattice (kumiko / burr-puzzle territory) - Wood's take
- * on tier 7's "blocky interlocking cross/lattice" stage.
- *
- * Deliberately NOT drawInterlockingCross (Glass tier 7): that helper is
- * three bars radiating from a shared centre, which is the same asterisk
- * whatever angles you feed it, so wood reusing it with tweaked numbers
- * would be exactly the near-identical-params duplicate the file header
- * warns about. A four-beam woven grid is a structurally different object -
- * and joinery is the one shape language wood owns outright over stone and
- * glass, so this is a more honest material story than a borrowed asterisk.
- */
-function drawJoineryLattice(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  const angle = -0.13;
-  const cos = Math.cos(angle), sin = Math.sin(angle);
-  const rot = ([x, y]: [number, number]): [number, number] => [x * cos - y * sin, x * sin + y * cos];
-
-  const len = s * 0.66, bw = s * 0.115, gap = s * 0.15;
-
-  const beamPts = (horiz: boolean, off: number): [number, number][] => {
-    const raw: [number, number][] = horiz
-      ? [[-len / 2, off - bw / 2], [len / 2, off - bw / 2], [len / 2, off + bw / 2], [-len / 2, off + bw / 2]]
-      : [[off - bw / 2, -len / 2], [off + bw / 2, -len / 2], [off + bw / 2, len / 2], [off - bw / 2, len / 2]];
-    return raw.map(rot);
-  };
-
-  const fillBeam = (pts: [number, number][], tone: number): void => {
-    g.fillStyle(tone, 1);
-    g.beginPath();
-    pts.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
-    g.closePath();
-    g.fillPath();
-    g.lineStyle(1, p.shadow, 0.55);
-    g.strokePoints(pts.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
-  };
-
-  // Verticals sit under, horizontals over - then two of the four crossings
-  // get the vertical re-drawn on top, so the grid genuinely alternates
-  // over/under like a real lap joint instead of reading as one flat plane.
-  // Tones step strictly by depth (dark = furthest back, light = nearest
-  // front) so the whole thing reads as one piece of wood at different
-  // depths; an earlier pass used dark/light for the two axes and read as
-  // two different materials laid on top of each other.
-  for (const off of [-gap, gap]) fillBeam(beamPts(false, off), p.dark);
-  for (const off of [-gap, gap]) fillBeam(beamPts(true, off), p.base);
-
-  for (const [ox, oy] of [[-gap, gap], [gap, -gap]] as [number, number][]) {
-    const patch: [number, number][] = ([
-      [ox - bw / 2, oy - bw * 0.85], [ox + bw / 2, oy - bw * 0.85],
-      [ox + bw / 2, oy + bw * 0.85], [ox - bw / 2, oy + bw * 0.85]
-    ] as [number, number][]).map(rot);
-    fillBeam(patch, p.light);
-  }
-
-  // One lit edge per horizontal beam - the fixed upper-left light catching
-  // the top arris of each member.
-  g.lineStyle(1, p.highlight, 0.5);
-  for (const off of [-gap, gap]) {
-    const [a, b] = [rot([-len / 2, off - bw / 2]), rot([len / 2, off - bw / 2])];
-    g.beginPath();
-    g.moveTo(a[0], a[1]);
-    g.lineTo(b[0], b[1]);
-    g.strokePath();
-  }
-}
-
-/**
- * A continuous woven torus knot with real over/under crossings - Wood's
- * tier 8+ take on the "smooth interlocking knot" stage.
- *
- * Deliberately NOT drawInterlockingKnot (Glass tier 8): that one is three
- * separate overlapping rings, which reads as a gyroscope. This is ONE
- * unbroken band that passes through itself, which is what a steam-bent or
- * carved wooden knot actually is. `lobes` is the real escalation axis - a
- * 3-lobed trefoil at tier 8 vs a 5-lobed knot at tier 9 is a genuine
- * silhouette upgrade (more crossings, more intricate weave), not the same
- * outline with more decoration piled on.
- */
-function drawWovenKnot(g: Phaser.GameObjects.Graphics, s: number, p: Palette, lobes: 3 | 5): void {
-  const b = lobes - 1;
-  const steps = 260;
-  const raw: [number, number, number][] = [];
-  let maxAbs = 0;
-  for (let i = 0; i <= steps; i++) {
-    const t = (Math.PI * 2 * i) / steps;
-    const x = Math.sin(t) + 2 * Math.sin(b * t);
-    const y = Math.cos(t) - 2 * Math.cos(b * t);
-    raw.push([x, y, -Math.sin((b + 1) * t)]);
-    maxAbs = Math.max(maxAbs, Math.abs(x), Math.abs(y));
-  }
-  // Normalised from the curve's own measured extent rather than a hardcoded
-  // radius, so changing `lobes` can never silently overflow the tile.
-  const k = (s * 0.34) / maxAbs;
-  const pts = raw.map(([x, y, z]) => [x * k, y * k, z] as [number, number, number]);
-  const thickness = s * (lobes === 3 ? 0.085 : 0.062);
-
-  // Whole loop in shadow tone first - this is both the strand passing
-  // behind at every crossing and the shape's outline.
-  g.lineStyle(thickness, p.dark, 0.95);
-  g.strokePoints(pts.map(([x, y]) => new Phaser.Geom.Point(x, y)), true, true);
-
-  // Only the in-front runs on top. Without this pass the knot is a flat
-  // outline; with it the band visibly threads through itself.
-  const frontRuns: Phaser.Geom.Point[][] = [];
-  let run: Phaser.Geom.Point[] = [];
-  for (const [x, y, z] of pts) {
-    if (z > 0) {
-      run.push(new Phaser.Geom.Point(x, y));
-    } else if (run.length) {
-      frontRuns.push(run);
-      run = [];
-    }
-  }
-  if (run.length) frontRuns.push(run);
-
-  g.lineStyle(thickness * 0.84, p.base, 1);
-  for (const r of frontRuns) if (r.length > 1) g.strokePoints(r, false, false);
-
-  g.lineStyle(thickness * 0.26, p.highlight, 0.75);
-  for (const r of frontRuns) {
-    if (r.length > 1) {
-      g.strokePoints(r.map((pt) => new Phaser.Geom.Point(pt.x - thickness * 0.2, pt.y - thickness * 0.2)), false, false);
-    }
-  }
-}
-
-/** Traces a thin gilt filament along a woven knot's front strands - the chain-top luxury accent, following the form instead of sitting on it. */
-function drawGiltFilament(g: Phaser.GameObjects.Graphics, s: number, lobes: 3 | 5, alpha: number): void {
-  const b = lobes - 1;
-  const steps = 260;
-  const raw: [number, number, number][] = [];
-  let maxAbs = 0;
-  for (let i = 0; i <= steps; i++) {
-    const t = (Math.PI * 2 * i) / steps;
-    const x = Math.sin(t) + 2 * Math.sin(b * t);
-    const y = Math.cos(t) - 2 * Math.cos(b * t);
-    raw.push([x, y, -Math.sin((b + 1) * t)]);
-    maxAbs = Math.max(maxAbs, Math.abs(x), Math.abs(y));
-  }
-  const k = (s * 0.34) / maxAbs;
-  let run: Phaser.Geom.Point[] = [];
-  const runs: Phaser.Geom.Point[][] = [];
-  for (const [x, y, z] of raw) {
-    if (z > 0) {
-      run.push(new Phaser.Geom.Point(x * k, y * k + s * 0.012));
-    } else if (run.length) {
-      runs.push(run);
-      run = [];
-    }
-  }
-  if (run.length) runs.push(run);
-
-  g.lineStyle(Math.max(1, s * 0.014), GILT, alpha);
-  for (const r of runs) if (r.length > 1) g.strokePoints(r, false, false);
-}
-
 /** A precise faceted polygon - the geometric endpoint for both chains' gem/quartz-style tiers. */
 function drawFacetedForm(g: Phaser.GameObjects.Graphics, s: number, sides: number, p: Palette): void {
   const r = s * 0.34;
@@ -1849,177 +1799,149 @@ const GILT = 0xa8843f;
 
 // ---- Wood chain ----
 
+/**
+ * Every wood tier is a SOLID, described in 3D and handed to the one camera.
+ *
+ * The shapes are the ones that were already here - a cut billet, two planks,
+ * three planks, the crossed X block, the V, the burr puzzle. Nothing is
+ * redesigned. What changed is that they are no longer polygons drawn to look
+ * like solids: each is real geometry, so which faces you see, what hides what,
+ * and how bright each plane is all come out of the projection instead of
+ * being decided by hand per tier. The burr in particular was never going to
+ * work the old way - six bars passing through each other is a question about
+ * occlusion, and flat polygons cannot answer it.
+ */
+function woodSolid(g: Phaser.GameObjects.Graphics, s: number, p: Palette, mesh: Mesh): void {
+  renderMesh(g, mesh, {
+    u: s,
+    tone: (t) => toneAt(p, t),
+    edge: p.shadow,
+    edgeAlpha: 0.34,
+    center: true
+  });
+}
+
 function drawScrapWood(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // One cut branch: the tier-one count is the object itself, not a pip.
-  const body: [number, number][] = [
-    [-s * 0.3, s * 0.08], [-s * 0.2, -s * 0.13], [s * 0.2, -s * 0.03],
-    [s * 0.3, s * 0.11], [s * 0.17, s * 0.22], [-s * 0.22, s * 0.14]
-  ];
-  fillPoly(g, body.map(([x, y]) => [x, y + dropOffset(s)]), p.shadow);
-  fillPoly(g, body, p.base);
-  g.fillStyle(p.highlight, 0.72);
-  g.fillEllipse(s * 0.245, s * 0.095, s * 0.13, s * 0.17);
-  g.lineStyle(1, p.shadow, 0.62);
-  g.strokeEllipse(s * 0.245, s * 0.095, s * 0.13, s * 0.17);
-  g.lineStyle(1, p.light, 0.5);
-  g.lineBetween(-s * 0.2, -s * 0.03, s * 0.15, s * 0.05);
-  // A trimmed branch nub keeps the silhouette organic rather than plank-like.
-  fillPoly(g, [[-s * 0.08, -s * 0.08], [-s * 0.02, -s * 0.2], [s * 0.05, -s * 0.16], [s * 0.02, -s * 0.04]], p.light);
+  // ONE CUT BILLET, with the trimmed branch nub it always had. Skewed off the
+  // grid a little: stock as FOUND is the tier-one idea, and a bar sitting
+  // square to the camera reads as milled.
+  woodSolid(g, s, p, group(
+    rotateZ(box(0.62, 0.3, 0.24), 0.03),
+    translate(rotateZ(box(0.2, 0.17, 0.13), -0.06), -0.1, -0.03, 0.24)
+  ));
 }
 
 function drawPinePlank(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Exactly two Pine planks. Each is a small isometric solid rather than a
-  // decorated rectangle, continuing the fixed upper-left light and crisp
-  // three-plane construction used by the source buildings.
-  const plank = (cx: number, cy: number, scale: number): void => {
-    const length = s * 0.58 * scale;
-    const depthX = s * 0.14 * scale;
-    const depthY = s * 0.075 * scale;
-    const thick = s * 0.105 * scale;
-    const left = cx - length / 2;
-    const right = cx + length / 2;
-
-    const top: [number, number][] = [
-      [left, cy], [left + depthX, cy - depthY],
-      [right + depthX, cy - depthY], [right, cy]
-    ];
-    const front: [number, number][] = [
-      [left, cy], [right, cy], [right, cy + thick], [left, cy + thick]
-    ];
-    const end: [number, number][] = [
-      [right, cy], [right + depthX, cy - depthY],
-      [right + depthX, cy - depthY + thick], [right, cy + thick]
-    ];
-
-    // A small grounded shadow keeps the object legible without adding a
-    // board-tile background.
-    fillPoly(g, [
-      [left + s * 0.025, cy + thick + s * 0.025],
-      [right + s * 0.025, cy + thick + s * 0.025],
-      [right + depthX, cy - depthY + thick + s * 0.025],
-      [left + depthX, cy - depthY + thick + s * 0.025]
-    ], p.shadow, 0.22);
-
-    fillPoly(g, front, p.base);
-    fillPoly(g, end, p.dark);
-    fillPoly(g, top, p.light);
-
-    g.lineStyle(1, p.shadow, 0.62);
-    g.strokePoints(top.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
-    g.lineBetween(left, cy, left, cy + thick);
-    g.lineBetween(right, cy, right, cy + thick);
-    g.lineBetween(right + depthX, cy - depthY, right + depthX, cy - depthY + thick);
-
-    // One long grain seam and a compact end-grain mark: enough material
-    // information to read as pine while remaining modern and minimal.
-    g.lineStyle(1, p.highlight, 0.45);
-    g.lineBetween(left + depthX * 0.68, cy - depthY * 0.58,
-      right + depthX * 0.45, cy - depthY * 0.58);
-    g.lineStyle(1, p.shadow, 0.4);
-    g.lineBetween(right + depthX * 0.33, cy - depthY * 0.22 + thick * 0.32,
-      right + depthX * 0.72, cy - depthY * 0.58 + thick * 0.32);
-  };
-
-  // The stagger preserves an immediate two-object count even at small board
-  // scale; neither plank is hidden behind the other.
-  plank(-s * 0.055, s * 0.095, 1);
-  plank(s * 0.015, -s * 0.15, 0.94);
+  // TWO planks, staggered so neither hides the other.
+  const plank = box(0.68, 0.3, 0.085);
+  woodSolid(g, s, p, group(
+    plank,
+    translate(box(0.64, 0.28, 0.085), 0.07, -0.07, 0.085)
+  ));
 }
 
 function drawOakPlank(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Exactly three Oak planks in a compact rising stack.
-  const w = s * 0.54, h = s * 0.125;
-  for (let i = 0; i < 3; i++) {
-    const x = -w / 2 + (i - 1) * s * 0.035;
-    const y = s * 0.16 - i * s * 0.15;
-    drawPlankFace(g, x, y, w, h, s * 0.012, p);
-    drawGrainLines(g, x, y, w, h, 1, p);
-  }
+  // THREE, in the compact rising stack. Real stacking now: the one on top
+  // OCCLUDES the one beneath, which is the whole reason a stack reads as a
+  // stack rather than as three outlines.
+  woodSolid(g, s, p, group(
+    ...[0, 1, 2].map((i) => translate(box(0.66, 0.3, 0.085), i * 0.03, -i * 0.03, i * 0.085))
+  ));
 }
 
 function drawMapleBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Four protrusions expressed as one engineered X block.
-  const bw = s * 0.13, reach = s * 0.34;
-  const beam = (angle: number, tone: number): void => {
-    const c = Math.cos(angle), sn = Math.sin(angle);
-    const raw: [number, number][] = [[-reach, -bw], [reach, -bw], [reach, bw], [-reach, bw]];
-    const pts = raw.map(([x, y]) => [x * c - y * sn, x * sn + y * c] as [number, number]);
-    fillPoly(g, pts.map(([x, y]) => [x, y + dropOffset(s)]), p.shadow);
-    fillPoly(g, pts, tone);
-    g.lineStyle(1, p.highlight, 0.42);
-    g.strokePoints(pts.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
-  };
-  beam(Math.PI / 4, p.base);
-  beam(-Math.PI / 4, p.light);
-  g.fillStyle(p.highlight, 0.5);
-  g.fillRect(-s * 0.07, -s * 0.07, s * 0.14, s * 0.14);
+  // THE CROSSED X BLOCK. Two bars at right angles, lying flat and passing
+  // through each other - which as geometry is exactly what it always claimed
+  // to be, and now actually is.
+  //
+  // NOT rotated 45 degrees. That is the reflex from screen space and it is
+  // backwards here: the camera's own axes ARE the screen diagonals, so a bar
+  // left on +x and another on +y come out as a diagonal cross, while turning
+  // them 45 degrees lines them up with the screen and produces a flat plus.
+  woodSolid(g, s, p, group(box(0.86, 0.24, 0.2), box(0.24, 0.86, 0.2)));
 }
 
 function drawWalnutBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Tier five uses the Roman-numeral shortcut as its complete silhouette.
-  const top = s * 0.12, outer = s * 0.34, bottom = s * 0.3, thick = s * 0.12;
-  const left: [number, number][] = [
-    [-outer, -top], [-outer + thick, -top - s * 0.04], [0, bottom - thick], [0, bottom]
-  ];
-  const right: [number, number][] = [
-    [outer - thick, -top - s * 0.04], [outer, -top], [0, bottom], [0, bottom - thick]
-  ];
-  fillPoly(g, left.map(([x, y]) => [x, y + dropOffset(s)]), p.shadow);
-  fillPoly(g, right.map(([x, y]) => [x, y + dropOffset(s)]), p.shadow);
-  fillPoly(g, left, p.base);
-  fillPoly(g, right, p.light);
-  g.lineStyle(1, p.highlight, 0.4);
-  g.lineBetween(-outer + thick, -top - s * 0.04, 0, bottom - thick);
+  // THE V. Two bars meeting at the foot and splaying apart - a real
+  // intersection at the join rather than two shapes butted together.
+  //
+  // The legs lean down DIFFERENT axes, one toward +x and one toward +y,
+  // because those are the two directions that separate on screen. Leaning
+  // both in the same plane, which is what a screen-space instinct suggests,
+  // put one leg behind the other and the V collapsed to a single wedge.
+  const leg = box(0.26, 0.26, 0.7);
+  woodSolid(g, s, p, group(
+    rotateY(leg, 0.075),
+    rotateX(leg, -0.075)
+  ));
 }
 
 function drawMahoganyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Six-direction interlocking block / burr-puzzle form from the saved
-  // reference: three beams crossing at the centre create six protrusions.
-  const len = s * 0.7, half = s * 0.085;
-  const drawBeam = (angle: number, tone: number, depth: number): void => {
-    const c = Math.cos(angle), sn = Math.sin(angle);
-    const raw: [number, number][] = [[-len / 2, -half], [len / 2, -half], [len / 2, half], [-len / 2, half]];
-    const pts = raw.map(([x, y]) => [x * c - y * sn, x * sn + y * c + depth] as [number, number]);
-    fillPoly(g, pts.map(([x, y]) => [x, y + dropOffset(s)]), p.shadow);
-    fillPoly(g, pts, tone);
-    g.lineStyle(1, p.highlight, 0.34);
-    g.strokePoints(pts.map(([x, y]) => new Phaser.Geom.Point(x, y)), true);
+  // THE BURR PUZZLE, from the saved reference: three square bars on the three
+  // axes, crossing at the centre, giving six protrusions. Centred in z as
+  // well as x and y, since the bars pass THROUGH the middle rather than
+  // standing on it.
+  const L = 0.84, t = 0.26;
+  woodSolid(g, s, p, group(
+    translate(box(L, t, t), 0, 0, -t / 2),
+    translate(box(t, L, t), 0, 0, -t / 2),
+    translate(box(t, t, L), 0, 0, -L / 2)
+  ));
+}
+
+/**
+ * Turns a flat-lying mesh to FACE the camera.
+ *
+ * A knot is a plate in its own coordinates - all its structure is in one
+ * plane - so left lying on the ground it projects to a squashed ring and the
+ * weave disappears. These two turns take its +z axis onto the view axis, so
+ * the plane the knot lives in is the plane the viewer is looking at. The
+ * numbers are derived from that axis, `(1, 1, 0.62)`, not chosen by eye.
+ */
+function facingCamera(mesh: Mesh): Mesh {
+  return rotateZ(rotateY(mesh, 0.184), 0.125);
+}
+
+/** Blends a tone toward gilt at the lit end of the ramp only. */
+function giltRamp(p: Palette, strength: number): (t: number) => number {
+  return (t) => {
+    const base = toneAt(p, t);
+    if (t <= 0.72) return base;
+    const u = ((t - 0.72) / 0.28) * strength;
+    const channel = (shift: number): number =>
+      Math.round(((base >> shift) & 255) * (1 - u) + ((GILT >> shift) & 255) * u);
+    return (channel(16) << 16) | (channel(8) << 8) | channel(0);
   };
-  drawBeam(Math.PI / 2, p.dark, 0);
-  drawBeam(Math.PI / 6, p.base, -s * 0.015);
-  drawBeam(-Math.PI / 6, p.light, -s * 0.03);
-  g.fillStyle(p.highlight, 0.62);
-  g.fillRect(-s * 0.09, -s * 0.09, s * 0.18, s * 0.18);
 }
 
 function drawEbonyBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Tiers 7 and 8 previously BOTH called drawTurnedForm with identical
-  // arguments - the same path, differing only by a 5%-larger specular
-  // ellipse and some sparkles, i.e. the exact same-complexity reskin the
-  // merge-satisfaction rule forbids. Wood now walks the shared grammar's
-  // real tier-7 stage (interlocking lattice) like Glass does, in its own
-  // joinery language rather than Glass's asterisk.
-  drawJoineryLattice(g, s, p);
+  // THE LAP LATTICE: two bars one way, two the other, the second pair riding
+  // over the first. The old version faked the over/under by redrawing two of
+  // the four crossings on top; with real solids the crossings resolve
+  // themselves, and the pair that is genuinely higher is the pair that hides
+  // the other.
+  const len = 0.92, bw = 0.2, t = 0.17, gap = 0.2;
+  woodSolid(g, s, p, group(
+    ...[-gap, gap].map((o) => translate(box(bw, len, t), o, 0, 0)),
+    ...[-gap, gap].map((o) => translate(box(len, bw, t), 0, o, t))
+  ));
 }
 
 function drawGildedRosewood(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Tier 8's "smooth interlocking knot" stage. A trefoil reads as an
-  // unmistakable step up from tier 7's flat orthogonal grid: the members
-  // stop being straight and start passing through each other.
-  drawWovenKnot(g, s, p, 3);
-  drawGiltFilament(g, s, 3, 0.75);
+  // Tier 8's smooth interlocking knot - a real trefoil tube, modelled rather
+  // than drawn, so the three crossings are occlusion instead of draw order.
+  renderMesh(g, facingCamera(WOVEN_KNOT_3), {
+    u: s * 0.92, tone: giltRamp(p, 0.75), edge: p.shadow, edgeAlpha: 0.22, center: true
+  });
   drawSparkles(g, [[s * 0.24, -s * 0.2, s * 0.016], [-s * 0.25, s * 0.15, s * 0.013]]);
 }
 
 function drawRosewoodHeirloom(g: Phaser.GameObjects.Graphics, s: number, p: Palette): void {
-  // Masterwork capstone. Had to move with tiers 7-8: it used to be the
-  // lathe-turned profile, which after this change would have read as
-  // knot -> vessel, a sideways jump at the chain's most important merge.
-  // Five lobes against tier 8's three is a real silhouette escalation -
-  // more crossings, a denser weave - with the gilt/sparkle accent stepped
-  // up on top of it rather than doing the work by itself.
-  drawWovenKnot(g, s, p, 5);
-  drawGiltFilament(g, s, 5, 0.9);
+  // The capstone: five lobes against tier 8's three. More crossings, a denser
+  // weave, and the gilt pushed further up the ramp.
+  renderMesh(g, facingCamera(WOVEN_KNOT_5), {
+    u: s * 0.94, tone: giltRamp(p, 0.9), edge: p.shadow, edgeAlpha: 0.22, center: true
+  });
   drawInlayAccent(g, 0, 0, s * 0.05, GILT);
   drawSparkles(g, [[s * 0.26, -s * 0.24, s * 0.017], [-s * 0.27, s * 0.17, s * 0.014], [s * 0.05, s * 0.3, s * 0.012]]);
 }
@@ -2209,59 +2131,62 @@ function drawRawSand(g: Phaser.GameObjects.Graphics, s: number, p: Palette): num
   return 1;
 }
 
-function drawGlassShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
-  // Was Rubble's exact polygon with 2-4% jitter on every vertex - the same
-  // six-sided lump, not a different shape. The shape grammar does allow
-  // tier 1-2 to read as a FAMILY of rough chunks across chains, but that
-  // means similar-in-kind, not one outline copied and nudged.
-  //
-  // The distinction is material, not decorative: stone rubble breaks into
-  // chunky equant lumps, while glass breaks into thin bladed splinters with
-  // acute points and long straight edges. Five points instead of six, a
-  // narrow waist, and two sharp tips - a silhouette rubble can't have.
-  drawIrregularChip(g, [
-    [-s * 0.3, s * 0.2], [-s * 0.1, -s * 0.3], [s * 0.04, -s * 0.24],
-    [s * 0.3, s * 0.06], [s * 0.06, s * 0.22]
-  ], p);
+/** Transparent faces with visible rear edges and a bright cut bevel. */
+function drawGlassSolid(g: Phaser.GameObjects.Graphics, s: number, p: Palette, outline: [number, number][], depth: number): number {
+  const front = outline.map(([x, y]) => new Phaser.Geom.Point(x * s, y * s));
+  const back = front.map(pt => new Phaser.Geom.Point(pt.x + depth * s, pt.y - depth * s * 0.65));
+  g.fillStyle(p.base, 0.16);
+  g.fillPoints(back, true);
+  g.lineStyle(s * 0.009, p.light, 0.42);
+  g.strokePoints(back, true);
+  for (let i = 0; i < front.length; i++) {
+    const j = (i + 1) % front.length;
+    const a = front[i], b = front[j], c = back[i], d = back[j];
+    g.fillGradientStyle(p.shadow, p.light, p.highlight, p.highlight, 0.72, 0.35, 0.65, 0.65);
+    g.fillTriangle(a.x, a.y, b.x, b.y, c.x, c.y);
+    g.fillGradientStyle(p.light, p.highlight, p.highlight, p.highlight, 0.35, 0.65, 0.65, 0.65);
+    g.fillTriangle(b.x, b.y, d.x, d.y, c.x, c.y);
+  }
+  // The rear silhouette remains visible through the tinted face.
+  g.fillStyle(p.base, 0.2);
+  g.fillPoints(front, true);
+  for (let i = 0; i < front.length; i++) {
+    const a = front[i], b = front[(i + 1) % front.length];
+    // Reflected light varies across facets instead of whitening the whole solid.
+    const bright = i % 3 === 0;
+    g.fillGradientStyle(p.light, p.highlight, p.dark, p.dark, 0.03, bright ? 0.55 : 0.14, 0.08, 0.08);
+    g.fillTriangle(a.x, a.y, b.x, b.y, -s * 0.035, s * 0.035);
+    g.lineStyle(s * (bright ? 0.014 : 0.007), bright ? 0xf0fcff : p.light, bright ? 0.95 : 0.58);
+    g.lineBetween(a.x, a.y, b.x, b.y);
+    // Inset companion edge reads as thickness/refraction at the cut surface.
+    g.lineStyle(s * 0.006, p.highlight, 0.38);
+    g.lineBetween(a.x * 0.88, a.y * 0.88, b.x * 0.88, b.y * 0.88);
+  }
+  return 1;
+}
 
-  // Bright edge streak - a cut glass edge catching the key light. Glass is
-  // read by its edges far more than its faces, which is also why this tier
-  // needs it and the opaque materials don't.
-  g.lineStyle(Math.max(1, s * 0.02), p.highlight, 0.85);
-  g.beginPath();
-  g.moveTo(-s * 0.1, -s * 0.28);
-  g.lineTo(s * 0.26, s * 0.05);
-  g.strokePath();
-  return 0.85;
+function drawGlassShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
+  return drawGlassSolid(g, s, p, [[-0.3, 0.2], [-0.1, -0.3], [0.04, -0.24], [0.3, 0.06], [0.06, 0.22]], 0.018);
 }
 
 function drawCutGlassBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
-  const w = s * 0.5, h = s * 0.3;
-  drawPlankFace(g, -w / 2, -h / 2, w, h, s * 0.02, p);
-  // A reflected window crosses the face; the narrow companion glint
-  // and dark transmitted body give cut glass a different finish to stone.
-  g.fillGradientStyle(p.light, p.highlight, p.light, p.highlight, 0.04, 0.48, 0.04, 0.48);
-  g.fillTriangle(-w * 0.34, -h * 0.43, -w * 0.2, -h * 0.43, -w * 0.02, h * 0.4);
-  g.fillGradientStyle(p.highlight, p.highlight, p.light, p.light, 0.48, 0.48, 0.04, 0.04);
-  g.fillTriangle(-w * 0.2, -h * 0.43, w * 0.12, h * 0.4, -w * 0.02, h * 0.4);
-  g.lineStyle(s * 0.008, p.highlight, 0.85);
-  g.lineBetween(-w * 0.12, -h * 0.43, w * 0.2, h * 0.4);
-  return 0.78;
+  return drawGlassSolid(g, s, p, [[-0.25, -0.15], [0.25, -0.15], [0.25, 0.15], [-0.25, 0.15]], 0.04);
 }
 
 function drawCrystalBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
-  drawBlock(g, s * 0.5, s * 0.36, s * 0.14, s * 0.08, p);
-  return 0.72;
+  return drawGlassSolid(g, s, p, [[-0.25, -0.18], [0.25, -0.18], [0.25, 0.18], [-0.25, 0.18]], 0.1);
 }
 
 function drawBeveledCrystal(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
-  drawFacetedForm(g, s * 0.92, 5, p);
-  return 0.68;
+  const points: [number, number][] = Array.from({ length: 5 }, (_, i) => {
+    const a = i * Math.PI * 2 / 5 - Math.PI / 2;
+    return [Math.cos(a) * 0.32, Math.sin(a) * 0.32];
+  });
+  return drawGlassSolid(g, s, p, points, 0.055);
 }
 
 function drawCrystalObelisk(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
-  drawObelisk(g, s, 6, p);
-  return 0.62;
+  return drawGlassSolid(g, s, p, [[0, -0.38], [0.13, -0.23], [0.16, 0.29], [0, 0.36], [-0.16, 0.29], [-0.13, -0.23]], 0.045);
 }
 
 function drawCrystalLattice(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
@@ -2350,14 +2275,6 @@ function ngon(n: number, r: number, rotation: number): [number, number][] {
     pts.push([Math.cos(a) * r, Math.sin(a) * r]);
   }
   return pts;
-}
-
-function fillPoly(g: Phaser.GameObjects.Graphics, pts: [number, number][], color: number, alpha = 1): void {
-  g.fillStyle(color, alpha);
-  g.beginPath();
-  pts.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
-  g.closePath();
-  g.fillPath();
 }
 
 /**
@@ -2937,23 +2854,6 @@ function sourceSlot(
 }
 
 
-/** Grid -> screen for the source buildings' shared isometric camera. */
-type IsoFn = (x: number, y: number, z?: number) => [number, number];
-
-/**
- * The projection S01 and S02 draw by hand, expressed once.
- *
- * Increasing x runs right-and-down, increasing y runs left-and-down, z is
- * straight up. The offsets exist because the grid origin is not the drawing's
- * centre - the slab runs longer on -x and the building rises on +z.
- */
-function makeSourceIso(u: number, ox = 0.24, oy = 0.4): IsoFn {
-  return (x, y, z = 0) => [
-    (x - y) * u * 0.6 + u * ox,
-    (x + y) * u * 0.31 - z * u + u * oy
-  ];
-}
-
 interface SourceVolumeOpts {
   front: number;
   side: number;
@@ -3145,7 +3045,7 @@ function drawWoodSourceLevelThreeIsometric(
   g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean
 ): void {
   const u = r * 1.4;
-  const iso = makeSourceIso(u);
+  const iso = makeIso(u);
   const wall = ready ? p.light : p.base;
 
   sourceSlabPlate(g, p, iso, -1.75, 0.95, -0.95, 0.95);
@@ -3192,7 +3092,7 @@ function drawWoodSourceLevelFourIsometric(
   g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean
 ): void {
   const u = r * 1.28;
-  const iso = makeSourceIso(u, 0.2, 0.52);
+  const iso = makeIso(u, 0.2, 0.52);
   const wall = ready ? p.light : p.base;
 
   sourceSlabPlate(g, p, iso, -1.95, 1.35, -1.0, 1.1);
@@ -3251,7 +3151,7 @@ function drawWoodSourceLevelFiveIsometric(
   g: Phaser.GameObjects.Graphics, r: number, p: Palette, ready: boolean
 ): void {
   const u = r * 1.14;
-  const iso = makeSourceIso(u, 0.27, 0.65);
+  const iso = makeIso(u, 0.27, 0.65);
   const wall = ready ? p.light : p.base;
 
   sourceSlabPlate(g, p, iso, -2.0, 1.4, -1.0, 1.3);
@@ -3692,102 +3592,96 @@ export function drawSourceBuilding(
 function drawWaterSourceIsometric(
   g: Phaser.GameObjects.Graphics, r: number, _p: Palette, ready: boolean, level: number
 ): void {
-  // Source 01 is only the foundational well, so enlarge its simpler
-  // silhouette slightly to give it the same board presence as the roofed
-  // Source 02 that follows it.
-  if (level === 1) r *= 1.12;
-  const stoneDark = 0x4d5751;
-  const stone = 0x78867c;
-  const stoneLight = 0xaeb9ae;
-  const postDark = 0x4b332d;
-  const post = 0x765044;
-  const roofDark = 0x643b31;
-  const roof = 0x98533f;
-  const roofEdge = 0xb87858;
-  const steel = 0x282d2e;
-  const steelLight = 0x687071;
-  const white = 0xe5e8e5;
-  const w = r * (1.62 + level * 0.025);
-  const topY = r * 0.14;
-  const wallBottom = r * 0.62;
-  const postX = w * 0.34;
-  const roofBaseY = -r * (0.58 + level * 0.018);
-  const roofPeakY = -r * (0.98 + level * 0.018);
+  const poly = (points: number[][], color: number, alpha = 1) => {
+    g.fillStyle(color, alpha);
+    g.fillPoints(points.map(([x, y]) => new Phaser.Geom.Point(x * r, y * r)), true);
+  };
+  const line = (a: number[], b: number[], color: number, width = 0.018, alpha = 1) => {
+    g.lineStyle(r * width, color, alpha);
+    g.lineBetween(a[0] * r, a[1] * r, b[0] * r, b[1] * r);
+  };
+  const ellipse = (x: number, y: number, w: number, h: number, color: number, alpha = 1) => {
+    g.fillStyle(color, alpha);
+    g.fillEllipse(x * r, y * r, w * r, h * r);
+  };
+  ellipse(0.04, 0.72, 1.85, 0.38, 0x101c22, 0.28);
 
-  g.fillStyle(0x111313, 0.4);
-  g.fillEllipse(0, r * 0.69, w * 1.08, r * 0.3);
-
-  // Round masonry well: thick wall, dark opening, segmented concrete lip.
-  g.fillStyle(stoneDark, 1);
-  g.fillRoundedRect(-w / 2, topY, w, wallBottom - topY, r * 0.08);
-  g.fillStyle(stone, 1);
-  g.fillEllipse(0, wallBottom, w, r * 0.44);
-  g.fillStyle(stoneLight, 1);
-  g.fillEllipse(0, topY, w, r * 0.5);
-  g.fillStyle(0x202525, 1);
-  g.fillEllipse(0, topY + r * 0.025, w * 0.68, r * 0.31);
-  g.lineStyle(Math.max(1, r * 0.035), stoneDark, 0.8);
-  g.strokeEllipse(0, topY, w, r * 0.5);
-  g.lineBetween(-w * 0.49, r * 0.39, w * 0.49, r * 0.39);
-  if (level >= 3) {
-    for (const x of [-0.32, 0, 0.32]) g.lineBetween(w * x, r * 0.39, w * x, r * 0.59);
+  // Individually shaded ashlar blocks follow a genuinely round wall.
+  const segments = 12;
+  const top = 0.1, bottom = 0.61;
+  for (let row = 0; row < 2; row++) {
+    const y0 = top + row * (bottom - top) / 2;
+    const y1 = y0 + (bottom - top) / 2;
+    for (let i = 0; i < segments; i++) {
+      const a = i * Math.PI / segments, b = (i + 1) * Math.PI / segments;
+      const x0 = Math.cos(a) * 0.85, x1 = Math.cos(b) * 0.85;
+      const z0 = Math.sin(a) * 0.27, z1 = Math.sin(b) * 0.27;
+      const light = Math.round(94 + 62 * i / segments + ((i + row) % 3) * 5);
+      const color = (light << 16) | ((light + 9) << 8) | (light + 8);
+      poly([[x0,y0+z0],[x1,y0+z1],[x1,y1+z1],[x0,y1+z0]], color);
+      line([x0,y1+z0],[x1,y1+z1],0x49595c,0.012);
+      if ((i + row) % 2 === 0) line([x0,y0+z0],[x0,y1+z0],0x526163,0.012);
+    }
   }
-
-  const crankY = -r * 0.27;
-  // Source 01 is masonry only. Source 02 adds the timber supports and crank.
-  if (level >= 2) {
-    g.lineStyle(r * 0.15, postDark, 1);
-    g.lineBetween(-postX, topY, -postX, roofBaseY);
-    g.lineBetween(postX, topY, postX, roofBaseY);
-    g.lineStyle(r * 0.045, post, 0.9);
-    g.lineBetween(-postX + r * 0.025, topY, -postX + r * 0.025, roofBaseY);
-    g.lineBetween(postX + r * 0.025, topY, postX + r * 0.025, roofBaseY);
-    g.lineStyle(r * 0.12, steelLight, 1);
-    g.lineBetween(-postX - r * 0.12, crankY, postX + r * 0.14, crankY);
-    g.fillStyle(steel, 1);
-    g.fillCircle(-postX, crankY, r * 0.12);
-    g.fillCircle(postX, crankY, r * 0.12);
-    g.lineStyle(r * 0.03, steelLight, 1);
-    g.lineBetween(0, crankY, 0, topY + r * 0.04);
+  ellipse(0, top, 1.73, 0.65, 0xc3cbc5);
+  ellipse(0, top + 0.015, 1.28, 0.43, 0x263d45);
+  ellipse(0, top + 0.07, 1.13, 0.27, ready ? 0x176582 : 0x294c5a);
+  ellipse(-0.13, top + 0.045, 0.72, 0.12, 0x369bad, 0.6);
+  line([-0.4,top+0.035],[0.05,top+0.015],0xc0f5f0,0.017,0.8);
+  // Wedge-shaped coping stones expose the thickness of the lip.
+  for (let i = 0; i < 16; i++) {
+    const a = i * Math.PI / 8, b = a + Math.PI / 8 - 0.018;
+    const pt = (angle: number, outer: boolean) => [
+      Math.cos(angle) * (outer ? 0.865 : 0.64),
+      top + Math.sin(angle) * (outer ? 0.325 : 0.215)
+    ];
+    poly([pt(a,true),pt(b,true),pt(b,false),pt(a,false)],
+      i < 8 ? (i < 4 ? 0xb1bdb7 : 0xd2d9cf) : 0x9aa9a3);
+    line(pt(a,true),pt(b,true),0xe4e8da,0.012,0.75);
   }
+  if (level < 2) return;
 
-  // Source 03 introduces the complete pitched roof above Source 02's exposed
-  // support-and-crank structure.
-  if (level >= 3) {
-    g.fillStyle(roofDark, 1);
-    g.fillPoints([
-      new Phaser.Geom.Point(-w * 0.56, roofBaseY),
-      new Phaser.Geom.Point(0, roofPeakY),
-      new Phaser.Geom.Point(0, roofPeakY + r * 0.16),
-      new Phaser.Geom.Point(-w * 0.48, roofBaseY + r * 0.13)
-    ], true);
-    g.fillStyle(roof, 1);
-    g.fillPoints([
-      new Phaser.Geom.Point(0, roofPeakY),
-      new Phaser.Geom.Point(w * 0.56, roofBaseY),
-      new Phaser.Geom.Point(w * 0.48, roofBaseY + r * 0.13),
-      new Phaser.Geom.Point(0, roofPeakY + r * 0.16)
-    ], true);
-    g.lineStyle(Math.max(1, r * 0.035), roofEdge, 0.78);
-    g.lineBetween(-w * 0.56, roofBaseY, 0, roofPeakY);
-    g.lineBetween(0, roofPeakY, w * 0.56, roofBaseY);
+  // Square timber posts show a narrow dark side and a lit front face.
+  for (const x of [-0.68,0.62]) {
+    poly([[x-0.06,0.12],[x+0.06,0.16],[x+0.06,-0.83],[x-0.06,-0.87]],0x77523c);
+    poly([[x+0.06,0.16],[x+0.11,0.11],[x+0.11,-0.88],[x+0.06,-0.83]],0x382e29);
+    line([x-0.035,0.08],[x-0.035,-0.81],0xc49a6c,0.015);
+    line([x+0.06,-0.14],[x-0.06,-0.18],0x26383b,0.055);
   }
+  line([-0.77,-0.43],[0.8,-0.36],0x344247,0.105);
+  line([-0.77,-0.46],[0.8,-0.39],0xb3bab0,0.024);
+  for (let i = 0; i < 5; i++) line([-0.08+i*0.035,-0.48],[-0.08+i*0.035,-0.36],0xbfa273,0.023);
+  line([0,-0.39],[0,0.1],0xd3bd91,0.018);
+  line([0.8,-0.36],[0.8,-0.16],0x566769,0.05);
+  line([0.8,-0.16],[0.96,-0.15],0xb58b5e,0.065);
+  if (level < 3) return;
 
+  // An offset ridge and four-corner eaves give the roof actual depth.
+  poly([[-0.98,-0.73],[-0.18,-1.2],[0.24,-1.34],[-0.56,-0.86]],0x506e77);
+  poly([[-0.18,-1.2],[0.24,-1.34],[1.0,-0.8],[0.58,-0.66]],0x2d424e);
+  poly([[-0.98,-0.73],[-0.18,-1.2],[0.58,-0.66]],0x63848a);
+  poly([[-0.98,-0.73],[0.58,-0.66],[0.58,-0.58],[-0.98,-0.65]],0x49372c);
+  poly([[0.58,-0.66],[1,-0.8],[1,-0.72],[0.58,-0.58]],0x302c28);
+  for (let i = 1; i < 5; i++) {
+    const t = i / 5;
+    line([-0.18-0.8*t,-1.2+0.47*t],[-0.18+0.76*t,-1.2+0.54*t],0xa2bab4,0.015,0.7);
+  }
+  line([-0.98,-0.73],[-0.18,-1.2],0xb8cbc0,0.024);
+  line([-0.18,-1.2],[0.24,-1.34],0xccd7c7,0.035);
+  line([-0.98,-0.73],[0.58,-0.66],0xc5a278,0.025);
   if (level >= 4) {
-    g.lineStyle(r * 0.035, steelLight, 0.8);
-    g.lineBetween(-w * 0.38, roofBaseY - r * 0.05, 0, roofPeakY + r * 0.08);
-    g.lineBetween(0, roofPeakY + r * 0.08, w * 0.38, roofBaseY - r * 0.05);
+    // Bronze corner straps and braces distinguish the reinforced well.
+    for (const x of [-0.68,0.62]) {
+      line([x,-0.58],[x+(x<0?0.22:-0.22),-0.77],0xbc9960,0.06);
+      ellipse(x,-0.55,0.035,0.035,0xf1d9a3);
+    }
+    line([-0.98,-0.67],[0.58,-0.6],0xb4935e,0.025);
   }
   if (level >= 5) {
-    g.fillStyle(steel, 1);
-    g.fillRoundedRect(-r * 0.18, roofPeakY - r * 0.055, r * 0.36, r * 0.09, r * 0.025);
-  }
-
-  g.fillStyle(ready ? white : steelLight, ready ? 1 : 0.65);
-  if (level === 1) {
-    g.fillCircle(w * 0.34, topY + r * 0.18, Math.max(1.5, r * 0.065));
-  } else {
-    g.fillCircle(postX, crankY - r * 0.18, Math.max(1.5, r * 0.065));
+    poly([[-0.26,-1.2],[-0.22,-1.3],[0.22,-1.45],[0.3,-1.34]],0xb89455);
+    line([-0.22,-1.3],[0.22,-1.45],0xf3ddb0,0.025);
+    ellipse(0.02,-0.78,0.19,0.17,0xbaa06c);
+    ellipse(0.02,-0.78,0.1,0.1,0x83d8d6);
   }
 }
 

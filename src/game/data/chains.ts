@@ -104,7 +104,7 @@ export const WATER_CHAIN: ChainDef = {
     { tier: 1, key: 'droplet', label: 'Droplet', color: 0x315f86 },
     { tier: 2, key: 'twin-drops', label: 'Twin Drops', color: 0x356f9b },
     { tier: 3, key: 'triple-ripple', label: 'Triple Ripple', color: 0x3980ae },
-    { tier: 4, key: 'water-pool', label: 'Water Pool', color: 0x3d90be },
+    { tier: 4, key: 'puddle', label: 'Puddle', color: 0x3d90be },
     { tier: 5, key: 'flowing-stream', label: 'Flowing Stream', color: 0x42a0cc },
     { tier: 6, key: 'water-basin', label: 'Water Basin', color: 0x48afd7 },
     { tier: 7, key: 'pressure-jet', label: 'Pressure Jet', color: 0x52bde0 },
