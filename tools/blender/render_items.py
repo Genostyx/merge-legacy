@@ -1317,14 +1317,26 @@ def build_credits():
     out = {}
     coin_r, coin_t = 0.17, 0.042
 
-    # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = upright_coin()
-    out[2] = stack([
-        # Overlapping, with the near one a touch forward, so they read as two
-        # coins leaning together rather than two discs butted edge to edge.
-        translate_to(upright_coin(), beside(-0.13, 0.07)),
-        translate_to(upright_coin(), beside(0.11, -0.07)),
-    ])
+    # 1-2: loose coins ON THEIR BACKS. Standing a coin up to show its face
+    # is a 2D problem; from this camera a coin lying flat already shows the
+    # whole face and its thickness at once, which is why tier three's top
+    # coin reads correctly and every upright version of these did not.
+    out[1] = coin(coin_r, coin_t)
+
+    # The second coin is HALF ON the first, so it cannot lie flat - it has
+    # one edge up on the other's rim and one still on the ground. The tilt
+    # is not chosen, it is the angle that geometry forces: the rise is one
+    # coin's full height over one coin's diameter.
+    height = coin_t * (1 + COIN_RIM)
+    along = Vector(beside(1.0, 0.0)).normalized()
+    tilt = math.degrees(math.atan2(height, 2 * coin_r))
+    upper = coin(coin_r, coin_t)
+    upper.rotation_euler = Matrix.Rotation(
+        math.radians(tilt), 4, Vector((0.0, 0.0, 1.0)).cross(along)
+    ).to_euler()
+    translate_to(upper, tuple(along * (coin_r * 1.25)
+                              + Vector((0.0, 0.0, height / 2))))
+    out[2] = stack([coin(coin_r, coin_t), upper])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
     # and a highlight arc per layer; stacked solids have those edges already.
