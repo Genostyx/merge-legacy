@@ -102,9 +102,17 @@ const CURRENCY_TEXTURE: Record<CurrencyKind, string> = {
   energy: 'currency-energy'
 };
 
-/** The tier-one item each currency's mark now comes from. */
+/**
+ * The rendered item each currency's mark comes from.
+ *
+ * Credits point at `credit-mark`, NOT at the board's tier one. The board's
+ * coin lies flat, which is right where you are looking down at it from the
+ * isometric camera - but a mark is read at 17px, and flat on the ground a
+ * coin is an ellipse with a scratch on it. `credit-mark` is the same coin
+ * faced to the camera and swung, the way the event token is presented.
+ */
 const CURRENCY_ITEM: Record<CurrencyKind, string> = {
-  credit: 'currency-credit',
+  credit: 'credit-mark',
   gem: 'currency-gem',
   energy: 'currency-energy'
 };
@@ -138,7 +146,7 @@ export function currencyTexture(scene: Phaser.Scene, kind: CurrencyKind): string
  * different ladder and these have to be measured again.
  */
 const RENDER_FILL_RATIO: Record<CurrencyKind, number> = {
-  credit: 0.547, gem: 0.589, energy: 0.615
+  credit: 0.870, gem: 0.589, energy: 0.615
 };
 
 /**

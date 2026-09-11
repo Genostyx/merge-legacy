@@ -1808,6 +1808,51 @@ def build_event_token():
     return {1: token}
 
 
+def build_chip_coin():
+    """The credit coin as a MARK: face to the camera, swung, same as the token.
+
+    The board's tier-one credit lies flat, which is right there - seen from
+    above a coin shows its whole face and its thickness with no trick. The
+    HUD chip is a different job: it is a 17px icon read at a glance, and flat
+    on the ground a coin is an ellipse with a scratch on it.
+
+    So this is the same geometry presented the way the event token is, and it
+    is a separate render rather than a re-pose of tier one, because both are
+    wanted at once - the board keeps its flat coin and the chip gets a mark.
+    """
+    radius, thickness = 0.17, 0.042
+    body = coin(radius, thickness, sides=64)
+
+    # The disc's own chamfer, six segments, exactly as the token's - a
+    # two-segment bevel auto-smoothed into a 64-sided wall is what makes an
+    # outer ring look wavy.
+    rim = body.modifiers.new("RimChamfer", 'BEVEL')
+    rim.width, rim.segments = 0.004, 6
+    rim.limit_method, rim.angle_limit = 'ANGLE', SMOOTH_ANGLE
+    rim.use_clamp_overlap = True
+    bpy.ops.object.select_all(action='DESELECT')
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.modifier_apply(modifier="RimChamfer")
+
+    facing_camera(body)
+    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
+    body.rotation_euler = (
+        Matrix.Rotation(math.radians(-30), 4, view @ Vector((0, 1, 0)))
+        @ body.rotation_euler.to_matrix().to_4x4()
+    ).to_euler()
+
+    measured = CURRENCY_MEASURED["currency-credit"][1]
+    material = tier_material("credit-mark", CURRENCY_HEX["currency-credit"][1],
+                             measured, max_gain=1.45)
+    shader = _shader(material)
+    shader.inputs["Metallic"].default_value = 0.94
+    shader.inputs["Roughness"].default_value = 0.13
+    finish(body, "credit-mark", material, bevel=0.0015,
+           smooth_angle=math.radians(12))
+    return {1: body}
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -2072,7 +2117,8 @@ def main(only: str = ""):
     configure_render()
 
     families = [("wood", build_wood), ("mineral", build_mineral),
-                ("event-token", build_event_token)]
+                ("event-token", build_event_token),
+                ("credit-mark", build_chip_coin)]
     for kind in CURRENCY_HEX:
         families.append((kind, (lambda k: lambda: currency_family(k))(kind)))
     for family, build in families:

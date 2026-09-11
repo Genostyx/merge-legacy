@@ -21,7 +21,13 @@ export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
   // exist on every boot.
   'currency-credit': 6,
   'currency-energy': 5,
-  'currency-gem': 5
+  'currency-gem': 5,
+  // Not board items. The event token and the credit MARK are single
+  // presentations - face to the camera and swung - rendered for the HUD and
+  // the panels, where a coin lying flat at the board's angle is an ellipse
+  // with a scratch on it. They live here because this is what preloads them.
+  'event-token': 1,
+  'credit-mark': 1
 };
 
 /** The texture key for a tier, whether or not it has actually been loaded. */
