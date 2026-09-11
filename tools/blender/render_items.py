@@ -1625,8 +1625,18 @@ def dress_currency(kind: str, out):
             shader.inputs["Coat Roughness"].default_value = 0.05
             shader.inputs["Coat IOR"].default_value = 1.5
         else:
+            # tint_strength stays 0: `absorbing` below whitens the surface
+            # on purpose and moves all the colour into the volume, so any
+            # tint set here is overwritten. Density is the only lever on this
+            # stone's value.
             gemstone(material, ior=1.75, roughness=0.06, tint_strength=0.0)
-            absorbing(material, CURRENCY_RGB[kind][tier], density=9.0)
+            # DENSITY 2.2, down from 9.0. Absorption is how much colour the
+            # light loses crossing the stone, so on a slab this thick 9 was
+            # eating nearly all of it - the gems averaged 0x5b567c against
+            # the bolts' 0x89b6d5 and read as dark lumps on the board's
+            # glass. Lower density keeps the thick-is-deeper gradient that
+            # makes it a gem and stops it going black in the middle.
+            absorbing(material, CURRENCY_RGB[kind][tier], density=2.2)
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read

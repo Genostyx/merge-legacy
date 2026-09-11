@@ -123,17 +123,23 @@ scene: BoardScene,
   // by `currencyTexture` so the chip cannot end up on different art from the
   // board, the prices or the order cards.
   const kind: CurrencyKind = glyph === 'coin' ? 'credit' : 'gem';
-  const rendered = loadedItemSprite(scene, `currency-${kind}`, 1);
+  // The rendered item when it is loaded, the flat SVG otherwise - resolved
+  // by `currencyTexture` so the chip cannot end up on different art from the
+  // board, the prices or the order cards. Rendered keys are the only ones
+  // prefixed `item-`; asking for `currency-credit` here was wrong now that
+  // credits resolve to `credit-mark`.
   const iconKey = currencyTexture(scene, kind);
-  // `currencyBoxFor` for BOTH, not a hand-picked size for the render. The
-  // rendered marks fill less of their canvas than the SVGs did, so a size
-  // guessed here came out visibly smaller than the art it replaced; the
-  // correction belongs with the ratios in CurrencyGlyph, where every other
-  // surface picks it up too.
-  // 24px of drawn mark, against the bolt's 26 - see GLYPH_FILL_RATIO for
-  // why that is not the same as a 24px display size. The render fills almost
-  // its whole box, so it needs no such correction.
-  const iconSize = currencyDisplaySize(scene, kind, currencyBoxFor(kind, 15 * s));
+  const rendered = iconKey.startsWith('item-');
+  // The gem is drawn at the BOLT's height, not the coin's. A rhombus seen
+  // corner to corner carries far less area than a disc of the same height,
+  // so at 15 it sat visibly smaller than the other two marks on the same
+  // bar; the energy chip has always used 17 for the same reason.
+  //
+  // Both go through `currencyBoxFor` and `currencyDisplaySize` rather than a
+  // hand-picked pixel size: the first corrects for how much of its box each
+  // SVG's art fills, the second for how much of its canvas a render fills.
+  const drawnHeight = (kind === 'gem' ? 17 : 15) * s;
+  const iconSize = currencyDisplaySize(scene, kind, currencyBoxFor(kind, drawnHeight));
   const iconShadow = scene.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
   const icon = scene.add.image(0, 0, iconKey).setDisplaySize(iconSize, iconSize).setDepth(22);
   // No gloss pass over a render: it is already lit, and a white wash across
