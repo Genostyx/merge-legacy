@@ -252,7 +252,7 @@ def _texture_coords(mat, scale=(1.0, 1.0, 1.0)):
     return mapping.outputs["Vector"]
 
 
-def grain(mat, base_rgb, contrast=0.26, scale=(1.0, 26.0, 5.0)):
+def grain(mat, base_rgb, contrast=0.30, scale=(1.0, 26.0, 5.0)):
     """Wood grain: noise stretched hard along ONE axis.
 
     Grain is directional - that is the whole of what makes a surface read as
@@ -266,17 +266,13 @@ def grain(mat, base_rgb, contrast=0.26, scale=(1.0, 26.0, 5.0)):
     links.new(_texture_coords(mat, scale), noise.inputs["Vector"])
 
     ramp = nodes.new("ShaderNodeValToRGB")
+    # Proportional, both ends. Every attempt to give the dark tiers a bigger
+    # absolute spread - blending the light end towards white, a flat lift,
+    # capping the triple - was chasing a colour shift that turned out to be
+    # the view transform left on Standard in the live scene, not the ramp.
+    # Scaling keeps the hue, which is the whole job here.
     dark = [max(0.0, c * (1.0 - contrast)) for c in base_rgb]
-    # The light end scales the base up AND adds a flat lift along the wood's
-    # own hue. Pure scaling is proportional, so on the dark end of the ramp -
-    # tier one is the darkest wood in the chain - it moved the colour by
-    # almost nothing and the grain was invisible on exactly the tiers that
-    # needed it most. Blending towards WHITE fixed the visibility and cost
-    # the colour: the planks came back grey and zebra-striped. The lift is a
-    # share of the brightest channel, so it raises every channel by the same
-    # amount and leaves the hue where it was.
-    lift = max(base_rgb) * contrast * 0.30
-    light = [min(1.0, c * (1.0 + contrast) + lift) for c in base_rgb]
+    light = [min(1.0, c * (1.0 + contrast)) for c in base_rgb]
     ramp.color_ramp.elements[0].position = 0.36
     ramp.color_ramp.elements[0].color = (*dark, 1.0)
     ramp.color_ramp.elements[1].position = 0.62
@@ -287,7 +283,12 @@ def grain(mat, base_rgb, contrast=0.26, scale=(1.0, 26.0, 5.0)):
     # Grain is also a texture you can FEEL: a little bump keeps the light from
     # sliding across a plank as though it were painted.
     bump = nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.18
+    # 0.45, not 0.12. AgX compresses colour variation hard, so raising the
+    # ramp's contrast alone barely shows - the grain kept coming back faint
+    # however far the tint was pushed. Relief survives tone mapping, because
+    # it changes how much light each line catches rather than what colour it
+    # is, so on this pipeline the bump is the lever that actually works.
+    bump.inputs["Strength"].default_value = 0.45
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], _shader(mat).inputs["Normal"])
     return mat
