@@ -1237,7 +1237,7 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
 
 
 def upright_coin(radius: float = 0.17, thickness: float = 0.042,
-                 lean_deg: float = 0.0):
+                 lean_deg: float = 0.0, turn_deg: float = 23.0):
     """A coin standing ON ITS EDGE, turned to the isometric three-quarter.
 
     Lying on its back a coin shows its face as a flat ellipse and hides the
@@ -1261,8 +1261,10 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
 
     piece.rotation_euler.rotate_axis("X", math.radians(-90))
     # Not 45 - that is dead face-on to this camera. 23 off it keeps the face
-    # readable while leaving the rim's thickness in view.
-    piece.rotation_euler.rotate_axis("Z", math.radians(23))
+    # readable while leaving the rim's thickness in view. A quarter turn from
+    # there lands on the OTHER diagonal, still face-visible, with the rim's
+    # thickness on the opposite side - the same reversal the vault needed.
+    piece.rotation_euler.rotate_axis("Z", math.radians(turn_deg))
 
     # An optional lean, about the SCREEN horizontal, so the coin tips back
     # rather than sideways. Applied in world space after the local turns -
@@ -1318,12 +1320,12 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = upright_coin()
+    out[1] = upright_coin(turn_deg=113)
     out[2] = stack([
         # Overlapping, with the near one a touch forward, so they read as two
         # coins leaning together rather than two discs butted edge to edge.
-        translate_to(upright_coin(), beside(-0.13, 0.07)),
-        translate_to(upright_coin(), beside(0.11, -0.07)),
+        translate_to(upright_coin(turn_deg=113), beside(-0.13, 0.07)),
+        translate_to(upright_coin(turn_deg=113), beside(0.11, -0.07)),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
