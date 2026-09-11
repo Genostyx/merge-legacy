@@ -928,6 +928,13 @@ def build_mineral():
     # The art notes record that it had been an obelisk and read as Glass's
     # Crystal Obelisk; seven sides is also unique across the whole set.
     out[6] = crystal(radius=0.40, height=0.20, tip=0.0, sides=7, taper=0.82)
+    # TURNED HALF A FACET. A heptagon starting at angle zero puts a VERTEX on
+    # the right-hand silhouette, and with the taper pulling the top face in,
+    # the side facet beside that vertex collapses to a sliver - the outline
+    # pinches there and reads as a modelling fault rather than a cut. Half a
+    # step round (360/7/2) presents a flat to that edge instead, so the
+    # silhouette meets it as a straight run.
+    out[6].rotation_euler.z = math.radians(360 / 7 / 2)
 
     # 7-9 - THREE REAL LAPIDARY CUTS, plainest first. A step cut is the
     # simplest and the right read for the chain's first cut stone; the
