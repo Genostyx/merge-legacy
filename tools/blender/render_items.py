@@ -1685,8 +1685,27 @@ def dress_currency(kind: str, out):
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read
         # as a cut cylinder.
+        # THE GEM GETS THE WIDEST CHAMFER, not the narrowest.
+        #
+        # 0.004 left its edges all but sharp, and a sharp-edged flat slab
+        # under a clear coat has nothing for the gloss to do: a coat only
+        # shows you what it reflects, and a flat face reflecting a big soft
+        # area lamp returns one even sheen with nothing moving across it -
+        # which is why the stone read flat however far the roughness came
+        # down. A real chamfer gives each edge a narrow band angled away
+        # from the face, and those bands catch the lamp as bright lines.
+        # That is what a cut stone's gloss actually is.
         finish(ob, "%s%d" % (kind, tier), material,
-               bevel=0.004 if kind == "currency-gem" else 0.018)
+               bevel=0.022 if kind == "currency-gem" else 0.018)
+        if kind == "currency-gem":
+            # ONE SEGMENT: a flat facet, not a rounded edge. The default two
+            # segments round the chamfer off, and a rounded edge smears the
+            # reflection across it - which is the opposite of gloss. A cut
+            # stone's chamfer is a flat plane meeting the face at a distinct
+            # angle, so it reflects something distinctly different and reads
+            # as a hard bright band. The sharp corner between the two is the
+            # whole effect.
+            ob.modifiers["Bevel"].segments = 1
     return out
 
 
