@@ -1659,18 +1659,25 @@ def dress_currency(kind: str, out):
             shader.inputs["Coat Roughness"].default_value = 0.05
             shader.inputs["Coat IOR"].default_value = 1.5
         else:
-            # tint_strength stays 0: `absorbing` below whitens the surface
-            # on purpose and moves all the colour into the volume, so any
-            # tint set here is overwritten. Density is the only lever on this
-            # stone's value.
-            gemstone(material, ior=1.75, roughness=0.06, tint_strength=0.0)
-            # DENSITY 2.2, down from 9.0. Absorption is how much colour the
-            # light loses crossing the stone, so on a slab this thick 9 was
-            # eating nearly all of it - the gems averaged 0x5b567c against
-            # the bolts' 0x89b6d5 and read as dark lumps on the board's
-            # glass. Lower density keeps the thick-is-deeper gradient that
-            # makes it a gem and stops it going black in the middle.
-            absorbing(material, CURRENCY_RGB[kind][tier], density=2.2)
+            # AN OPAQUE STONE, not glass. public/currency-gem.svg is a solid
+            # light-purple slab with a dark purple extruded edge and one soft
+            # highlight - flat, bright, high-value. It was being built as a
+            # transmissive gem instead, so its colour only existed as light
+            # passing THROUGH it, and what it had to transmit was a dark
+            # studio. That is why it averaged near grey at 0x5c5a6d and why
+            # every absorption density barely moved it: no tuning of an
+            # absorbing material reaches the drawing, because the drawing is
+            # not made of that.
+            #
+            # The bolt was always opaque, which is why it only ever needed
+            # its angle corrected.
+            shader.inputs["Roughness"].default_value = 0.34
+            shader.inputs["IOR"].default_value = 1.75
+            # The highlight the drawing puts on the face, as a real coat
+            # rather than a painted-on blob. Light, like the bolt's.
+            shader.inputs["Coat Weight"].default_value = 0.25
+            shader.inputs["Coat Roughness"].default_value = 0.05
+            shader.inputs["Coat IOR"].default_value = 1.5
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read
