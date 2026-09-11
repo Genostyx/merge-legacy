@@ -1120,8 +1120,14 @@ def extrude_profile(points, thickness: float):
     return ob
 
 
-def disc(radius: float, thickness: float, sides: int = 24):
-    """A coin, lying flat."""
+def disc(radius: float, thickness: float, sides: int = 64):
+    """A coin, lying flat.
+
+    64 sides, not 24. A coin is the one shape in the set the player looks at
+    dead on, so its silhouette IS the object - at 24 the edge read as a
+    struck nut, and auto-smooth cannot fix a silhouette, only the shading
+    inside it.
+    """
     mesh = bpy.data.meshes.new("coin")
     bm = bmesh.new()
     lower, upper = [], []
@@ -1220,6 +1226,17 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
     well = disc(radius * 0.80, rim_height * 3)
     translate_to(well, (0.0, 0.0, thickness))
     body = carve(blank, well)
+
+    # THE STRUCK RING, back on the face. The drawn coin strokes a circle
+    # inside its edge and this had only the rim, which left the whole middle
+    # as one flat empty plate - and a flat plate tipped away from the lights
+    # goes dark and turns the coin into a washer with a bright edge. A raised
+    # ring gives the face its own lit edge, so the gold carries all the way
+    # in instead of stopping at the rim.
+    ring_h = rim_height * 0.55
+    ring = carve(disc(radius * 0.66, thickness + ring_h),
+                 translate_to(disc(radius * 0.54, ring_h * 4), (0.0, 0.0, 0.0)))
+    body = merge([body, ring])
 
     if slot:
         # Struck DEEP into the recessed face, which sits at `thickness`.
@@ -1384,14 +1401,21 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = upright_coin(face_on=True, lean_deg=20)
+    # LYING FLAT, the way tier three's top coin does. Every presentation
+    # tried for these - three-quarter on edge, mirrored, square on and tipped
+    # back - was an attempt to show the face without losing the solid, and
+    # the stack already had the answer: seen from the isometric camera a coin
+    # on its back shows its whole face AND its thickness, with no trick.
+    # Standing them up was solving a problem this camera does not have.
+    out[1] = coin(coin_r, coin_t)
     out[2] = stack([
-        # Overlapping, with the near one a touch forward, so they read as two
-        # coins leaning together rather than two discs butted edge to edge.
-        translate_to(upright_coin(face_on=True, lean_deg=20),
-                     beside(-0.13, 0.07)),
-        translate_to(upright_coin(face_on=True, lean_deg=20),
-                     beside(0.11, -0.07)),
+        translate_to(coin(coin_r, coin_t), beside(-0.11, 0.06)),
+        # The second RESTS ON the first rather than sitting beside it: half a
+        # coin's height up and overlapping, so they read as two coins dropped
+        # together instead of two counters laid out.
+        translate_to(coin(coin_r, coin_t),
+                     tuple(Vector(beside(0.12, -0.06))
+                           + Vector((0.0, 0.0, coin_t * 0.62)))),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
