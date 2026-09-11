@@ -26,7 +26,15 @@ export const EVENT_TOKEN_COLOR = 0x2fb59a;
  * six-point burst it replaced was a generic sparkle.
  */
 export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: MaterialLighting): void {
-  const r = s * 0.38;
+  // THE COIN SHRINKS, THE CROWN DOES NOT.
+  //
+  // The device is the readable part, and it was sized to survive a phone
+  // cell; the disc around it only has to be big enough to hold it. So the
+  // crown is still struck at the old radius while the coin is drawn smaller
+  // around it, which lands the rays just short of the rim - a device that
+  // fills its face, rather than a small mark adrift in a large blank.
+  const r = s * 0.34;
+  const crownR = s * 0.38;
 
   // A RIM, not milling.
   //
@@ -34,10 +42,14 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
   // under a pixel: invisible at best, a grey fringe at worst. Fewer and
   // bigger is the whole rule for icon-size art - one thick ring reads as a
   // struck edge where sixteen ticks read as nothing.
-  g.fillStyle(p.shadow, 1);
-  g.fillCircle(0, 0, r);
+  //
+  // There is no dark circle UNDER the rim any more. It was a full outline,
+  // and an outline is the one thing a lit object does not have: the far side
+  // of a rim is dark because it faces away from the light, and the near side
+  // is not. Ringing the whole coin in shadow said it was lit from everywhere
+  // and from nowhere at once.
   g.fillStyle(p.dark, 1);
-  g.fillCircle(0, 0, r * 0.97);
+  g.fillCircle(0, 0, r);
   // The rim catches the key along its upper-left, which is what gives the
   // coin an edge rather than an outline.
   g.lineStyle(r * 0.13, p.highlight, 0.85);
@@ -67,7 +79,7 @@ export function drawEventToken(g: Phaser.GameObjects.Graphics, s: number, p: Mat
     g.fillCircle(drift, drift, rad);
   }
 
-  drawStruckCrown(g, r, p);
+  drawStruckCrown(g, crownR, p);
 }
 
 /**
