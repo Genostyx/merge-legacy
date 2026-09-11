@@ -1445,7 +1445,12 @@ def build_credits():
     dial = disc(0.040, 0.03)
     dial.rotation_euler.x = math.radians(-90)
     translate_to(dial, (-0.15, FRONT_Y * 0.21, 0.10))
-    out[6] = stack([body, door, dial] + spokes + trim)
+    # Turned a quarter so the door is on the RIGHT-hand visible face.
+    # Everything is built on the +Y face, which this camera shows on the
+    # left; +Y becomes -X under a +90 turn about Z.
+    safe = stack([body, door, dial] + spokes + trim)
+    safe.rotation_euler.z = math.radians(90)
+    out[6] = safe
     return out
 
 
