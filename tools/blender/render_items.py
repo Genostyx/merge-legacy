@@ -1463,6 +1463,20 @@ def build_credits():
     safe = stack([body, door, dial] + spokes + trim)
     safe.rotation_euler.z = math.radians(90)
     out[6] = safe
+
+    # THE LADDER, tuned as one. Now that the whole family shares a render
+    # scale the modelled sizes are what the player compares, and they were
+    # never meant to be compared - each tier had been sized to look right on
+    # its own in a full frame, so a single coin came out a third of the
+    # canvas while a stack of five filled nine tenths of it.
+    #
+    # These factors put the six on an even climb, applied as object scale so
+    # each tier's own proportions are untouched. Even is the point: the rise
+    # has to be visible at a glance but never leave the low tiers looking
+    # like specks on their tiles.
+    for tier, factor in ((1, 1.45), (3, 1.48), (4, 1.17),
+                         (5, 0.92), (6, 1.16)):
+        out[tier].scale = (factor, factor, factor)
     return out
 
 
@@ -1720,30 +1734,49 @@ def configure_render():
     sc.render.image_settings.color_mode = 'RGBA'
 
 
-def render(ob, cam, path: str):
-    for other in bpy.data.objects:
-        if other.type == 'MESH':
-            other.hide_render = (other is not ob)
+def frame(ob, cam):
+    """Where to aim the camera for this object, and how wide it needs to be.
 
+    Split out of `render` so a whole family can be MEASURED before any of it
+    is rendered, which is what lets every tier share one scale.
+    """
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = ob.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh()
     pts = [ob.matrix_world @ v.co for v in mesh.vertices]
     evaluated.to_mesh_clear()
 
-    forward = cam.matrix_world.to_quaternion() @ Vector((0, 0, -1))
-    cam.location = (sum(pts, Vector((0, 0, 0))) / len(pts)) - forward * 20.0
+    rot = cam.matrix_world.to_quaternion()
+    forward = rot @ Vector((0, 0, -1))
+    right, up = rot @ Vector((1, 0, 0)), rot @ Vector((0, 1, 0))
+    xs = [p.dot(right) for p in pts]
+    ys = [p.dot(up) for p in pts]
+    depth = sum(p.dot(forward) for p in pts) / len(pts)
+
+    # AIMED AT THE BOUNDING BOX'S CENTRE, not at the average of the vertices.
+    # A mean is pulled towards whatever part of the model carries the most
+    # geometry - the vault's dial, spokes and trim are all on one face - and
+    # an off-centre aim costs clearance on every side.
+    centre = (right * ((min(xs) + max(xs)) / 2)
+              + up * ((min(ys) + max(ys)) / 2)
+              + forward * depth)
+    # Measured on the CAMERA'S axes. A world bounding box says nothing about
+    # how much of a rotated frame an object fills.
+    half = max(max(xs) - min(xs), max(ys) - min(ys)) / 2
+    return centre - forward * 20.0, half
+
+
+def render(ob, cam, path: str, half: float = 0.0):
+    for other in bpy.data.objects:
+        if other.type == 'MESH':
+            other.hide_render = (other is not ob)
+
+    location, own = frame(ob, cam)
+    cam.location = location
     # Required. Without it matrix_world is a frame stale and every tier after
     # the first is framed against the PREVIOUS tier's camera position.
     bpy.context.view_layer.update()
-
-    # Framed on the CAMERA'S axes. A world bounding box says nothing about how
-    # much of a rotated frame an object fills, and framing off it is why
-    # exports once ranged from 35 to 74 percent of their canvas.
-    inv = cam.matrix_world.inverted()
-    local = [inv @ p for p in pts]
-    half = max(max(abs(p.x) for p in local), max(abs(p.y) for p in local))
-    cam.data.ortho_scale = half * 2 * MARGIN
+    cam.data.ortho_scale = (half or own) * 2 * MARGIN
 
     bpy.context.scene.render.filepath = path
     bpy.ops.render.render(write_still=True)
@@ -1804,8 +1837,16 @@ def main(only: str = ""):
                 bpy.data.objects.remove(ob, do_unlink=True)
         family_dir = os.path.join(root, "public", "assets", "items", family)
         os.makedirs(family_dir, exist_ok=True)
-        for tier, ob in sorted(build().items()):
-            render(ob, cam, os.path.join(family_dir, "%d.png" % tier))
+        tiers = sorted(build().items())
+        # ONE SCALE FOR THE WHOLE FAMILY. Fitting each tier to the canvas on
+        # its own threw the ladder away - a single coin and a strongbox came
+        # out the same size, so a five-coin stack read as bigger than the
+        # vault it merges into. Measuring every tier first and rendering them
+        # all at the widest one's scale means the modelled sizes are what the
+        # player actually sees.
+        widest = max(frame(ob, cam)[1] for _, ob in tiers)
+        for tier, ob in tiers:
+            render(ob, cam, os.path.join(family_dir, "%d.png" % tier), widest)
             print("rendered", family, "tier", tier)
 
     for ob in bpy.data.objects:
