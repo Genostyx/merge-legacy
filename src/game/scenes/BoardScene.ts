@@ -416,6 +416,7 @@ import {
   drawShopCard as drawShopCardPanel,
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
+import { SPRITE_FAMILIES, SPRITE_TIERS, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
 
 export class BoardScene extends Phaser.Scene {
   grid = new Grid(COLS, ROWS);
@@ -752,8 +753,11 @@ export class BoardScene extends Phaser.Scene {
       if (!this.textures.exists(key)) this.load.image(key, file);
     };
 
-    for (let tier = 1; tier <= 9; tier++) {
-      imageOnce(`wood-render-${tier}`, `assets/items/wood/${tier}.png`);
+    // Every converted family, not a hardcoded one. See itemSprites.ts.
+    for (const family of SPRITE_FAMILIES) {
+      for (let tier = 1; tier <= SPRITE_TIERS; tier++) {
+        imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
+      }
     }
     svgOnce('energy-basket', 'energy-basket.svg', iconPx);
     svgOnce('producer-coin-pouch', 'coin-pouch.svg', iconPx);

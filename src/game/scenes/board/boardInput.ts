@@ -24,6 +24,7 @@ import { getTierDef, isCurrencyChain, spawnerPieceTiers } from '../../data/chain
 import { burstParticles, shakeForTier } from '../../fx/MergeFx';
 import { playerLevel, syncOrderSlots, xpForMerge } from '../../levels/Orders';
 import { MAX_DISPENSER_TIER, mergeDispenserPair } from '../../dispensers/Dispensers';
+import { loadedItemSprite } from '../../objects/itemSprites';
 
 /**
  * boardInput, lifted out of BoardScene whole.
@@ -495,9 +496,10 @@ scene: BoardScene,
   const cancel = button(cx - 68, 'CANCEL', Theme.textOnDarkMuted);
   const confirm = button(cx + 68, 'SPLIT', Theme.currencyGem);
   overlay.add([dim, panel, title, subtitle, icon, cancel.bg, cancel.text, cancel.zone, confirm.bg, confirm.text, confirm.zone]);
-  if (target.typeId === 'wood' && scene.textures.exists(`wood-render-${target.tier}`)) {
+  const splitSprite = loadedItemSprite(scene, target.typeId, target.tier);
+  if (splitSprite) {
     icon.setVisible(false);
-    overlay.add(scene.add.image(cx, cy - 20, `wood-render-${target.tier}`).setDisplaySize(iconSize, iconSize));
+    overlay.add(scene.add.image(cx, cy - 20, splitSprite).setDisplaySize(iconSize, iconSize));
   }
 
   const close = (): void => {

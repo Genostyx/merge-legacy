@@ -7,6 +7,7 @@ import { buildCurrencyCluster } from '../ui/CurrencyCluster';
 import type { IconFootprint } from './TierIcons';
 import { Theme, materialLighting } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
+import { loadedItemSprite } from './itemSprites';
 
 /**
  * A locked tile is drawn as a SILHOUETTE, not as a dimmed version of itself.
@@ -142,10 +143,11 @@ export class TileView extends Phaser.GameObjects.Container {
     this.icon.clear();
     for (const image of this.currencyIcons) image.destroy();
     this.currencyIcons = [];
-    if (this.typeId === 'wood' && this.scene.textures.exists(`wood-render-${this.tier}`)) {
+    const sprite = loadedItemSprite(this.scene, this.typeId, this.tier);
+    if (sprite) {
       this.icon.setVisible(false);
       this.bg.clear();
-      const art = this.scene.add.image(0, 0, `wood-render-${this.tier}`);
+      const art = this.scene.add.image(0, 0, sprite);
       art.setDisplaySize(size, size);
       if (this.locked) art.setTint(0x555555);
       this.bg.setScale(1).setPosition(0, 0);

@@ -7,6 +7,7 @@ import { drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { getChain } from '../../data/chains';
 import { addGems } from '../../economy/Economy';
 import { claimDiscovery, claimedInFamily, isClaimed, isDiscovered } from '../../collection/Collection';
+import { loadedItemSprite } from '../../objects/itemSprites';
 
 /**
  * ONE FAMILY'S LADDER, opened from the `i` in the action tray.
@@ -125,9 +126,9 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
     }
 
     const iconSize = slot * 0.9;
-    const spriteKey = `wood-render-${def.tier}`;
-    const useSprite = typeId === 'wood' && scene.textures.exists(spriteKey);
-    const icon = useSprite ? scene.add.image(cx, cy, spriteKey).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
+    const spriteKey = loadedItemSprite(scene, typeId, def.tier);
+    const useSprite = spriteKey !== null;
+    const icon = useSprite ? scene.add.image(cx, cy, spriteKey!).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
     const render = useSprite ? { materialAlpha: 1 } : drawTierIcon(icon as Phaser.GameObjects.Graphics, typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
     icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
     if (!useSprite) {

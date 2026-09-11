@@ -43,6 +43,7 @@ import {
   supplyCratePrice,
   supplyCrateReady
 } from '../../shop/SupplyCrates';
+import { loadedItemSprite } from '../../objects/itemSprites';
 
 /**
  * The shop panel, lifted out of BoardScene whole.
@@ -770,8 +771,9 @@ export function buildOfferSlot(scene: BoardScene, container: Phaser.GameObjects.
   } else if (offer.kind === 'spawner-piece') {
     drawSpawnerPieceIcon(icon, offer.typeId, offer.tier, ICON_SIZE * 0.92);
     icon.setPosition(x, y + 64);
-  } else if (offer.typeId === 'wood' && scene.textures.exists(`wood-render-${offer.tier}`)) {
-    container.add(scene.add.image(x, y + 64, `wood-render-${offer.tier}`).setDisplaySize(ICON_SIZE, ICON_SIZE));
+  } else if (loadedItemSprite(scene, offer.typeId, offer.tier)) {
+    container.add(scene.add.image(x, y + 64, loadedItemSprite(scene, offer.typeId, offer.tier)!)
+      .setDisplaySize(ICON_SIZE, ICON_SIZE));
   } else {
     const { materialAlpha } = drawTierIcon(icon, offer.typeId, offer.tier, ICON_SIZE, materialLighting(baseColor, offer.tier));
     icon.setAlpha(materialAlpha);

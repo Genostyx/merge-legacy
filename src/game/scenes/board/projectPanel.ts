@@ -25,6 +25,7 @@ import { addEnergy } from '../../economy/Energy';
 import type { CrateTier } from '../../rewards/Rewards';
 import { RoomView3D } from '../../rooms/RoomView3D';
 import { ROOM_PIECES, ROOM_SCOPES, roomPiecesForStage, type RoomPiece } from '../../rooms/RoomView3D';
+import { loadedItemSprite } from '../../objects/itemSprites';
 
 /**
  * projectPanel, lifted out of BoardScene whole.
@@ -734,9 +735,10 @@ export function openProject(scene: BoardScene): void {
         const present = iconPresentation(row.req.typeId, row.req.tier, art);
         icon.setScale(present.scale).setPosition(left + 20 + present.offsetX, y + present.offsetY);
         footer.add(icon);
-        if (row.req.typeId === 'wood' && scene.textures.exists(`wood-render-${row.req.tier}`)) {
+        const reqSprite = loadedItemSprite(scene, row.req.typeId, row.req.tier);
+        if (reqSprite) {
           icon.setVisible(false);
-          footer.add(scene.add.image(left + 20, y, `wood-render-${row.req.tier}`)
+          footer.add(scene.add.image(left + 20, y, reqSprite)
             .setDisplaySize(art, art).setAlpha(row.met ? 1 : 0.55));
         }
         textX = left + 40;
