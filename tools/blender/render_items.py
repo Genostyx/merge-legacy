@@ -109,9 +109,11 @@ MINERAL_SURFACE = {
     # polished stone is a real finish and these three are literally named for
     # it - and it is what turns the ladder into a story: rough rock is picked
     # up, worked, and finally polished, before being cut at 7.
-    4: (0.22, 1.55),   # polished stone
-    5: (0.18, 1.60),   # polished marble
-    6: (0.26, 1.70),   # polished granite, like a countertop
+    # Polished stone really is this smooth - a honed countertop sits near
+    # 0.1 and a polished one below it. 0.22 was still a satin finish.
+    4: (0.10, 1.55),   # polished stone
+    5: (0.07, 1.60),   # polished marble
+    6: (0.12, 1.70),   # polished granite, like a countertop
     7: (0.10, 1.54),   # quartz
     8: (0.06, 1.77),   # sapphire
     9: (0.06, 1.77),   # star sapphire
@@ -279,6 +281,23 @@ def mottle(mat, base_rgb, scale=9.0, strength=0.16):
     ramp.color_ramp.elements[1].color = (*light, 1.0)
     links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
     links.new(ramp.outputs["Color"], _shader(mat).inputs["Base Color"])
+    return mat
+
+
+def polished(mat, coat_roughness=0.03):
+    """A clear coat over the stone - which is what a polished slab IS.
+
+    Dropping base roughness alone could never get there: a dielectric reflects
+    only about 5% of the light at face-on incidence, so however smooth the
+    stone got, "polished" kept arriving as "dark with a small lamp on it". A
+    countertop is sealed - there is a separate, much glossier layer sitting on
+    top of the stone, and the stone shows through it. That is a coat, and
+    Principled has one.
+    """
+    shader = _shader(mat)
+    shader.inputs["Coat Weight"].default_value = 1.0
+    shader.inputs["Coat Roughness"].default_value = coat_roughness
+    shader.inputs["Coat IOR"].default_value = 1.5
     return mat
 
 
@@ -814,12 +833,12 @@ def build_mineral():
         # Tier five takes a deliberately HEAVY chamfer - that is the dressing.
         # Crystal and gems take none: a bevel on a cut stone rounds off the
         # only thing that says it was cut.
-        # EVERY TIER GETS ONE. Zero bevel was over-correcting: an edge with
-        # no width at all catches no light, so the cut stones and the granite
-        # slab had none of the bright arrises that make wood read as solid.
-        # A cut stone's edges really are slightly softened at this scale - the
-        # error is a WIDE bevel, which rounds the facets away, not a bevel.
-        bevel = 0.006 if tier >= 7 else (0.085 if tier == 4 else 0.016)
+        # WIDE ENOUGH TO SEE. 0.016 on a piece two thirds of a unit across is
+        # about a pixel at board size - present in the mesh and invisible on
+        # screen, which is the same mistake the wood bevel made at 0.012.
+        # What makes an edge read is a band of shading with WIDTH, so the
+        # rocks get roughly what the timber gets.
+        bevel = 0.008 if tier >= 7 else (0.085 if tier == 4 else 0.032)
         material = tier_material("mineral-tier-%d" % tier,
                                  MINERAL_HEX[tier], MINERAL_MEASURED[tier])
         roughness, ior = MINERAL_SURFACE[tier]
@@ -830,8 +849,10 @@ def build_mineral():
             gemstone(material, ior=ior, roughness=roughness)
         elif tier == 6:
             speckle(material, base)          # granite's real signature
+            polished(material)
         elif tier == 5:
             veins(material, base)            # marble
+            polished(material)
         else:
             # Colour variation FIRST - that is the part you can see - with the
             # roughness break on top of it. The rough tiers get a coarser,
@@ -840,6 +861,8 @@ def build_mineral():
                    scale=9.0 if tier < 4 else 6.0,
                    strength=0.20 if tier < 4 else 0.11)
             weathered(material, strength=0.34 if tier < 4 else 0.12)
+            if tier == 4:
+                polished(material)
         finish(ob, "mineral%d" % tier, material, bevel=bevel)
     return out
 
@@ -922,7 +945,13 @@ def build_lights():
     axis = nodes.new("ShaderNodeSeparateXYZ")
     links.new(coords.outputs["Generated"], axis.inputs["Vector"])
     bands = nodes.new("ShaderNodeValToRGB")
-    bands.color_ramp.interpolation = 'B_SPLINE'
+    # HARD-EDGED bands, not a gradient.
+    #
+    # A smooth sky reflects as a smooth sweep, which is just shading - it
+    # cannot say "reflective". What reads as polish is a reflected EDGE: the
+    # line where a bright window stops. Constant interpolation gives the box
+    # real walls, so a coat has something with a boundary to show.
+    bands.color_ramp.interpolation = 'CONSTANT'
     stops = bands.color_ramp.elements
     stops[0].position = 0.0
     stops[0].color = (0.02, 0.02, 0.03, 1.0)     # floor, so facets have darks
@@ -936,13 +965,27 @@ def build_lights():
     links.new(axis.outputs["Z"], bands.inputs["Fac"])
 
     bright = nodes.new("ShaderNodeBackground")
-    bright.inputs[1].default_value = 1.6
+    # Bright enough to be worth reflecting. A coat returns only a few per
+    # cent of what it sees, so a dim box gives a dim countertop.
+    bright.inputs[1].default_value = 2.2
     links.new(bands.outputs["Color"], bright.inputs["Color"])
 
+    # THE STUDIO IS FOR REFLECTIONS TOO, not only refractions.
+    #
+    # A polished surface has no look of its own either - it shows you the
+    # room. Against a 0.055 sky, dropping roughness just made the stone DARK
+    # with one small lamp blob on it, which is why "polished" kept coming out
+    # as "dull with a highlight" however low the number went. Glossy rays see
+    # the same lit box the transmission rays do, so a countertop finish has
+    # bands to reflect and actually reads as one.
     path = nodes.new("ShaderNodeLightPath")
+    glossy_or_transmission = nodes.new("ShaderNodeMath")
+    glossy_or_transmission.operation = 'MAXIMUM'
+    links.new(path.outputs["Is Transmission Ray"], glossy_or_transmission.inputs[0])
+    links.new(path.outputs["Is Glossy Ray"], glossy_or_transmission.inputs[1])
     mix = nodes.new("ShaderNodeMixShader")
     out = nodes.new("ShaderNodeOutputWorld")
-    links.new(path.outputs["Is Transmission Ray"], mix.inputs["Fac"])
+    links.new(glossy_or_transmission.outputs["Value"], mix.inputs["Fac"])
     links.new(dim.outputs["Background"], mix.inputs[1])
     links.new(bright.outputs["Background"], mix.inputs[2])
     links.new(mix.outputs["Shader"], out.inputs["Surface"])
