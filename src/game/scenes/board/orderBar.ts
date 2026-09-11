@@ -126,9 +126,10 @@ export function buildOrderBar(scene: BoardScene): void {
       scene.orderDrag = { active: true, slot: position, startX: pointer.worldX, startScroll: scene.orderScroll, moved: 0, describe: null };
     });
 
-    root.add([bg, progress, zone]);
+    const go = scene.add.graphics();
+    root.add([bg, go, progress, zone]);
     container.add(root);
-    scene.orderCards.push({ root, bg, progress, rewardTexts: [], zone, width: ORDER_CARD_MIN_W });
+    scene.orderCards.push({ root, bg, go, progress, rewardTexts: [], zone, width: ORDER_CARD_MIN_W });
   }
 
   // The mask is world-space and NOT on the display list, so it stays put
@@ -728,6 +729,7 @@ export function refreshOrderBar(scene: BoardScene): void {
     view.width = width * scene.chromeScale;
 
     view.bg.clear();
+    view.go.clear();
     // NO outer card panel. There were three stacked shapes - an outer card,
     // a reward bar and a slot tray - and the outer one was doing nothing but
     // putting a second border around the other two. The card IS the reward
@@ -795,9 +797,12 @@ export function refreshOrderBar(scene: BoardScene): void {
       // nothing but the board.
       const gy = cardH - ORDER_GO_H / 2;
       const goLighting = materialLighting(Theme.accentGreen, 5);
-      view.bg.fillGradientStyle(goLighting.highlight, goLighting.light, goLighting.base, goLighting.dark, 1);
-      view.bg.fillRoundedRect(gx, gy, ORDER_GO_W, ORDER_GO_H, Theme.radiusChip);
+      view.go.fillGradientStyle(goLighting.highlight, goLighting.light, goLighting.base, goLighting.dark, 1);
+      view.go.fillRoundedRect(gx, gy, ORDER_GO_W, ORDER_GO_H, Theme.radiusChip);
       view.progress.setPosition(gx + ORDER_GO_W / 2, gy + ORDER_GO_H / 2).setOrigin(0.5, 0.5);
+      // Above the item art, which is rebuilt - and re-added - every refresh.
+      view.root.bringToTop(view.go);
+      view.root.bringToTop(view.progress);
     }
 
     // Reaches DOWN over the half of the GO chip that hangs past the card.

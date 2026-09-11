@@ -2417,17 +2417,27 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
         `${sourceTierLabel(sourceView.spawner.typeId, sourceView.spawner.tier)}  ·  ${available}/${capacity} AVAILABLE\n` +
         `OUTPUT ${family} ${baseTier}–${highestTier}  ·  ${remaining > 0 ? `NEXT ${formatCountdown(remaining)}` : 'RESERVOIR FULL'}`
       );
-      if (available <= 0 && remaining > 0) {
+      // OFFERED WHENEVER THERE IS SOMETHING TO BUY, not only on a dry source.
+      //
+      // It used to need `available <= 0`, so the chip appeared for the few
+      // seconds a reservoir spent at zero and was invisible the rest of the
+      // time - you had to drain a source to find out the button still
+      // existed. Topping up early is worse value, not a mistake to be
+      // prevented; the count beside the label already says how much of the
+      // reservoir you are paying to replace.
+      //
+      // A FULL reservoir is the one case it is hidden, because then there is
+      // nothing to sell - which is also the guard `rushSource` enforces.
+      if (remaining > 0) {
         const cost = rushCostGems(sourceView.spawner, now);
         const affordable = this.economy.gems >= cost;
         this.setSellButton('REFILL', String(cost), 'gem', affordable ? Theme.currencyGem : Theme.textOnDarkMuted);
       } else {
         this.sellButton.setVisible(false);
-    this.sellButtonMark.setVisible(false);
-    this.sellButtonBg.setVisible(false);
-    this.sellButtonAmount.setVisible(false);
-    this.sellButtonZone.setVisible(false);
         this.sellButtonMark.setVisible(false);
+        this.sellButtonBg.setVisible(false);
+        this.sellButtonAmount.setVisible(false);
+        this.sellButtonZone.setVisible(false);
       }
       return;
     }

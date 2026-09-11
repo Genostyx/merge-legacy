@@ -230,6 +230,15 @@ export interface OrderCardView {
    */
   root: Phaser.GameObjects.Container;
   bg: Phaser.GameObjects.Graphics;
+  /**
+   * The GO chip, in its OWN graphics rather than in `bg`.
+   *
+   * It sits on the card's face now, over the bottom of the item art, and the
+   * art is built fresh on every refresh - so it is added to the container
+   * after `bg` and lifted back to the top once the rows are in. Drawn into
+   * `bg` it would come out underneath the very thing it overlaps.
+   */
+  go: Phaser.GameObjects.Graphics;
   progress: Phaser.GameObjects.Text;
   /** Requirement and reward tokens, rebuilt on every refresh. */
   /** Text or, for a currency, a number-plus-mark container. */
