@@ -139,6 +139,23 @@ MINERAL_HEX_RGB = {
     for tier, c in MINERAL_HEX.items()
 }
 
+# Straight from CREDIT_CHAIN, ENERGY_CURRENCY_CHAIN and GEM_CURRENCY_CHAIN.
+# No calibration entries: these are metal, emission and transmission, none of
+# which have a diffuse base colour for a measured correction to act on.
+CURRENCY_HEX = {
+    "currency-credit": {1: 0xe7aa32, 2: 0xecb33a, 3: 0xf0ba43,
+                        4: 0xf3c34e, 5: 0xf6cc5a, 6: 0xf9d66b},
+    "currency-energy": {1: 0x24a9e8, 2: 0x2ab3ed, 3: 0x35bef0,
+                        4: 0x48c9f2, 5: 0x61d3f4},
+    "currency-gem": {1: 0x9d70c2, 2: 0xaa7dca, 3: 0xb789d2,
+                     4: 0xc497db, 5: 0xd2a6e3},
+}
+CURRENCY_RGB = {
+    kind: {tier: tuple(((c >> shift) & 255) / 255.0 for shift in (16, 8, 0))
+           for tier, c in tiers.items()}
+    for kind, tiers in CURRENCY_HEX.items()
+}
+
 BEVEL_WIDTH = 0.016      # a sawn arris, not a moulded edge
 BEVEL_SEGMENTS = 2
 SMOOTH_ANGLE = math.radians(30)
@@ -1043,6 +1060,138 @@ def build_mineral():
     return out
 
 
+
+def extrude_profile(points, thickness: float):
+    """A flat 2D outline given depth: the x-z plane, extruded along y.
+
+    Used for anything whose identity is a SILHOUETTE rather than a volume -
+    the energy bolt is a zigzag before it is an object, and building it as a
+    solid from scratch would lose the shape that makes it readable.
+    """
+    mesh = bpy.data.meshes.new("profile")
+    bm = bmesh.new()
+    half = thickness * 0.5
+    front = [bm.verts.new((x, -half, z)) for x, z in points]
+    back = [bm.verts.new((x, half, z)) for x, z in points]
+    for i in range(len(points)):
+        j = (i + 1) % len(points)
+        bm.faces.new((front[i], front[j], back[j], back[i]))
+    bm.faces.new(tuple(front[::-1]))
+    bm.faces.new(tuple(back))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("profile", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def disc(radius: float, thickness: float, sides: int = 24):
+    """A coin, lying flat."""
+    mesh = bpy.data.meshes.new("coin")
+    bm = bmesh.new()
+    lower, upper = [], []
+    for i in range(sides):
+        a = 2 * math.pi * i / sides
+        x, y = math.cos(a) * radius, math.sin(a) * radius
+        lower.append(bm.verts.new((x, y, 0.0)))
+        upper.append(bm.verts.new((x, y, thickness)))
+    for i in range(sides):
+        j = (i + 1) % sides
+        bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
+    bm.faces.new(tuple(upper))
+    bm.faces.new(tuple(reversed(lower)))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("coin", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+# The bolt, as a closed outline. A lightning glyph is a zigzag with one long
+# diagonal on each half; fewer points than this and it stops reading as one.
+BOLT = [(0.06, 0.50), (-0.30, 0.02), (-0.06, 0.02), (-0.18, -0.50),
+        (0.30, -0.04), (0.04, -0.04)]
+
+
+# ---- the currency chains ---------------------------------------------------
+
+# Loose CLUSTERS, in screen terms, never columns or rows. Aligned layouts make
+# a stack of coins read as a bar chart, and these are things that pile up - so
+# no three of them line up. Taken from the drawn art, which had already solved
+# this, and expressed as (right, back) because world axes are a poor guide to
+# what separates on screen.
+CURRENCY_CLUSTERS = [
+    [(0.00, 0.00)],
+    [(-0.20, 0.06), (0.16, -0.08)],
+    [(-0.22, 0.04), (0.20, -0.02), (0.00, -0.22)],
+    [(-0.24, 0.08), (0.18, 0.10), (-0.04, -0.10), (0.22, -0.20)],
+    [(-0.26, 0.10), (0.06, 0.18), (-0.14, -0.08), (0.26, 0.00), (0.04, -0.22)],
+    [(-0.28, 0.12), (0.02, 0.20), (0.26, 0.08), (-0.18, -0.04),
+     (0.14, -0.14), (-0.04, -0.26)],
+]
+
+
+def build_currency(kind: str):
+    """Credits, energy and gems - where the COUNT is the tier.
+
+    Two rules come from the drawn art and are not mine to change. The number
+    of units IS the tier number, and every unit is the SAME SIZE at every
+    tier: shrinking them to fit more in made a tier-five pile read as smaller
+    and cheaper than a tier-two one, which is the opposite of what a merge
+    should say. A cluster is allowed to crowd and overlap instead.
+    """
+    out = {}
+    tiers = len(CURRENCY_HEX[kind])
+    for tier in range(1, tiers + 1):
+        pieces = []
+        for index, (right, back) in enumerate(CURRENCY_CLUSTERS[tier - 1]):
+            if kind == "currency-credit":
+                piece = disc(0.17, 0.05)
+                # Tipped a little, and each by a different amount. Coins
+                # dropped in a heap do not land dead flat and parallel; a pile
+                # of perfectly level discs reads as a diagram of a pile.
+                lean(piece, 7 + index * 5)
+            elif kind == "currency-energy":
+                piece = extrude_profile(BOLT, 0.10)
+            else:
+                piece = cut_stone(
+                    ring(8, 0.15),
+                    crown=[(0.82, 0.05), (0.44, 0.11)],
+                    pavilion=[(0.70, -0.09), (0.0, -0.20)],
+                )
+            pieces.append(translate_to(piece, beside(right, back)))
+        out[tier] = stack(pieces)
+
+    for tier, ob in out.items():
+        material = tier_material("%s-tier-%d" % (kind, tier),
+                                 CURRENCY_HEX[kind][tier], CURRENCY_HEX[kind][tier])
+        shader = _shader(material)
+        if kind == "currency-credit":
+            # A coin is the one genuinely METALLIC thing in the game. Every
+            # other family is a dielectric, and the difference is not a
+            # brighter highlight - a metal has no diffuse colour at all, it
+            # tints its own reflection, which is why gold looks like gold from
+            # any angle and a yellow plastic does not.
+            shader.inputs["Metallic"].default_value = 1.0
+            shader.inputs["Roughness"].default_value = 0.22
+        elif kind == "currency-energy":
+            # A spark makes its own light. Nothing else here does, and it is
+            # the whole read - an unlit blue zigzag is a blue zigzag.
+            shader.inputs["Emission Color"].default_value = (
+                *[min(1.0, c * 1.4) for c in _shader(material).inputs["Base Color"].default_value[:3]], 1.0
+            )
+            shader.inputs["Emission Strength"].default_value = 1.6
+            shader.inputs["Roughness"].default_value = 0.25
+        else:
+            gemstone(material, ior=1.75, roughness=0.06, tint_strength=0.0)
+            absorbing(material, CURRENCY_RGB[kind][tier], density=9.0)
+        finish(ob, "%s%d" % (kind, tier), material,
+               bevel=0.004 if kind == "currency-gem" else 0.010)
+    return out
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -1243,6 +1392,40 @@ def render(ob, cam, path: str):
     bpy.ops.render.render(write_still=True)
 
 
+def archive(path: str = ""):
+    """Builds EVERY family into one scene and saves it as a .blend.
+
+    `main` deletes the meshes before each family, so the file left open after
+    a render holds whatever was built last - which is not an archive, and
+    quietly looked like one. This lays all of them out in a row instead, so
+    there is a real editable source file to open, poke at and save over.
+
+    The script is still the source of truth: everything here is rebuilt from
+    it on every run, and the .blend is a convenience for looking at geometry
+    by hand. Editing the .blend alone will be overwritten by the next render.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for ob in list(bpy.data.objects):
+        bpy.data.objects.remove(ob, do_unlink=True)
+    build_camera()
+    build_lights()
+    configure_render()
+
+    builders = [("wood", build_wood), ("mineral", build_mineral)]
+    for kind in CURRENCY_HEX:
+        builders.append((kind, (lambda k: lambda: build_currency(k))(kind)))
+
+    for row, (family, build) in enumerate(builders):
+        for tier, ob in sorted(build().items()):
+            # Spread out so nothing overlaps and every piece can be clicked.
+            ob.location.x += tier * 2.2
+            ob.location.y += row * 2.2
+            print("archived", family, "tier", tier)
+
+    bpy.ops.wm.save_as_mainfile(
+        filepath=path or os.path.join(root, "tools", "blender", "items.blend"))
+
+
 def main(only: str = ""):
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -1253,7 +1436,10 @@ def main(only: str = ""):
     build_lights()
     configure_render()
 
-    for family, build in (("wood", build_wood), ("mineral", build_mineral)):
+    families = [("wood", build_wood), ("mineral", build_mineral)]
+    for kind in CURRENCY_HEX:
+        families.append((kind, (lambda k: lambda: build_currency(k))(kind)))
+    for family, build in families:
         if only and family != only:
             continue
         for ob in list(bpy.data.objects):

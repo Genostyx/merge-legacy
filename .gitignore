@@ -31,3 +31,6 @@ public/event-token-preview.html
 
 # Bytecode from running the Blender pipeline scripts.
 tools/blender/__pycache__/
+
+# Blender backup files (the .blend itself is kept).
+*.blend1
