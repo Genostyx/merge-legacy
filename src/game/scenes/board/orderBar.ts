@@ -356,6 +356,19 @@ export function refreshOrderBar(scene: BoardScene): void {
    */
   const REQ_ICON_ART = 46;
   /**
+   * ...but never bigger than the same item is ON THE BOARD, and a little
+   * under it.
+   *
+   * 46 was a fixed number while the board's own item size follows the cell,
+   * so on a phone - where cells are smallest - the card's copy of an item was
+   * the LARGER of the two. An order is a reference to a thing on the board;
+   * it reading bigger than the thing itself inverts that.
+   *
+   * The board draws at `cellSize * 0.96`, so this is that with a little taken
+   * off: the same picture, plainly subordinate.
+   */
+  const REQ_ART_OF_BOARD = 0.88;
+  /**
    * The sapphire is the one icon the plate cannot hold. `iconPresentation`
    * sizes on sqrt(w*h), so the marquise's narrow waist buys it height: it
    * is drawn 1.06 of its box tall where a typical tier sits at 0.80, and it
@@ -426,7 +439,8 @@ export function refreshOrderBar(scene: BoardScene): void {
     plate.strokeRoundedRect(px - half, -half, REQ_PLATE, REQ_PLATE, radius);
 
     // The item keeps its own colour in both states. It is the item.
-    const reqArt = REQ_ICON_ART * (REQ_ICON_ART_TRIM[`${line.typeId}:${line.tier}`] ?? 1);
+    const reqArt = Math.min(REQ_ICON_ART, scene.cellSize * 0.96 * REQ_ART_OF_BOARD)
+      * (REQ_ICON_ART_TRIM[`${line.typeId}:${line.tier}`] ?? 1);
     const icon = scene.add.graphics();
     const render = drawTierIcon(
       icon, line.typeId, line.tier, reqArt, materialLighting(baseColor, line.tier)
