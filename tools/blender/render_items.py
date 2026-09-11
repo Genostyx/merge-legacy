@@ -252,7 +252,7 @@ def _texture_coords(mat, scale=(1.0, 1.0, 1.0)):
     return mapping.outputs["Vector"]
 
 
-def grain(mat, base_rgb, contrast=0.12, scale=(1.0, 26.0, 5.0)):
+def grain(mat, base_rgb, contrast=0.26, scale=(1.0, 26.0, 5.0)):
     """Wood grain: noise stretched hard along ONE axis.
 
     Grain is directional - that is the whole of what makes a surface read as
@@ -267,7 +267,16 @@ def grain(mat, base_rgb, contrast=0.12, scale=(1.0, 26.0, 5.0)):
 
     ramp = nodes.new("ShaderNodeValToRGB")
     dark = [max(0.0, c * (1.0 - contrast)) for c in base_rgb]
-    light = [min(1.0, c * (1.0 + contrast)) for c in base_rgb]
+    # The light end scales the base up AND adds a flat lift along the wood's
+    # own hue. Pure scaling is proportional, so on the dark end of the ramp -
+    # tier one is the darkest wood in the chain - it moved the colour by
+    # almost nothing and the grain was invisible on exactly the tiers that
+    # needed it most. Blending towards WHITE fixed the visibility and cost
+    # the colour: the planks came back grey and zebra-striped. The lift is a
+    # share of the brightest channel, so it raises every channel by the same
+    # amount and leaves the hue where it was.
+    lift = max(base_rgb) * contrast * 0.30
+    light = [min(1.0, c * (1.0 + contrast) + lift) for c in base_rgb]
     ramp.color_ramp.elements[0].position = 0.36
     ramp.color_ramp.elements[0].color = (*dark, 1.0)
     ramp.color_ramp.elements[1].position = 0.62
@@ -278,7 +287,7 @@ def grain(mat, base_rgb, contrast=0.12, scale=(1.0, 26.0, 5.0)):
     # Grain is also a texture you can FEEL: a little bump keeps the light from
     # sliding across a plank as though it were painted.
     bump = nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.12
+    bump.inputs["Strength"].default_value = 0.18
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], _shader(mat).inputs["Normal"])
     return mat
@@ -1909,13 +1918,19 @@ def main(only: str = ""):
         family_dir = os.path.join(root, "public", "assets", "items", family)
         os.makedirs(family_dir, exist_ok=True)
         tiers = sorted(build().items())
-        # ONE SCALE FOR THE WHOLE FAMILY. Fitting each tier to the canvas on
-        # its own threw the ladder away - a single coin and a strongbox came
-        # out the same size, so a five-coin stack read as bigger than the
-        # vault it merges into. Measuring every tier first and rendering them
-        # all at the widest one's scale means the modelled sizes are what the
-        # player actually sees.
-        widest = max(frame(ob, cam)[1] for _, ob in tiers)
+        # ONE SCALE FOR THE WHOLE FAMILY - but only where the family was
+        # modelled to be compared. Fitting each tier to the canvas on its own
+        # throws the ladder away: a single coin and a strongbox come out the
+        # same size, so a five-coin stack reads as bigger than the vault it
+        # merges into.
+        #
+        # Wood and mineral are NOT on it. Their tiers were modelled at wildly
+        # different unit scales - the knots at a radius of 3 against planks
+        # under an eighth of that - so a shared frame draws tiers one to
+        # seven at under a sixth of their tile. Putting them on it needs
+        # every tier resized first, which is a separate job.
+        shared = family not in ("wood", "mineral")
+        widest = max(frame(ob, cam)[1] for _, ob in tiers) if shared else 0.0
         for tier, ob in tiers:
             render(ob, cam, os.path.join(family_dir, "%d.png" % tier), widest)
             print("rendered", family, "tier", tier)
