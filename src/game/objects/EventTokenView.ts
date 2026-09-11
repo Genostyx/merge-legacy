@@ -282,7 +282,7 @@ function drawStruckCrown(
  * correction is the ratio between the two, 0.76 / 0.86, and dividing by the
  * render's fill alone made every token a third too big.
  */
-const TOKEN_SCALE = 0.76 / 0.870;
+const TOKEN_SCALE = 0.76 / 0.865;
 
 /**
  * One event token as a display object: the RENDER when it is loaded, the

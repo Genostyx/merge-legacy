@@ -43,9 +43,11 @@ RESOLUTION = 192
 # The board's items are chunky solids - planks, blocks, rocks - and survive
 # 192 easily. These two do not: they are seen FACE ON and read by fine
 # detail, the token's crown being thin diagonal rays a couple of pixels wide
-# at 192, where they step visibly. Two files at four times the area is a
-# cheap exception to make.
-FAMILY_RESOLUTION = {"event-token": 384, "credit-mark": 384}
+# at 192, where they step visibly. 384 still stepped along the top left of
+# the rim, so these two sit at 768 - the resolution the whole set used to
+# render at, twice over. Two files, 1.05 MB, against the 2.87 MB the blanket
+# drop to 192 saved on the other 34.
+FAMILY_RESOLUTION = {"event-token": 768, "credit-mark": 768}
 
 # Screen-horizontal in world terms, for this camera. Anything that has to
 # splay left and right on screen leans along this, NOT along +X and +Y - those
