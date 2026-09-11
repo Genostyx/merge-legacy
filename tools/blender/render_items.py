@@ -1678,34 +1678,30 @@ def dress_currency(kind: str, out):
             # reflects about 5 percent face on, so the gloss has to come
             # from a full clear COAT over the colour rather than from base
             # roughness, the same way the polished stones get theirs.
-            shader.inputs["Roughness"].default_value = 0.07
+            # HALF GLASS. Full transmission gave the glassy refraction and
+            # the hard bright edges, and cost the value: the stone's colour
+            # then only exists as light that made it through, and what it
+            # has to transmit is a dark studio, so it averaged 0x5c5a6d -
+            # near grey. Fully opaque fixed the value and lost every one of
+            # those reflections, and no amount of roughness or coat brought
+            # them back (0.14, 0.07 and 0.02 all rendered byte-identical,
+            # because a flat face under a big soft lamp has no sharp
+            # specular to give).
+            #
+            # At 0.5 both halves are doing their job: the diffuse purple
+            # carries the brightness, and the half that refracts carries the
+            # glass. The colour stays on the SURFACE rather than going into
+            # a volume, so it survives the half that does not transmit.
+            shader.inputs["Transmission Weight"].default_value = 0.5
+            shader.inputs["Roughness"].default_value = 0.04
             shader.inputs["IOR"].default_value = 1.75
             polished(material, coat_roughness=0.03)
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read
         # as a cut cylinder.
-        # THE GEM GETS THE WIDEST CHAMFER, not the narrowest.
-        #
-        # 0.004 left its edges all but sharp, and a sharp-edged flat slab
-        # under a clear coat has nothing for the gloss to do: a coat only
-        # shows you what it reflects, and a flat face reflecting a big soft
-        # area lamp returns one even sheen with nothing moving across it -
-        # which is why the stone read flat however far the roughness came
-        # down. A real chamfer gives each edge a narrow band angled away
-        # from the face, and those bands catch the lamp as bright lines.
-        # That is what a cut stone's gloss actually is.
         finish(ob, "%s%d" % (kind, tier), material,
-               bevel=0.022 if kind == "currency-gem" else 0.018)
-        if kind == "currency-gem":
-            # ONE SEGMENT: a flat facet, not a rounded edge. The default two
-            # segments round the chamfer off, and a rounded edge smears the
-            # reflection across it - which is the opposite of gloss. A cut
-            # stone's chamfer is a flat plane meeting the face at a distinct
-            # angle, so it reflects something distinctly different and reads
-            # as a hard bright band. The sharp corner between the two is the
-            # whole effect.
-            ob.modifiers["Bevel"].segments = 1
+               bevel=0.004 if kind == "currency-gem" else 0.018)
     return out
 
 
