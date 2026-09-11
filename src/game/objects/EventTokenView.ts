@@ -274,14 +274,15 @@ function drawStruckCrown(
 }
 
 /**
- * Share of its canvas the RENDERED token's art fills, longest side.
+ * Display size for the render, as a multiple of the drawn version's `size`.
  *
- * Same measurement CurrencyGlyph keeps for the currency marks, and needed
- * for the same reason: the render is framed with margin, so a display size
- * written for the drawn version draws a smaller medallion. Measured off
- * public/assets/items/event-token/1.png.
+ * BOTH ends have to be measured, and only one of them was. The render fills
+ * 0.86 of its canvas - but the drawn medallion never filled its `size`
+ * either: its disc reaches 0.34 and its crown 0.38, so 0.76 of the box. The
+ * correction is the ratio between the two, 0.76 / 0.86, and dividing by the
+ * render's fill alone made every token a third too big.
  */
-const TOKEN_FILL_RATIO = 0.86;
+const TOKEN_SCALE = 0.76 / 0.86;
 
 /**
  * One event token as a display object: the RENDER when it is loaded, the
@@ -297,7 +298,7 @@ export function eventTokenMark(
 ): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
   const key = loadedItemSprite(scene, 'event-token', 1);
   if (key) {
-    const drawn = size / TOKEN_FILL_RATIO;
+    const drawn = size * TOKEN_SCALE;
     return scene.add.image(0, 0, key).setDisplaySize(drawn, drawn);
   }
   const g = scene.add.graphics();
