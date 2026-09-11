@@ -26,6 +26,24 @@ import Phaser from 'phaser';
 
 export type Vec3 = [number, number, number];
 
+/**
+ * The two numbers that define the camera, and they are not arbitrary.
+ *
+ * AZIMUTH 45 DEGREES: x and y take equal and opposite horizontal weight, so
+ * the two ground axes fall symmetrically left and right.
+ *
+ * ELEVATION 26.565 DEGREES: `atan(ISO_RISE / ISO_RUN)` = `atan(0.5)`, the
+ * angle a ground edge makes with the horizon. Half the horizontal run is what
+ * makes a tile two wide for every one it is tall, which is the ratio the
+ * whole isometric idiom is built on, and it is the angle the Blender item
+ * renders are shot at.
+ *
+ * It was 0.31 over 0.6 - 27.324 degrees. Close enough to look right alone,
+ * and wrong beside anything drawn to the real angle.
+ */
+const ISO_RUN = 0.6;
+const ISO_RISE = 0.3;
+
 export interface Mesh {
   verts: Vec3[];
   /** Vertex indices, wound counter-clockwise seen from OUTSIDE the solid. */
@@ -50,12 +68,16 @@ export interface Mesh {
  * The view axis: the one direction that projects to nothing.
  *
  * Derived from the projection rather than guessed - solving
- * `(x - y) = 0` and `(x + y) * 0.31 - z = 0` gives `(1, 1, 0.62)`. A face is
- * toward the viewer exactly when its normal has a positive component along
- * this, which is what makes back-face culling a calculation instead of an
- * opinion.
+ * `(x - y) = 0` and `(x + y) * ISO_RISE - z = 0` gives `(1, 1, 2 * ISO_RISE)`.
+ * A face is toward the viewer exactly when its normal has a positive
+ * component along this, which is what makes back-face culling a calculation
+ * instead of an opinion.
+ *
+ * DERIVED, not written down. It was the literal `(1, 1, 0.62)`, correct for
+ * the old 0.31 rise and silently wrong the moment the rise changed - culling
+ * would have kept working well enough to hide the error.
  */
-const VIEW: Vec3 = [1, 1, 0.62];
+const VIEW: Vec3 = [1, 1, 2 * ISO_RISE];
 
 /**
  * Where the key light is, in object space.
@@ -77,7 +99,7 @@ const VIEW_N = norm(VIEW);
 
 /** Object space -> screen, at `u` pixels per unit. */
 export function project(v: Vec3, u: number): [number, number] {
-  return [(v[0] - v[1]) * u * 0.6, (v[0] + v[1]) * u * 0.31 - v[2] * u];
+  return [(v[0] - v[1]) * u * ISO_RUN, (v[0] + v[1]) * u * ISO_RISE - v[2] * u];
 }
 
 /** Outward normal of a face, from its first three vertices. */

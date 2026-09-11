@@ -31,7 +31,11 @@ export type IsoFn = (x: number, y: number, z?: number) => [number, number];
 export function makeIso(u: number, ox = 0.24, oy = 0.4): IsoFn {
   return (x, y, z = 0) => [
     (x - y) * u * 0.6 + u * ox,
-    (x + y) * u * 0.31 - z * u + u * oy
+    // 0.3, not 0.31. Half the horizontal run is what puts a ground edge at
+    // atan(0.5) = 26.565 degrees - the isometric angle - and 0.31 put it at
+    // 27.324, which reads as right on its own and wrong next to anything
+    // drawn to the real one. See Mesh3D's projection, which shares it.
+    (x + y) * u * 0.3 - z * u + u * oy
   ];
 }
 
