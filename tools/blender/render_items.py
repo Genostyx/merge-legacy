@@ -1237,7 +1237,8 @@ def coin(radius: float = 0.17, thickness: float = 0.042, slot: bool = True):
 
 
 def upright_coin(radius: float = 0.17, thickness: float = 0.042,
-                 lean_deg: float = 0.0, mirror: bool = False):
+                 lean_deg: float = 0.0, mirror: bool = False,
+                 face_on: bool = False):
     """A coin standing ON ITS EDGE, turned to the isometric three-quarter.
 
     Lying on its back a coin shows its face as a flat ellipse and hides the
@@ -1248,6 +1249,17 @@ def upright_coin(radius: float = 0.17, thickness: float = 0.042,
     an angle, not square to anything.
     """
     piece = coin(radius, thickness)
+
+    if face_on:
+        # SQUARE ON TO THE CAMERA, the treatment the wood knots get. A coin
+        # is read by its face the way a knot is read by its loops, and the
+        # three-quarter turn that suits every box in the set foreshortens
+        # that face for nothing. No slot bake is needed: this facing puts
+        # the coin's own X along screen-right, so the mark is already level.
+        piece.rotation_euler = (
+            (-camera_forward()).to_track_quat('Z', 'Y').to_euler()
+        )
+        return piece
 
     # SPIN THE SLOT FIRST, in the coin's own frame, and bake it in. The mark
     # runs diagonally across the face; doing this after the coin is stood up
@@ -1363,12 +1375,12 @@ def build_credits():
     coin_r, coin_t = 0.17, 0.042
 
     # 1-2: loose coins, square to the camera, because a coin is its FACE.
-    out[1] = upright_coin(mirror=True)
+    out[1] = upright_coin(face_on=True)
     out[2] = stack([
         # Overlapping, with the near one a touch forward, so they read as two
         # coins leaning together rather than two discs butted edge to edge.
-        translate_to(upright_coin(mirror=True), beside(-0.13, 0.07)),
-        translate_to(upright_coin(mirror=True), beside(0.11, -0.07)),
+        translate_to(upright_coin(face_on=True), beside(-0.13, 0.07)),
+        translate_to(upright_coin(face_on=True), beside(0.11, -0.07)),
     ])
 
     # 3: a STACK of real discs. The drawn version had to hand-draw a rim line
