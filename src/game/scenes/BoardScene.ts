@@ -636,6 +636,12 @@ export class BoardScene extends Phaser.Scene {
   shopOverlay: Phaser.GameObjects.Container | null = null;
   shopMode: ShopMode = 'full';
   shopCountdownUpdater: (() => void) | null = null;
+  /**
+   * Redraws the dev level stepper's label. The stepper is built before the
+   * save has finished loading, so on its own it reads level 1 forever and
+   * only corrects itself when you tap it.
+   */
+  devLevelUpdater: (() => void) | null = null;
   /** Tears down the shop's scroll mask and input listeners. Set while the shop is open. */
   shopScrollCleanup: (() => void) | null = null;
   energyMenuUpdater: (() => void) | null = null;
@@ -3541,7 +3547,10 @@ TAP THE EVENT CARD TO SPEND IT`
   buildLevelBadge(cx: number, cy: number): Phaser.GameObjects.Text { return buildLevelBadgeExt(this, cx, cy); }
   playLevelUpFlourish(): void { playLevelUpFlourishExt(this); }
   updateLevelBadge(): void {
-    this.refreshCollectMultiplier(); updateLevelBadgeExt(this); }
+    this.refreshCollectMultiplier();
+    this.devLevelUpdater?.();
+    updateLevelBadgeExt(this);
+  }
   buildShopIconButton(cx: number, cy: number, onTap: () => void): void { buildShopIconButtonExt(this, cx, cy, onTap); }
   buildEventChip(): void { buildEventChipExt(this); }
   openEventPanel(): void { openEventPanelExt(this); }

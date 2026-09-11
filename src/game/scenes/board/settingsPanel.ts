@@ -239,6 +239,10 @@ export function buildDevLevelStepper(scene: BoardScene): void {
   const redraw = (): void => {
     label.setText(`lv${playerLevel(scene.orderState)}`);
   };
+  // Every other path that changes the level goes through the badge, so that
+  // is where this hangs - otherwise the label is whatever the level was when
+  // the scene was built, which is 1 on any save that loads after it.
+  scene.devLevelUpdater = redraw;
 
   const step = (delta: number): void => {
     const target = Math.max(1, playerLevel(scene.orderState) + delta);

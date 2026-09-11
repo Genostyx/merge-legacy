@@ -117,6 +117,22 @@ export function drawTierIcon(g: Phaser.GameObjects.Graphics, typeId: string, tie
 
 /** The raw per-tier dispatch. Split out so the measuring pass can run the identical geometry. */
 function drawIconShape(g: Phaser.GameObjects.Graphics, typeId: string, tier: number, s: number, palette: Palette): number {
+  // Material trial: preserve each family hue while separating bright
+  // reflective edges from the body. Raw sand keeps its matte palette.
+  if ((typeId === 'glass' && tier >= 2) || typeId === 'currency-credit') {
+    const mix = (a: number, b: number, t: number): number => {
+      const channel = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t);
+      return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+    };
+    const glass = typeId === 'glass';
+    palette = {
+      ...palette,
+      highlight: mix(palette.highlight, glass ? 0xf0fbff : 0xfff6d9, 0.62),
+      light: mix(palette.light, glass ? 0xd4efff : 0xffdf91, 0.18),
+      dark: mix(palette.dark, palette.shadow, 0.3),
+      shadow: mix(palette.shadow, glass ? 0x081d2b : 0x271706, 0.28)
+    };
+  }
   let materialAlpha = 1;
   if (typeId.startsWith('currency-')) {
     drawCurrencyTier(g, typeId, tier, s, palette);
@@ -2222,6 +2238,14 @@ function drawGlassShard(g: Phaser.GameObjects.Graphics, s: number, p: Palette): 
 function drawCutGlassBlock(g: Phaser.GameObjects.Graphics, s: number, p: Palette): number {
   const w = s * 0.5, h = s * 0.3;
   drawPlankFace(g, -w / 2, -h / 2, w, h, s * 0.02, p);
+  // A reflected window crosses the face; the narrow companion glint
+  // and dark transmitted body give cut glass a different finish to stone.
+  g.fillGradientStyle(p.light, p.highlight, p.light, p.highlight, 0.04, 0.48, 0.04, 0.48);
+  g.fillTriangle(-w * 0.34, -h * 0.43, -w * 0.2, -h * 0.43, -w * 0.02, h * 0.4);
+  g.fillGradientStyle(p.highlight, p.highlight, p.light, p.light, 0.48, 0.48, 0.04, 0.04);
+  g.fillTriangle(-w * 0.2, -h * 0.43, w * 0.12, h * 0.4, -w * 0.02, h * 0.4);
+  g.lineStyle(s * 0.008, p.highlight, 0.85);
+  g.lineBetween(-w * 0.12, -h * 0.43, w * 0.2, h * 0.4);
   return 0.78;
 }
 
