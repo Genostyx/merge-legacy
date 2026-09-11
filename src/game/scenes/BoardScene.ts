@@ -2993,6 +2993,11 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
 
   /** Collects a token into the open event's meter. */
   collectEventToken(view: EventTokenView): void {
+    // ONE TOKEN, ONE CREDIT. See `EventTokenView.collected` - the tap path
+    // awaits a tween before it gets here, so without this a quick double tap
+    // is paid twice.
+    if (view.collected) return;
+    view.collected = true;
     const event = this.currentEvent();
     const key = this.keyOf(view.gridPos);
     this.grid.set(view.gridPos, null);

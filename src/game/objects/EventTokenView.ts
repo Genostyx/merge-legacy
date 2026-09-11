@@ -164,6 +164,16 @@ function drawStruckCrown(
 export class EventTokenView extends Phaser.GameObjects.Container {
   gridPos: GridPosition;
   state: TileState = 'idle';
+  /**
+   * Set the instant collection begins, and never unset.
+   *
+   * A tap does not reach the collect until after `snapTo` has finished, and
+   * that is a tween. A second tap inside those few frames found the token
+   * still on the board and still in the view map, so two collects ran and the
+   * player was paid twice for one token. The flag lives on the VIEW because
+   * the view is the one thing both taps are holding.
+   */
+  collected = false;
   cellSize: number;
   private art: Phaser.GameObjects.Graphics;
 

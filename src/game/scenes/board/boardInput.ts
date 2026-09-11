@@ -61,6 +61,10 @@ export function onPointerDown(scene: BoardScene, pointer: Phaser.Input.Pointer):
   const key = scene.keyOf(cell);
   const view = scene.views.get(key);
   if (!view) return;
+  // A token already on its way out is not on the board any more, whatever
+  // the frame still shows. Picking it up again would only queue a second
+  // collect that `collectEventToken` then has to refuse.
+  if (view instanceof EventTokenView && view.collected) return;
   if (view instanceof TileView && view.locked) {
     const def = getTierDef(view.typeId, view.tier);
     scene.refreshActionTray(
