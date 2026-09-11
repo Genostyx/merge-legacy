@@ -15,8 +15,9 @@ only the geometry per tier differs.
 
 import math
 import os
-import sys
+import random
 
+import bmesh
 import bpy
 from mathutils import Euler, Matrix, Vector
 
@@ -60,6 +61,19 @@ WOOD_HEX = {
 WOOD_MEASURED = {
     1: 0x40322f, 2: 0x71534c, 3: 0x7f5549, 4: 0x8e5744, 5: 0x9b5b3f,
     6: 0xa15e3c, 7: 0xaf7250, 8: 0x926140, 9: 0x8c5d3d,
+}
+
+# Straight from STONE_CHAIN. Mineral must not come out as wood in blue, so
+# the ladder is carried by FORM as much as colour: found chunks at the bottom,
+# worked stone in the middle, cut crystal at the top.
+MINERAL_HEX = {
+    1: 0x485562, 2: 0x566676, 3: 0x506274, 4: 0x687b8d, 5: 0x929faa,
+    6: 0xb3818a, 7: 0xafbac1, 8: 0x40566e, 9: 0x5d7389,
+}
+# Measured off the first pass, same as wood's.
+MINERAL_MEASURED = {
+    1: 0x616e79, 2: 0x6d7983, 3: 0x5d6974, 4: 0x6d7881, 5: 0x838b91,
+    6: 0x8d6e73, 7: 0x8d9497, 8: 0x485e71, 9: 0x71808c,
 }
 
 BEVEL_WIDTH = 0.016      # a sawn arris, not a moulded edge
@@ -139,6 +153,28 @@ def stack(parts):
     return bpy.context.active_object
 
 
+def beside(right: float, back: float = 0.0):
+    """A world offset expressed in SCREEN terms: right, and away from viewer.
+
+    Pieces that must read as separate have to separate ACROSS the frame, and
+    world axes are a poor guide to that: +X and +Y look like opposites but
+    fall to the same side here, while (1, -1) is the view axis and puts one
+    piece directly behind another. This is the third time that has cost a
+    shape - the V's legs, the quartz cluster, and nearly the rubble.
+    """
+    return tuple(SCREEN_RIGHT * right + Vector((1, -1, 0)).normalized() * back)
+
+
+def translate_to(ob, loc):
+    """Moves a finished piece, baking the offset into its vertices."""
+    ob.location = loc
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+    return ob
+
+
 def lean(ob, degrees: float):
     """Tips a piece along the SCREEN horizontal, about its own origin."""
     ob.rotation_euler = Matrix.Rotation(math.radians(degrees), 4, LEAN_AXIS).to_euler()
@@ -149,9 +185,9 @@ def lean(ob, degrees: float):
     return ob
 
 
-def finish(ob, name: str, material):
+def finish(ob, name: str, material, bevel: float = BEVEL_WIDTH):
     mod = ob.modifiers.new("Bevel", 'BEVEL')
-    mod.width, mod.segments = BEVEL_WIDTH, BEVEL_SEGMENTS
+    mod.width, mod.segments = bevel, BEVEL_SEGMENTS
     mod.limit_method, mod.angle_limit = 'ANGLE', SMOOTH_ANGLE
     mod.use_clamp_overlap = True
     bpy.ops.object.select_all(action='DESELECT')
@@ -161,6 +197,89 @@ def finish(ob, name: str, material):
     ob.name = name
     ob.data.materials.clear()
     ob.data.materials.append(material)
+    return ob
+
+
+def rock(width: float, height: float, seed: int, jitter: float = 0.26):
+    """An irregular angular chunk, sitting on z=0.
+
+    A low icosphere pushed about: few enough faces that every one reads as a
+    flat plane, which is the difference between STONE and a sphere. Wood is
+    milled and rectilinear; if mineral were built from boxes too, the two
+    families would differ only in hue - the exact failure FAMILIES_ROADMAP
+    records for the event chain.
+    """
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.5)
+    ob = bpy.context.active_object
+    rng = random.Random(seed)
+    for v in ob.data.vertices:
+        v.co *= 1.0 + rng.uniform(-jitter, jitter)
+        v.co.x *= width
+        v.co.y *= width * 0.86
+        v.co.z *= height
+    low = min(v.co.z for v in ob.data.vertices)
+    for v in ob.data.vertices:
+        v.co.z -= low
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    return ob
+
+
+def crystal(radius: float, height: float, tip: float, sides: int = 6, taper: float = 0.86):
+    """A prism that comes to a point: the quartz/granite silhouette.
+
+    Built by hand rather than from a cylinder primitive so the tip is a real
+    apex - a cone stacked on a cylinder leaves a seam ring that the bevel then
+    catches, and it reads as two objects.
+    """
+    mesh = bpy.data.meshes.new("crystal")
+    bm = bmesh.new()
+    base = [bm.verts.new((math.cos(2 * math.pi * i / sides) * radius,
+                          math.sin(2 * math.pi * i / sides) * radius, 0.0))
+            for i in range(sides)]
+    shoulder = [bm.verts.new((math.cos(2 * math.pi * i / sides) * radius * taper,
+                              math.sin(2 * math.pi * i / sides) * radius * taper, height))
+                for i in range(sides)]
+    apex = bm.verts.new((0.0, 0.0, height + tip))
+    for i in range(sides):
+        j = (i + 1) % sides
+        bm.faces.new((base[i], base[j], shoulder[j], shoulder[i]))
+        bm.faces.new((shoulder[i], shoulder[j], apex))
+    bm.faces.new(tuple(reversed(base)))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("crystal", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def gem(radius: float, crown: float, pavilion: float, sides: int = 8, table: float = 0.52):
+    """A cut stone: flat table, sloped crown, pavilion to a point.
+
+    The top of the mineral ladder is the one place the family stops being
+    found rock and becomes something CUT, and a faceted silhouette is what
+    says so at board size - not a shinier material on the same lump.
+    """
+    mesh = bpy.data.meshes.new("gem")
+    bm = bmesh.new()
+    girdle = [bm.verts.new((math.cos(2 * math.pi * i / sides) * radius,
+                            math.sin(2 * math.pi * i / sides) * radius, pavilion))
+              for i in range(sides)]
+    top = [bm.verts.new((math.cos(2 * math.pi * i / sides) * radius * table,
+                         math.sin(2 * math.pi * i / sides) * radius * table,
+                         pavilion + crown))
+           for i in range(sides)]
+    point = bm.verts.new((0.0, 0.0, 0.0))
+    for i in range(sides):
+        j = (i + 1) % sides
+        bm.faces.new((girdle[i], girdle[j], top[j], top[i]))
+        bm.faces.new((girdle[j], girdle[i], point))
+    bm.faces.new(tuple(top))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("gem", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
     return ob
 
 
@@ -293,6 +412,86 @@ def build_wood():
     return out
 
 
+# ---- the mineral chain -----------------------------------------------------
+
+def build_mineral():
+    """Found -> worked -> cut, which is the story the shapes have to tell.
+
+    1-3 are chunks off the ground, 4-5 are stone someone has dressed, 6-7 are
+    crystal grown out of it, 8-9 are cut gems. Nothing here is a box, because
+    a box is what wood is.
+    """
+    out = {}
+
+    # 1-3: found rock. Count carries the first two merges, exactly as the
+    # plank tiers do, but the pieces are angular rather than milled.
+    out[1] = rock(0.72, 0.20, seed=11)
+    out[2] = stack([
+        rock(0.52, 0.30, seed=21),
+        translate_to(rock(0.40, 0.24, seed=22), beside(0.34, -0.10)),
+    ])
+    out[3] = stack([
+        translate_to(rock(0.34, 0.26, seed=30 + i), beside(right, back))
+        for i, (right, back) in enumerate(
+            ((-0.34, 0.06), (0.10, -0.20), (0.38, 0.14), (-0.06, 0.26))
+        )
+    ])
+
+    # 4-5: dressed stone. Still irregular at 4, squared and chamfered at 5 -
+    # the tier where the family stops being found and starts being worked.
+    out[4] = rock(0.62, 0.42, seed=41, jitter=0.10)
+    # A DRESSED DRUM, not a bare cube. A cube is the wood language - tier
+    # four of that chain is one - and a heavy chamfer on a cube is still
+    # unmistakably a cube. An eight-sided plinth reads as stone someone has
+    # worked, and shares no silhouette with anything in wood.
+    out[5] = crystal(radius=0.38, height=0.46, tip=0.0, sides=8, taper=0.92)
+
+    # 6-7: crystal. 6 is a single blunt column, 7 a cluster of three - more
+    # points, taller, which is the silhouette escalation.
+    out[6] = crystal(radius=0.30, height=0.44, tip=0.26, sides=6)
+    # The cluster has to be BIGGER than the single column it merges from -
+    # first pass made it smaller and the ladder shrank at tier seven.
+    # Spread WIDE. The first attempt sat them close enough to overlap and the
+    # three read as one white mass - the count is the whole difference between
+    # this tier and the single column below it, so the gaps have to survive at
+    # board size.
+    spires = []
+    for radius, height, tip, loc, tilt in (
+        (0.22, 0.60, 0.36, beside(0.0, 0.10), 0),
+        (0.16, 0.34, 0.24, beside(-0.40), -22),
+        (0.14, 0.26, 0.20, beside(0.38, -0.08), 20),
+    ):
+        spire = crystal(radius=radius, height=height, tip=tip, sides=6)
+        if tilt:
+            lean(spire, tilt)
+        spires.append(translate_to(spire, loc))
+    out[7] = stack(spires)
+
+    # 8-9: cut gems, the one place the family is no longer found rock. Nine
+    # takes more facets and a deeper pavilion than eight rather than just
+    # being larger.
+    # A SHALLOW crown over a wide table reads as a spinning top, not a stone.
+    # A cut gem is mostly pavilion, with a small table and a crown steep
+    # enough to catch light across several facets at once.
+    out[8] = gem(radius=0.32, crown=0.26, pavilion=0.46, sides=8, table=0.38)
+    out[9] = gem(radius=0.38, crown=0.32, pavilion=0.58, sides=12, table=0.32)
+
+    for tier, ob in out.items():
+        # Gems and crystal keep CRISP facets - a bevel on a cut stone rounds
+        # off the only thing that makes it read as cut.
+        # Tier five takes a deliberately HEAVY chamfer - that is the dressing.
+        # Crystal and gems take none: a bevel on a cut stone rounds off the
+        # only thing that says it was cut.
+        bevel = 0.0 if tier >= 6 else (0.055 if tier == 5 else 0.012)
+        material = tier_material("mineral-tier-%d" % tier,
+                                 MINERAL_HEX[tier], MINERAL_MEASURED[tier])
+        material.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = (
+            0.18 if tier >= 8 else 0.46
+        )
+        finish(ob, "mineral%d" % tier, material, bevel=bevel)
+    return out
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -383,10 +582,8 @@ def render(ob, cam, path: str):
     bpy.ops.render.render(write_still=True)
 
 
-def main():
+def main(only: str = ""):
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    out_dir = os.path.join(root, "public", "assets", "items", "wood")
-    os.makedirs(out_dir, exist_ok=True)
 
     for ob in list(bpy.data.objects):
         bpy.data.objects.remove(ob, do_unlink=True)
@@ -395,9 +592,17 @@ def main():
     build_lights()
     configure_render()
 
-    for tier, ob in sorted(build_wood().items()):
-        render(ob, cam, os.path.join(out_dir, "%d.png" % tier))
-        print("rendered wood tier", tier)
+    for family, build in (("wood", build_wood), ("mineral", build_mineral)):
+        if only and family != only:
+            continue
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        family_dir = os.path.join(root, "public", "assets", "items", family)
+        os.makedirs(family_dir, exist_ok=True)
+        for tier, ob in sorted(build().items()):
+            render(ob, cam, os.path.join(family_dir, "%d.png" % tier))
+            print("rendered", family, "tier", tier)
 
     for ob in bpy.data.objects:
         if ob.type == 'MESH':
