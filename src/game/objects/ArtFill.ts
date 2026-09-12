@@ -1,5 +1,5 @@
 /**
- * How much of its own square each SVG asset's drawing actually covers.
+ * How much of its own square each asset's drawing actually covers.
  *
  * Every one of these files is authored on the same square canvas, but the art
  * inside sits in a different amount of padding - the coin pouch covers 57% of
@@ -12,8 +12,11 @@
  * `iconPresentation` normalises the drawn tier icons on, so a source and a
  * board item asked for the same drawn size come out the same size.
  *
- * Measured off `public/*.svg`. Retrace an asset with different padding and its
- * number here has to be remeasured - it describes the FILE, not the shape.
+ * Measured off the files themselves - `public/*.svg` for the drawn ones and
+ * `public/assets/**` for the renders. Re-render or retrace an asset with
+ * different padding and its number here has to be remeasured: it describes
+ * the FILE, not the shape. Rendering the sources and leaving these at their
+ * traced values is exactly how they came out the wrong size.
  */
 export const ART_FILL_RATIO: Record<string, number> = {
   'producer-coin-pouch': 0.611,
@@ -22,39 +25,40 @@ export const ART_FILL_RATIO: Record<string, number> = {
   'producer-gem-basket': 0.766,
   'energy-basket': 0.795,
 
-  'source-wood-1': 0.864,
-  'source-wood-2': 0.716,
-  'source-wood-3': 0.761,
-  'source-wood-4': 0.714,
-
-  'source-mineral-1': 0.709,
-  'source-mineral-2': 0.824,
-  'source-mineral-3': 0.691,
-  'source-mineral-4': 0.764,
-  'source-mineral-5': 0.806,
-
-  // The WELL is a Blender render, not an SVG, and it takes ONE number for
-  // the whole family rather than a measurement per tier.
+  // EVERY SOURCE IS A RENDER NOW, so all four families follow the rule
+  // the well already did: ONE number per family, taken from its largest
+  // tier, rather than a measurement per tier.
   //
-  // The SVG sources each normalise to their own fill because they were
-  // drawn independently - each one fills its canvas differently and none of
-  // them is to scale against the others. The well is not like that: all
-  // five tiers were rendered through one shared frame, so tier one is
-  // ALREADY smaller than tier five by exactly the amount it should be.
-  // Dividing each tier by its own fill undoes that - it scales the low
-  // stone ring up until it draws the same size as the roofed well, and the
-  // upgrade stops being visible. The family's largest tier sets the number
-  // and the rest keep their rendered proportions.
-  'source-water-1': 0.809,
-  'source-water-2': 0.809,
-  'source-water-3': 0.809,
-  'source-water-4': 0.809,
-  'source-water-5': 0.809,
+  // The SVGs each normalised to their own fill because they were drawn
+  // independently and none was to scale against the others. These are
+  // not like that - a family's tiers go through one shared frame, so
+  // tier one is ALREADY smaller than tier five by exactly the amount it
+  // should be. Dividing each tier by its own fill undoes that and the
+  // upgrade stops being visible.
+  //
+  // Measured off the PNGs by rasterising at 256 and scanning the alpha
+  // bounds, the same way the well's number was taken.
+  'source-wood-1': 0.839,
+  'source-wood-2': 0.839,
+  'source-wood-3': 0.839,
+  'source-wood-4': 0.839,
 
-  'source-glass-1': 0.780,
-  'source-glass-2': 0.912,
-  'source-glass-3': 0.801,
-  'source-glass-4': 0.892
+  'source-mineral-1': 0.811,
+  'source-mineral-2': 0.811,
+  'source-mineral-3': 0.811,
+  'source-mineral-4': 0.811,
+  'source-mineral-5': 0.811,
+
+  'source-water-1': 0.811,
+  'source-water-2': 0.811,
+  'source-water-3': 0.811,
+  'source-water-4': 0.811,
+  'source-water-5': 0.811,
+
+  'source-glass-1': 0.847,
+  'source-glass-2': 0.847,
+  'source-glass-3': 0.847,
+  'source-glass-4': 0.847
 };
 
 /**
@@ -79,24 +83,24 @@ export function boxForDrawnArt(textureKey: string, drawn: number): number {
  * Measured by rasterising each SVG at 256px and scanning the alpha bounds.
  */
 export const ART_EXTENT: Record<string, { w: number; h: number }> = {
-  'source-glass-1': { w: 0.789, h: 0.781 },
-  'source-glass-2': { w: 0.813, h: 0.746 },
-  'source-glass-3': { w: 0.855, h: 0.754 },
-  'source-glass-4': { w: 0.984, h: 0.816 },
-  'source-mineral-1': { w: 0.602, h: 0.672 },
-  'source-mineral-2': { w: 0.758, h: 0.770 },
-  'source-mineral-3': { w: 0.641, h: 0.770 },
-  'source-mineral-4': { w: 0.738, h: 0.801 },
-  'source-mineral-5': { w: 0.914, h: 0.711 },
-  'source-wood-1': { w: 0.863, h: 0.785 },
-  'source-wood-2': { w: 0.664, h: 0.781 },
-  'source-wood-3': { w: 0.656, h: 0.863 },
-  'source-wood-4': { w: 0.695, h: 0.742 },
-  'source-water-1': { w: 0.551, h: 0.445 },
-  'source-water-2': { w: 0.562, h: 0.699 },
-  'source-water-3': { w: 0.566, h: 0.820 },
-  'source-water-4': { w: 0.707, h: 0.865 },
-  'source-water-5': { w: 0.758, h: 0.863 },
+  'source-wood-1': { w: 0.648, h: 0.609 },
+  'source-wood-2': { w: 0.711, h: 0.797 },
+  'source-wood-3': { w: 0.727, h: 0.828 },
+  'source-wood-4': { w: 0.813, h: 0.867 },
+  'source-mineral-1': { w: 0.484, h: 0.461 },
+  'source-mineral-2': { w: 0.539, h: 0.602 },
+  'source-mineral-3': { w: 0.555, h: 0.625 },
+  'source-mineral-4': { w: 0.586, h: 0.820 },
+  'source-mineral-5': { w: 0.867, h: 0.758 },
+  'source-glass-1': { w: 0.656, h: 0.609 },
+  'source-glass-2': { w: 0.762, h: 0.680 },
+  'source-glass-3': { w: 0.734, h: 0.797 },
+  'source-glass-4': { w: 0.828, h: 0.867 },
+  'source-water-1': { w: 0.547, h: 0.445 },
+  'source-water-2': { w: 0.563, h: 0.695 },
+  'source-water-3': { w: 0.563, h: 0.820 },
+  'source-water-4': { w: 0.703, h: 0.867 },
+  'source-water-5': { w: 0.758, h: 0.867 },
 };
 
 /** Ceilings on how far a source may spill out of its cell. Mirrors TierIcons. */
