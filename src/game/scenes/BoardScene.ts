@@ -548,6 +548,7 @@ export class BoardScene extends Phaser.Scene {
   hudScale = 1;
   /** Scale for the information tray and its controls. */
   trayScale = 1;
+  trayControlScale = 1;
   /**
    * Redraws the open project panel's footer, or null when it is closed.
    *
@@ -1187,6 +1188,13 @@ export class BoardScene extends Phaser.Scene {
       1.15
     );
     this.trayScale = trayScale;
+    // CONTROLS DO NOT GROW PAST THEIR BASE SIZE. The tray BOX still scales
+    // with the device so it keeps its proportions, but the things inside it
+    // that a finger or an eye reads at a fixed size - the `i`, the sell
+    // chip, the multiplier chip, every font - stop at 1. A control that is
+    // comfortable on a phone is comfortable on a tablet at the same size;
+    // scaling it up only made the tray look like a zoomed screenshot.
+    this.trayControlScale = Math.min(1, trayScale);
     const trayReserve = Math.round(74 * trayScale);
     const availW = this.viewW - margin * 2;
 
@@ -2100,6 +2108,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // the action chip, the `i` and the multiplier chip shrink and grow with
     // the device together, instead of the box resizing around fixed contents.
     const ts = this.trayScale;
+    const cs = this.trayControlScale;
     const railW = Math.round(48 * ts);
     const x = this.boardOriginX + railW;
     const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
@@ -2110,7 +2119,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // width for the life of the scene, so unlocking the multiplier mid-session
     // cannot reflow the tray under the player's hand. The box's left edge is
     // untouched; only its right edge comes in.
-    const chipSize = Math.round(38 * ts);
+    const chipSize = Math.round(38 * cs);
     const chipGap = Math.round(8 * ts);
     const boxW = w - chipSize - chipGap;
 
@@ -2123,10 +2132,38 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     this.actionText = this.add.text(x + Math.round(14 * ts), y + h / 2, '', {
       resolution: textResolution,
       fontFamily: Theme.fontMono,
-      fontSize: `${Math.max(8, Math.round(11 * ts))}px`,
+      // CAPPED AT ITS BASE SIZE. The box still grows with the device, but
+      // the copy does not: text that is readable on a phone is readable on
+      // a tablet at the same point size, and scaling it up past 11 only
+      // made the same sentence crowd a wider box.
+      fontSize: `${Math.max(8, Math.round(11 * cs))}px`,
       color: hex(Theme.textOnDarkMuted),
       lineSpacing: 2
     }).setOrigin(0, 0.5);
+
+    // AUTO-FIT, because the copy is a fixed number of characters and the box
+    // is not. `trayScale` grows the font with the device, so past a certain
+    // width the longest lines - the source readout, the two machines - came
+    // out oversized for the box and wrapped into a third line that the
+    // 66-unit height has no room for.
+    //
+    // Wrapped once by `setWordWrapWidth` at the call sites, then scaled down
+    // here if what came back is still taller than the box. Scaling the object
+    // rather than restyling it keeps one font size for the whole tray: a
+    // per-message point size would make the text jump every time the
+    // selection changed.
+    const textBudgetH = h - Math.round(14 * ts);
+    const fitActionText = (): void => {
+      this.actionText.setScale(1);
+      const overflow = this.actionText.height / Math.max(1, textBudgetH);
+      if (overflow > 1) this.actionText.setScale(Math.max(0.72, 1 / overflow));
+    };
+    const rawSetText = this.actionText.setText.bind(this.actionText);
+    this.actionText.setText = (value: string | string[]) => {
+      rawSetText(value);
+      fitActionText();
+      return this.actionText;
+    };
 
     this.sellButtonRightX = x + boxW - Math.round(12 * ts);
     this.sellButtonCenterY = y + h / 2;
@@ -2199,11 +2236,11 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // could see. The inventory chip is drawn from the tray's own `y`.
     const chipY = y + chipSize / 2;
     this.multiplierBg = this.add.graphics();
-    this.multiplierIcon = currencyIcon(this, 'energy', Math.round(22 * ts)).setPosition(chipX, chipY);
+    this.multiplierIcon = currencyIcon(this, 'energy', Math.round(22 * cs)).setPosition(chipX, chipY);
     this.multiplierBadge = this.add.text(
       chipX + chipSize / 2 - 4, chipY - chipSize / 2 + 3, '', {
         resolution: textResolution,
-        fontFamily: Theme.fontNumeric, fontSize: `${Math.max(8, Math.round(11 * ts))}px`, fontStyle: 'bold',
+        fontFamily: Theme.fontNumeric, fontSize: `${Math.max(8, Math.round(11 * cs))}px`, fontStyle: 'bold',
         color: hex(Theme.textOnDark)
       }
     ).setOrigin(1, 0);
@@ -2243,7 +2280,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.multiplierBg.strokeRoundedRect(chipX - chipSize / 2, chipY - chipSize / 2, chipSize, chipSize, Theme.radiusChip);
       this.multiplierIcon.setAlpha(active ? 1 : 0.55);
       this.multiplierBadge.setText(`x${this.collectMultiplier}`).setColor(hex(tone))
-        .setFontSize(Math.max(8, Math.round(10 * ts)));
+        .setFontSize(Math.max(8, Math.round(10 * cs)));
     };
     this.refreshCollectMultiplier();
   }
@@ -2283,8 +2320,8 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       this.infoButtonZone.setVisible(false);
       return;
     }
-    const R = Math.round(12 * this.trayScale);
-    const GAP = Math.round(8 * this.trayScale);
+    const R = Math.round(12 * this.trayControlScale);
+    const GAP = Math.round(8 * this.trayControlScale);
     const chip = this.sellButtonBg?.visible ? this.sellChipWidth + GAP : 0;
     const cx = this.sellButtonRightX - chip - R;
     const cy = this.sellButtonCenterY;
@@ -2502,16 +2539,17 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
    */
   private setSellButton(verb: string, amount: string, kind: CurrencyKind, color: number): void {
     const ts = this.trayScale;
-    const GLYPH = Math.round(16 * ts);
-    const GAP = Math.round(4 * ts);
-    const PAD_X = Math.round(10 * ts);
-    const PAD_Y = Math.round(5 * ts);
-    const LINE = Math.round(7 * ts);
+    const cs = this.trayControlScale;
+    const GLYPH = Math.round(16 * cs);
+    const GAP = Math.round(4 * cs);
+    const PAD_X = Math.round(10 * cs);
+    const PAD_Y = Math.round(5 * cs);
+    const LINE = Math.round(7 * cs);
 
     // REFILL is a longer word than SELL. A slightly smaller refill label
     // keeps the source action chip close to the sell chip's width, leaving
     // the descriptive copy more room in the tray.
-    this.sellButton.setFontSize(Math.max(8, Math.round((verb === 'REFILL' ? 10 : 12) * ts)));
+    this.sellButton.setFontSize(Math.max(8, Math.round((verb === 'REFILL' ? 10 : 12) * cs)));
     this.sellButton.setText(verb).setColor(hex(color)).setVisible(true);
     this.sellButtonAmount.setText(amount).setColor(hex(color)).setVisible(true);
 
