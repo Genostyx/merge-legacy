@@ -806,6 +806,20 @@ export class BoardScene extends Phaser.Scene {
     // WATER'S SOURCES ARE RENDERS, so they load as PNGs and carry the art
     // version in their URL - the same cache-busting every rendered item
     // needs, for the same reason.
+    // The Legacy Machine, rendered whole: two meshing barrels of plate
+    // gears with their end wheels, at the reference's own angle.
+    // SIXTEEN FRAMES of one rotation, as SEPARATE 512 textures rather than
+    // one 2048 sheet. The panel draws this full-screen, so the sprite is
+    // scaled UP - and a scaled-up sheet frame samples across its own edge
+    // into the neighbouring frame, which put a grey slice of another
+    // frame in the top corner of the screen. Sixteen power-of-two
+    // textures cannot bleed into each other and each keeps its mipmaps.
+    for (let frame = 0; frame < 16; frame++) {
+      const key = `legacy-machine-${frame}`;
+      if (this.textures.exists(key)) continue;
+      const name = String(frame).padStart(2, '0');
+      this.load.image(key, `assets/machine/frames/${name}.png?v=${ITEM_ART_VERSION}`);
+    }
     for (let tier = 1; tier <= 5; tier++) {
       const textureKey = `source-water-${tier}`;
       if (!this.textures.exists(textureKey)) {

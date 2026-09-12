@@ -15,6 +15,7 @@ only the geometry per tier differs.
 
 import math
 import os
+import shutil
 import random
 
 import bmesh
@@ -2899,6 +2900,558 @@ def build_water_source():
     return out
 
 
+# ---- the legacy machine's gear ---------------------------------------------
+
+# THE BARREL'S ANGLE. In the reference the gear train lies on its side and
+# runs away from the viewer - you look along the stack, not at one gear's
+# face. These two put the gear's axis along that line.
+# Turned less and tilted more than the first pass: the photographs are all
+# taken from ABOVE the barrel looking down its length, so you read the end
+# wheel's face and the stack running away behind it. At 64/14 the machine
+# was nearly side-on and the depth of the barrel was lost.
+# Almost straight down the barrel. The clearest reference is shot from
+# above the near end looking along the length: the two stacks run away up
+# the frame and the end wheels sit nearest the camera. That is nearly all
+# TILT and very little turn - at 56/27 the machine was still being read
+# side-on, which is the one view that hides how long it is.
+# DOWN NEAR THE HORIZON. At 49 degrees of tilt the camera was looking onto
+# the top of the barrel like a plan view, which flattens it - the reference
+# photographs are taken from about the height of the bench, so the stack
+# runs away almost level and the near gears tower over the far ones.
+GEAR_AXIS_TURN = math.radians(11)
+GEAR_AXIS_TILT = math.radians(29)
+
+# Sixteen frames across ONE TOOTH PITCH. A gear with eighteen teeth is
+# identical to itself every twenty degrees, so a loop only has to cover
+# twenty degrees - and sixteen frames of it fit a 512 square at 128 each,
+# which keeps the sheet power-of-two and its mipmaps alive.
+GEAR_TEETH = 30
+GEAR_FRAMES = 16
+# THIN. The reference gears are laser-cut plate - a stack of eight at 0.20
+# read as a row of tyres, and it is the thinness that lets a barrel hold as
+# many as it does. At a hundred of them the plate has to be thinner still.
+GEAR_THICKNESS = 0.040
+# How many plates in from the near end still turn fast enough to SEE. Past
+# this the rate is under a thousandth of the first gear's and the render
+# cannot show the difference, so they all share the slowest step rather
+# than each costing its own arithmetic.
+LEGACY_STAGES = 7
+# A GEAR'S SYMMETRY IS NOT ITS TOOTH PITCH.
+#
+# Thirty teeth means the TEETH repeat every twelve degrees - but the wheel
+# has six spokes, which repeat every sixty. Turn it one tooth and the teeth
+# land back on themselves while the spokes are nowhere near, so the frame
+# does not match the one before it. The real symmetry is the coarser of the
+# two: five teeth, sixty degrees.
+#
+# That cost three attempts to find. The loop was built on tooth pitch, and
+# every measurement said the wrap jumped by more than a step no matter how
+# the rotation was fixed.
+GEAR_SPOKES = 6
+GEAR_SYMMETRY_PITCHES = GEAR_TEETH // GEAR_SPOKES
+
+# The loop covers exactly one of those, so gear one comes back to itself.
+# Gear two would need three loops to do the same, so it is held - which is
+# not much of a loss at a third the speed, and far better than the whole
+# barrel snapping every time the loop wraps.
+MACHINE_LOOP_PITCHES = GEAR_SYMMETRY_PITCHES
+MACHINE_FRAMES = 18
+
+
+def pose_on_barrel_axis(ob):
+    """Lays a piece over so its local Z runs along the barrel.
+
+    Square to the viewer FIRST, then turned: the barrel angle is described
+    relative to the CAMERA, not to the world, so that the same two numbers
+    read the same way whatever the scene's azimuth happens to be.
+    """
+    facing_camera(ob)
+    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
+    ob.rotation_euler = (
+        Matrix.Rotation(GEAR_AXIS_TILT, 4, view @ Vector((1, 0, 0)))
+        @ Matrix.Rotation(GEAR_AXIS_TURN, 4, view @ Vector((0, 1, 0)))
+        @ ob.rotation_euler.to_matrix().to_4x4()
+    ).to_euler()
+    # THE AXLE, in world space, taken BEFORE the rotation is baked in.
+    #
+    # `transform_apply` writes the rotation into the vertices and resets
+    # rotation_euler to zero, so afterwards the object's "local Z" is the
+    # WORLD's Z, not the barrel's. Reading the axle off the object after
+    # posing spun every gear about the vertical like a turntable instead of
+    # rolling it on its own shaft.
+    axle = ob.rotation_euler.to_matrix() @ Vector((0.0, 0.0, 1.0))
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    return axle
+
+
+def build_legacy_gear(spin: float = 0.0, pose: bool = True,
+                      radius: float = 1.0, dressed: bool = True):
+    """ONE spur gear at the barrel's angle, spun `spin` radians on its axis.
+
+    One gear, not a pre-rendered stack: the panel places eight of these and
+    runs each at its own rate, which is the whole point of the machine - gear
+    one is a blur while gear eight has visibly not moved. A single rendered
+    barrel could only ever be a still photograph of that idea.
+    """
+    teeth = GEAR_TEETH
+    # A SPOKED WHEEL, not a disc with a hole. The reference gears are mostly
+    # air: a thin toothed rim, a small hub, and a handful of arms between
+    # them with big open windows either side. A solid web is what made the
+    # first pass read as a coin - and at eight stacked deep, the windows are
+    # also what let you see the gears behind.
+    outer, root = 0.50 * radius, 0.425 * radius
+    rim_in = 0.355 * radius
+    hub, bore = 0.135 * radius, 0.060 * radius
+    spokes, spoke_half = GEAR_SPOKES, math.radians(7.5)
+    thickness = GEAR_THICKNESS
+
+    mesh = bpy.data.meshes.new("gear")
+    bm = bmesh.new()
+    rim = []
+    for i in range(teeth * 4):
+        step = i % 4
+        # root, flank up, tip, flank down - a trapezoidal tooth, which is
+        # what reads as a gear in silhouette. A sine wave reads as a flower.
+        radius = (root, outer, outer, root)[step]
+        angle = spin + 2 * math.pi * (i + (0.35 if step in (1, 2) else 0.0)) / (teeth * 4)
+        rim.append((math.cos(angle) * radius, math.sin(angle) * radius))
+
+    count = len(rim)
+    lower = [bm.verts.new((x, y, 0.0)) for x, y in rim]
+    upper = [bm.verts.new((x, y, thickness)) for x, y in rim]
+    inner_low, inner_up = [], []
+    for i in range(count):
+        angle = spin + 2 * math.pi * i / count
+        cx, cy = math.cos(angle) * rim_in, math.sin(angle) * rim_in
+        inner_low.append(bm.verts.new((cx, cy, 0.0)))
+        inner_up.append(bm.verts.new((cx, cy, thickness)))
+    for i in range(count):
+        j = (i + 1) % count
+        bm.faces.new((lower[i], lower[j], upper[j], upper[i]))            # teeth
+        bm.faces.new((inner_low[j], inner_low[i], inner_up[i], inner_up[j]))  # bore of the rim
+        bm.faces.new((inner_low[i], inner_low[j], lower[j], lower[i]))    # underside
+        bm.faces.new((upper[i], upper[j], inner_up[j], inner_up[i]))      # top face
+
+    # The hub: a short tube on the same axis, open through the middle.
+    hub_low, hub_up, bore_low, bore_up = [], [], [], []
+    for i in range(count):
+        angle = spin + 2 * math.pi * i / count
+        cx, cy = math.cos(angle), math.sin(angle)
+        hub_low.append(bm.verts.new((cx * hub, cy * hub, 0.0)))
+        hub_up.append(bm.verts.new((cx * hub, cy * hub, thickness)))
+        bore_low.append(bm.verts.new((cx * bore, cy * bore, 0.0)))
+        bore_up.append(bm.verts.new((cx * bore, cy * bore, thickness)))
+    for i in range(count):
+        j = (i + 1) % count
+        bm.faces.new((hub_low[i], hub_low[j], hub_up[j], hub_up[i]))
+        bm.faces.new((bore_low[j], bore_low[i], bore_up[i], bore_up[j]))
+        bm.faces.new((bore_low[i], bore_low[j], hub_low[j], hub_low[i]))
+        bm.faces.new((hub_up[i], hub_up[j], bore_up[j], bore_up[i]))
+
+    # The arms. Straight bars from hub to rim, thin enough that the windows
+    # between them are most of the wheel.
+    for k in range(spokes):
+        centre = spin + 2 * math.pi * k / spokes
+        ring = []
+        for radius in (hub * 0.98, rim_in * 1.02):
+            for side in (-1, 1):
+                angle = centre + side * spoke_half
+                ring.append((math.cos(angle) * radius, math.sin(angle) * radius))
+        # hub-left, hub-right, rim-right, rim-left, wound so the box closes.
+        order = [ring[0], ring[1], ring[3], ring[2]]
+        low = [bm.verts.new((x, y, 0.0)) for x, y in order]
+        up = [bm.verts.new((x, y, thickness)) for x, y in order]
+        for i in range(4):
+            j = (i + 1) % 4
+            bm.faces.new((low[i], low[j], up[j], up[i]))
+        bm.faces.new(tuple(reversed(low)))
+        bm.faces.new(tuple(up))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("gear", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+
+    if pose:
+        pose_on_barrel_axis(ob)
+    if not dressed:
+        # Part of a bigger assembly: it gets its material and its bevel
+        # once, after the join, so the machine is one object and not
+        # thirty-two.
+        return ob
+
+    # CAST IRON, the reference machine's own material: a real metal, dark,
+    # and rough enough that it reads as machined rather than chromed.
+    # NEAR-BLACK, the way the reference machine's gears are - dark cast
+    # parts with a sheen along the tooth tips, not bright steel. A light
+    # grey barrel reads as a stack of coins.
+    material = tier_material("legacy-gear", 0x2f3338, 0x2f3338, max_gain=1.0)
+    _shader(material).inputs["Metallic"].default_value = 0.85
+    _shader(material).inputs["Roughness"].default_value = 0.42
+    # A NARROW smooth angle. At 34 degrees the shading ran from the flat
+    # web straight out over the tooth roots and the whole gear read as a
+    # star; a cast gear has a flat face and the teeth stand off it.
+    finish(ob, "legacy-gear", material, bevel=0.006,
+           smooth_angle=math.radians(16))
+    return ob
+
+
+
+def legacy_machine_material():
+    """The one surface the whole machine is cut from.
+
+    CALIBRATED, because a barrel of gears shadows itself relentlessly: the
+    first pass measured 0x1b1e22 against a swatch of 0x2f3338 and read as a
+    black cut-out. Almost none of this shape is a lit face - it is teeth
+    standing in each other's shade - so the correction has real work to do.
+    """
+    material = tier_material("legacy-gear", 0x3b4149, 0x1b1e22, max_gain=2.6)
+    # LESS metallic than a bare gear would be. A metal has no diffuse at
+    # all, so a self-shadowing stack of them has nothing to return in the
+    # shade; a little diffuse is what keeps the inner plates from going to
+    # pure black.
+    _shader(material).inputs["Metallic"].default_value = 0.55
+    _shader(material).inputs["Roughness"].default_value = 0.40
+    return material
+
+
+def build_legacy_machine():
+    """THE WHOLE MACHINE: two long barrels of thin plate gears lying side by
+    side with their teeth in mesh, an end wheel on the near face of each,
+    the shafts they ride, a stand, and the worktop under it.
+
+    BUILT ONCE, AND THE GEARS ARE LEFT AS SEPARATE OBJECTS. The rotation
+    loop is produced by re-posing these objects between renders - see
+    `spin_legacy_machine` - not by rebuilding them. An earlier version
+    baked each frame's rotation into the vertices and rebuilt every mesh
+    per frame: fine for the single-gear sprite it was written for, and
+    1,600 bmesh builds when the same code was pointed at a hundred gears
+    over sixteen frames, which took Blender down repeatedly. Rotating an
+    object is free; rebuilding geometry is not, and the geometry never
+    needed to change.
+
+    Assembled flat - every gear in the XY plane, the barrels running along
+    Z - and posed onto the barrel axis at the end. Posing each gear as it
+    is made would mean assembling in a rotated frame, which is how the
+    spacing goes wrong.
+
+    Returns (machine_parts, spinners, counter): everything to render, the
+    gears that turn paired with their rate, and the worktop, which is kept
+    out of the camera fit.
+    """
+    thickness = GEAR_THICKNESS
+    pitch = thickness + 0.013          # plate plus the gap between plates
+    # A HUNDRED GEARS, which is the reference's own number and the thing
+    # the whole object is about. Fifty a side reads as the long dense
+    # barrel in the photograph; seventeen read as a short fat roller, and
+    # no amount of material work fixes a proportion.
+    count = 50                         # per barrel
+    # TOOTH TO TOOTH. Two spur gears mesh when their centres are one pitch
+    # diameter apart - any less and they overlap, any more and there is a
+    # visible gap where the drive is supposed to be.
+    spacing = 0.4625 * 2
+
+    parts, rates, placed = [], [], []
+    for row in range(2):
+        # LOCAL -Z RUNS TOWARD THE CAMERA once posed, measured rather than
+        # assumed: built along +Z, gear one came out at the FAR end of the
+        # barrel and the slow gears were the ones looming over the lens.
+        # The fastest gear has to be the nearest, or the machine reads
+        # backwards.
+        #
+        # THE ROWS ARE COPLANAR. They were offset half a plate along the
+        # barrel to look interleaved, and two gears cannot mesh unless
+        # they are in the same plane: offset axially AND spaced at the
+        # meshing distance, every plate's teeth ran through the teeth of
+        # the two plates opposite it. The solids intersected, and turning
+        # them swept that intersection down the barrel - the clipping that
+        # showed on both rows. The half-TOOTH rotational offset below is
+        # what makes teeth sit in gaps; the axial offset only broke it.
+        z0 = 0.0
+        direction = 1.0 if row == 0 else -1.0
+        for i in range(count):
+            gear = build_legacy_gear(
+                # Every other plate turned half a tooth, which is what mesh
+                # looks like: a barrel of identically-aligned teeth reads as
+                # an extruded shape rather than as separate wheels.
+                # Half a tooth between the rows, so one row's teeth fall
+                # into the other's gaps - and alternating along the barrel
+                # as well, so a stack of identically-aligned plates does
+                # not read as one extruded shape.
+                spin=(math.pi / GEAR_TEETH) * ((i + row) % 2),
+                pose=False, dressed=False)
+            # POSITION KEPT AS A TRANSFORM, not baked into the vertices.
+            # `translate_to` applies the offset and leaves the origin at
+            # the world origin, and an object turns about ITS ORIGIN -
+            # which made every gear orbit a point metres away instead of
+            # spinning on its shaft. Setting `origin_set` afterwards is
+            # not good enough either: it uses the bounding box, and a
+            # toothed disc's bounds centre is a hair off its axle, so the
+            # gear turns eccentric and the loop cannot close.
+            placed.append((gear, Vector((row * spacing, 0.0, z0 - pitch * i))))
+            parts.append(gear)
+            # ITS OWN RATE: gear i advances a third of what gear i-1 does,
+            # so the near plates turn and the far ones visibly do not.
+            rates.append((gear, direction / (3 ** min(i, LEGACY_STAGES - 1))))
+
+        # THE END WHEEL on the near face, the one whose spokes you actually
+        # read - everything behind it is teeth. Same size as every other
+        # plate: looking down the barrel the near gears are already bigger
+        # because they are nearer, and modelling them bigger as well
+        # doubles an effect perspective gives for free.
+        #
+        # It turns WITH gear one, being on gear one's shaft. Left static it
+        # read as the biggest wheel being the slowest, which is the exact
+        # opposite of how the machine works.
+        wheel = build_legacy_gear(pose=False, dressed=False, radius=1.0)
+        placed.append((wheel, Vector((row * spacing, 0.0, pitch * 3.2))))
+        parts.append(wheel)
+        rates.append((wheel, direction))
+
+        # The shaft everything on this row rides, stub ends proud of the
+        # wheels the way the photograph has them.
+        shaft = revolve([(0.05, 0.0), (0.05, pitch * (count + 9))])
+        parts.append(translate_to(shaft, (row * spacing, 0.0, -pitch * (count + 3))))
+
+    # THE STAND. Both photographs have one - a pair of dark plates the
+    # shafts sit in and a bar along the floor between them - and without it
+    # the barrel floats, which is the one thing the reference never looks
+    # like. SMALL: the first attempt used full-height boxes and came out a
+    # crate with a roller in it, hiding the second barrel entirely.
+    length = pitch * (count + 6)
+    for end_z in (pitch * 5.0, -length + pitch * 1.0):
+        leg = cube(spacing * 1.45, 0.62, 0.07, base=False)
+        parts.append(translate_to(leg, (spacing / 2, -0.31, end_z)))
+    rail = cube(spacing * 1.5, 0.09, length + pitch * 6.0, base=False)
+    parts.append(translate_to(rail, (spacing / 2, -0.60, -length / 2 + pitch * 2.0)))
+
+    # POSED AS A GROUP, and each gear keeps its own origin so it can still
+    # be turned about its own axle afterwards.
+    material = legacy_machine_material()
+    axle = Vector((0.0, 0.0, 1.0))
+    for index, part in enumerate(parts):
+        axle = pose_on_barrel_axis(part)
+        finish(part, "legacy-part-%d" % index, material,
+               bevel=0.004, smooth_angle=math.radians(16))
+    # The same pose the parts were given, as a matrix, so a gear's centre
+    # can be carried through it exactly rather than measured off bounds.
+    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
+    pose = (Matrix.Rotation(GEAR_AXIS_TILT, 4, view @ Vector((1, 0, 0)))
+            @ Matrix.Rotation(GEAR_AXIS_TURN, 4, view @ Vector((0, 1, 0)))
+            @ (-(view @ Vector((0, 0, -1)))).to_track_quat('Z', 'Y')
+            .to_matrix().to_4x4())
+    for gear, local in placed:
+        gear.location = pose @ local
+    # Each turning gear, its rate, its REST POSE, and the world axle it
+    # turns about - all captured once, after posing, so a frame can be set
+    # absolutely from the phase instead of nudged from wherever the last
+    # frame left it.
+    # EACH GEAR'S ORIGIN MOVED ONTO ITS OWN AXLE.
+    #
+    # `translate_to` bakes position into the vertices, so every part's
+    # origin was still sitting at the world origin - and an object rotates
+    # about ITS ORIGIN. Turning them therefore swung each gear around a
+    # point metres away instead of spinning it on its shaft: the plates
+    # swept through each other, which is the clipping, and the loop could
+    # not close because an orbit that size is nothing like periodic with a
+    # tooth pitch.
+    # Every part shares one pose, so every gear shares one axle.
+    spinners = [
+        (gear, rate, gear.rotation_euler.to_matrix().to_4x4(), axle)
+        for gear, rate in rates
+    ]
+
+    # THE COUNTERTOP. Every photograph of this machine is a black object on
+    # a pale worktop, and that contrast is most of why it reads - against
+    # the panel's own dark ground the barrel was a silhouette losing its
+    # teeth. Kept out of the camera fit and running well past the frame,
+    # because the panel uses this render as its whole background.
+    pts = [p for part in parts for p in
+           (part.matrix_world @ v.co for v in part.data.vertices)]
+    span = max(max(p.x for p in pts) - min(p.x for p in pts),
+               max(p.y for p in pts) - min(p.y for p in pts))
+    lowest = min(p.z for p in pts)
+    counter = cube(span * 40.0, span * 40.0, 0.30, base=False)
+    bench = tier_material("legacy-counter", 0xe8e3da, 0xe8e3da, max_gain=1.0)
+    _shader(bench).inputs["Roughness"].default_value = 0.62
+    mottle(bench, _shader(bench).inputs["Base Color"].default_value[:3],
+           scale=3.0, strength=0.05)
+    finish(counter, "legacy-counter", bench, bevel=0.0)
+    translate_to(counter, (0.0, 0.0, lowest - 0.175))
+
+    return parts, spinners, counter
+
+
+def spin_legacy_machine(spinners, phase: float):
+    """Turns every gear to its position at `phase` of one tooth pitch.
+
+    Absolute, not incremental: each gear's rotation is SET from the phase
+    rather than added to, so a frame can be re-rendered without the machine
+    drifting, and rounding cannot accumulate across a loop.
+    """
+    pitch_angle = 2 * math.pi / GEAR_TEETH
+    for gear, rate, rest, axis in spinners:
+        # Teeth this gear covers over the whole loop. It has to be a whole
+        # number of SYMMETRY steps, not of teeth - see GEAR_SYMMETRY_PITCHES
+        # - or the gear cannot come back to where it started.
+        pitches = MACHINE_LOOP_PITCHES * abs(rate) / GEAR_SYMMETRY_PITCHES
+        if abs(pitches - round(pitches)) > 1e-6:
+            turned = 0.0
+        else:
+            turned = pitch_angle * phase * MACHINE_LOOP_PITCHES * rate
+        gear.rotation_euler = (
+            Matrix.Rotation(turned, 4, axis) @ rest
+        ).to_euler()
+
+
+
+# The machine's scene, kept between calls so the hundred gears are built
+# once and only re-posed afterwards.
+_LEGACY_SCENE = {}
+
+
+def setup_legacy_machine(lens: float = 35.0, fit: float = 0.92):
+    """Builds the machine, places the camera, and holds on to both.
+
+    Call once, then `render_legacy_frame` per frame. The camera is the one
+    deliberate exception to the game's orthographic rule: this asset is a
+    photograph of an object, and without convergence a hundred identical
+    plates render as a perfectly parallel tube with no length to it.
+    """
+    for ob in list(bpy.data.objects):
+        if ob.type == 'MESH':
+            bpy.data.objects.remove(ob, do_unlink=True)
+    cam = build_camera()
+    build_lights()
+    configure_render()
+
+    parts, spinners, counter = build_legacy_machine()
+
+    rot = cam.matrix_world.to_quaternion()
+    forward = rot @ Vector((0, 0, -1))
+    right, up = rot @ Vector((1, 0, 0)), rot @ Vector((0, 1, 0))
+    pts = [p for part in parts for p in
+           (part.matrix_world @ v.co for v in part.data.vertices)]
+    xs = [p.dot(right) for p in pts]
+    ys = [p.dot(up) for p in pts]
+    depth = sum(p.dot(forward) for p in pts) / len(pts)
+    centre = (right * ((min(xs) + max(xs)) / 2)
+              + up * ((min(ys) + max(ys)) / 2)
+              + forward * depth)
+    half = max(max(xs) - min(xs), max(ys) - min(ys)) / 2
+
+    cam.data.type = 'PERSP'
+    cam.data.lens = lens
+    cam.location = centre - forward * (
+        (half * fit) * lens / (cam.data.sensor_width / 2))
+    bpy.context.view_layer.update()
+
+    sc = bpy.context.scene
+    sc.render.resolution_x = sc.render.resolution_y = 512
+    # OPAQUE: the worktop is the image, and a transparent film would throw
+    # away the contrast it was added for.
+    sc.render.film_transparent = False
+
+    _LEGACY_SCENE.clear()
+    _LEGACY_SCENE.update(cam=cam, parts=parts, spinners=spinners,
+                         counter=counter)
+    return len(parts)
+
+
+def render_legacy_frame(index: int, out_dir: str, frames: int = MACHINE_FRAMES):
+    """One frame of the loop, from the scene `setup_legacy_machine` left."""
+    scene = _LEGACY_SCENE
+    if not scene:
+        raise RuntimeError("call setup_legacy_machine() first")
+    os.makedirs(out_dir, exist_ok=True)
+    spin_legacy_machine(scene["spinners"], index / frames)
+    bpy.context.view_layer.update()
+    keep = set(scene["parts"]) | {scene["counter"]}
+    for other in bpy.data.objects:
+        if other.type == 'MESH':
+            other.hide_render = other not in keep
+    bpy.context.scene.render.filepath = os.path.join(out_dir, "%02d.png" % index)
+    bpy.ops.render.render(write_still=True)
+    return index
+
+
+def pack_legacy_gear_sheet(frame_dir: str, out_path: str):
+    """The sixteen frames into one 512 square, four by four.
+
+    A sheet rather than sixteen files: Phaser mipmaps a power-of-two texture
+    and does not mipmap sixteen NPOT ones, and eight gears turning at eight
+    different rates would otherwise be eight textures being swapped every
+    frame. The frames are deleted afterwards - they are an intermediate,
+    not an asset.
+    """
+    # Pillow is not part of Blender's bundled Python on every install, so a
+    # missing import leaves the frames on disk for tools/ to pack rather
+    # than failing the whole render.
+    try:
+        from PIL import Image
+    except ImportError:
+        print("Pillow unavailable in Blender; frames left in", frame_dir)
+        return
+    frames = [Image.open(os.path.join(frame_dir, "%02d.png" % i)).convert("RGBA")
+              for i in range(GEAR_FRAMES)]
+    w, h = frames[0].size
+    sheet = Image.new("RGBA", (w * 4, h * 4), (0, 0, 0, 0))
+    for index, frame_image in enumerate(frames):
+        sheet.paste(frame_image, ((index % 4) * w, (index // 4) * h), frame_image)
+    sheet.save(out_path)
+    for image in frames:
+        image.close()
+    shutil.rmtree(frame_dir, ignore_errors=True)
+    print("packed legacy gear sheet", sheet.size)
+
+
+def render_legacy_gear(cam, out_dir: str):
+    """The gear's rotation loop, one PNG per frame.
+
+    CENTRED ON THE HUB, not on the bounding box. Every other render in this
+    file aims at the middle of the silhouette, which is right for an object
+    sitting on a tile - but this sprite gets SPUN by the panel, and a sprite
+    rotates about its own centre. Framed on its bounds, the gear's axis sits
+    off to one side of the image and the whole thing wobbles round a point
+    that is not the axle.
+
+    Framed ONCE, off frame zero, and every frame rendered at that same scale
+    and position: a toothed wheel has a different silhouette at every angle,
+    so per-frame framing would make it breathe as it turned.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    sc = bpy.context.scene
+    sc.render.resolution_x = sc.render.resolution_y = 128
+    pitch = 2 * math.pi / GEAR_TEETH
+    rot = cam.matrix_world.to_quaternion()
+    forward = rot @ Vector((0, 0, -1))
+    location, half = None, 0.0
+    for index in range(GEAR_FRAMES):
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        gear = build_legacy_gear(pitch * index / GEAR_FRAMES)
+        if location is None:
+            bpy.context.view_layer.update()
+            # The middle of the AXLE, in world space: the gear is modelled
+            # around the origin and extruded up its own local z.
+            hub = gear.matrix_world @ Vector((0.0, 0.0, GEAR_THICKNESS / 2))
+            location = hub - forward * 20.0
+            half = frame(gear, cam)[1]
+        for other in bpy.data.objects:
+            if other.type == 'MESH':
+                other.hide_render = (other is not gear)
+        cam.location = location
+        bpy.context.view_layer.update()
+        cam.data.ortho_scale = half * 2 * MARGIN
+        sc.render.filepath = os.path.join(out_dir, "%02d.png" % index)
+        bpy.ops.render.render(write_still=True)
+        print("rendered legacy gear frame", index)
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -3230,6 +3783,23 @@ def main(only: str = ""):
         for tier, ob in tiers:
             render(ob, cam, os.path.join(source_dir, "%d.png" % tier), widest)
             print("rendered source", family, "tier", tier)
+
+    if only == "legacy-machine":
+        # DRIVEN FROM OUTSIDE, one frame per call. The whole loop in a
+        # single call is what kept killing Blender, and a render this
+        # heavy has no business holding one connection open for sixteen
+        # of them. See `setup_legacy_machine` and `render_legacy_frame`.
+        print("use setup_legacy_machine() then render_legacy_frame(i) per call")
+
+    if not only or only == "legacy-gear":
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        render_legacy_gear(cam, os.path.join(root, "public", "assets", "machine",
+                                             "gear-frames"))
+        pack_legacy_gear_sheet(
+            os.path.join(root, "public", "assets", "machine", "gear-frames"),
+            os.path.join(root, "public", "assets", "machine", "legacy-gear.png"))
 
     for ob in bpy.data.objects:
         if ob.type == 'MESH':
