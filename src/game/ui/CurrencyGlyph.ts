@@ -113,7 +113,7 @@ const CURRENCY_TEXTURE: Record<CurrencyKind, string> = {
  */
 const CURRENCY_ITEM: Record<CurrencyKind, string> = {
   credit: 'credit-mark',
-  gem: 'currency-gem',
+  gem: 'gem-mark',
   energy: 'currency-energy'
 };
 

@@ -105,7 +105,7 @@ import type { ShopState, ShopRowKey } from '../shop/Shop';
  */
 const FINAL_WATER_REWARD_RANGES = {
   coins: { min: 30_000, max: 40_000 },
-  energy: { min: 40, max: 60 },
+  energy: { min: 15, max: 25 },
   gems: { min: 2, max: 5 }
 } as const;
 
@@ -3332,6 +3332,14 @@ TAP THE EVENT CARD TO SPEND IT`
       this.refreshActionTray();
       return;
     }
+    // SYNCED BEFORE ITS CHARGES ARE READ. The Decagon and Water branches
+    // above both do this; the ordinary path did not, so it sized the
+    // multiplier off a reservoir count that had not been credited with the
+    // recharges that had already elapsed. A full tier-4 source could read as
+    // holding one charge, the multiplier stepped down to x1, and the tap
+    // came back tier 1 - which is exactly the "x4 gave me a tier 1 stone"
+    // report, and why it could never be reproduced in the rules themselves.
+    syncDispenser(view.spawner, Date.now());
     const empties = this.grid.emptyCells();
     if (empties.length === 0) {
       this.refreshActionTray('BOARD FULL\nSELECT AN ITEM TO SELL');

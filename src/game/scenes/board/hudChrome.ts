@@ -27,7 +27,7 @@ export function buildEnergyChip(scene: BoardScene, y: number): HudChip {
   // the traced SVG when it is not.
   const boltRendered = loadedItemSprite(scene, 'currency-energy', 1);
   const boltKey = currencyTexture(scene, 'energy');
-  const iconSize = currencyDisplaySize(scene, 'energy', currencyBoxFor('energy', 17 * s));
+  const iconSize = currencyDisplaySize(scene, 'energy', currencyBoxFor('energy', 17 * s)) * 1.12;
   const iconShadow = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setTintFill(0x000000).setAlpha(0.28).setDepth(21);
   const icon = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setDepth(22);
   const iconGloss = scene.add.image(0, 0, boltKey).setDisplaySize(iconSize, iconSize).setTintFill(0xffffff).setAlpha(boltRendered ? 0 : 0.2).setDepth(23);
@@ -61,9 +61,12 @@ export function buildEnergyChip(scene: BoardScene, y: number): HudChip {
     );
     bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
 
-    iconShadow.setPosition(x + 8 * s, y + h / 2 + 1.25 * s);
-    icon.setPosition(x + 8 * s, y + h / 2);
-    iconGloss.setPosition(x + 8 * s, y + h / 2);
+    // Hung a third off the chip's left edge, so the mark breaks the outline
+    // rather than sitting inside it.
+    const iconX = x + iconSize / 6;
+    iconShadow.setPosition(iconX, y + h / 2 + 1.25 * s);
+    icon.setPosition(iconX, y + h / 2);
+    iconGloss.setPosition(iconX, y + h / 2);
 
     text.setScale(Math.min(1, Math.max(0.72, (w - 22 * s) / Math.max(1, text.width))), 1);
     text.setPosition(x + w - 6 * s, y + h / 2);
@@ -175,9 +178,12 @@ scene: BoardScene,
     );
     bg.strokeRoundedRect(x, y, w, h, Theme.radiusChip);
 
-    iconShadow.setPosition(x + 9 * s, y + h / 2 + 1.25 * s);
-    icon.setPosition(x + 9 * s, y + h / 2);
-    iconGloss.setPosition(x + 9 * s, y + h / 2);
+    // Hung a third off the chip's left edge, so the mark breaks the outline
+    // rather than sitting inside it.
+    const iconX = x + iconSize / 6;
+    iconShadow.setPosition(iconX, y + h / 2 + 1.25 * s);
+    icon.setPosition(iconX, y + h / 2);
+    iconGloss.setPosition(iconX, y + h / 2);
 
     text.setScale(Math.min(1, Math.max(0.72, (w - 22 * s) / Math.max(1, text.width))), 1);
     text.setPosition(x + w - 6 * s, y + h / 2);

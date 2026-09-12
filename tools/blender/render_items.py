@@ -214,8 +214,11 @@ CURRENCY_HEX = {
                         4: 0xf1c04d, 5: 0xf2c452, 6: 0xf4c757},
     "currency-energy": {1: 0x24a9e8, 2: 0x2ab3ed, 3: 0x35bef0,
                         4: 0x48c9f2, 5: 0x61d3f4},
-    "currency-gem": {1: 0x9d70c2, 2: 0xaa7dca, 3: 0xb789d2,
-                     4: 0xc497db, 5: 0xd2a6e3},
+    # The whole ladder pulled DOWN, both ends by hand: tier one was reading
+    # hot rather than as the base of the family, and tier five was close to
+    # washing out. Same five even steps, lower.
+    "currency-gem": {1: 0x8f63b4, 2: 0x9a6fbd, 3: 0xa77cc5,
+                     4: 0xb287cb, 5: 0xbe92d0},
 }
 # Measured off a render. A metal has no diffuse colour - it tints what it
 # reflects - so it renders well below its swatch by nature, and the gain is
@@ -232,6 +235,15 @@ CURRENCY_MEASURED = {
     # correction is mostly a red cut, which is what puts the blue back.
     "currency-energy": {1: 0x8db7cf, 2: 0x90bbd1, 3: 0x94bed1,
                         4: 0x92baca, 5: 0x9dc1ce},
+    # The gems had NO entry at all, so `measured` fell back to the wanted
+    # colour, every gain came out 1.0, and the family rendered uncorrected -
+    # which is the whole reason the board gem sat dark and grey next to the
+    # calibrated chip mark. Measured off the alpha-masked renders at the
+    # chip mark's coat. RE-MEASURED after the pose change: the mark's swing
+    # puts far more lit face in shot, so the family now renders BRIGHTER
+    # than its swatch and the correction is a cut rather than a lift.
+    "currency-gem": {1: 0xa79cba, 2: 0xa499b7, 3: 0xaca2bb,
+                     4: 0xa69bb4, 5: 0xb0a5b9},
 }
 
 CURRENCY_RGB = {
@@ -1643,6 +1655,14 @@ def build_currency(kind: str):
                 # laying it flat was wrong, and the answer was simply a much
                 # bigger turn than any of them.
                 piece.rotation_euler.rotate_axis("Z", math.radians(74.79))
+            elif kind == "currency-gem":
+                # THE CHIP MARK'S POSE. `facing_profile` leaves the slab
+                # square to the view, where the lamp's mirror misses the
+                # camera entirely and the face renders as flat dark purple.
+                # The mark's swing and tilt are what put the highlight back
+                # into shot, and they are the difference the board gems were
+                # missing - not the material, which already matched.
+                chip_facing(piece, 'Y')
             else:
                 facing_profile(piece)
             pieces.append(translate_to(piece, beside(right, back)))
@@ -1656,7 +1676,12 @@ def dress_currency(kind: str, out):
         measured = CURRENCY_MEASURED.get(kind, CURRENCY_HEX[kind])
         material = tier_material("%s-tier-%d" % (kind, tier),
                                  CURRENCY_HEX[kind][tier], measured[tier],
-                                 max_gain=1.45)
+                                 # The gems need the chip mark's headroom.
+                                 # A dielectric slab under this studio comes
+                                 # back far darker than a coin does, and 1.45
+                                 # clips the correction long before it
+                                 # reaches the drawn purple.
+                                 max_gain=3.0 if kind == "currency-gem" else 1.45)
         shader = _shader(material)
         if kind == "currency-credit":
             # A coin is the one genuinely METALLIC thing in the game. Every
@@ -1740,7 +1765,11 @@ def dress_currency(kind: str, out):
             shader.inputs["Transmission Weight"].default_value = 0.5
             shader.inputs["Roughness"].default_value = 0.04
             shader.inputs["IOR"].default_value = 1.75
-            polished(material, coat_roughness=0.01)
+            # The CHIP MARK's coat, not a sharper one. A 0.01 coat mirrors
+            # the lamp as a hard bright disc and leaves the rest of the face
+            # dark; blurring it to 0.25 is what made the mark read as a lit
+            # solid, and the board gems have to be the same stone.
+            polished(material, coat_roughness=0.25)
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read

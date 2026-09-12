@@ -4,7 +4,8 @@ import { ROWS, familyTierLabel, sourceTierLabel, spawnerPieceLabel, type BoardVi
 import type { GridPosition } from '../../types';
 import type { CratePayloadEntry } from '../../Grid';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
-import { currencyPill } from '../../ui/CurrencyGlyph';
+import { currencyPill, currencyTexture } from '../../ui/CurrencyGlyph';
+import type { CurrencyKind } from '../../ui/CurrencyGlyph';
 import { drawBriefcase, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon, SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon, SplitterView } from '../../objects/SplitterView';
@@ -456,11 +457,14 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         visual = image;
         content.add(image);
       } else if (item.typeId.startsWith('currency-') && !(item.typeId === 'currency-credit' && item.tier >= 3)) {
-        const textureKey = item.typeId === 'currency-credit'
-          ? 'currency-coin'
-          : item.typeId === 'currency-gem'
-            ? 'currency-gem'
-            : 'currency-energy';
+        // Through `currencyTexture`, not a hand-picked key - these three
+        // names are the flat SVGs, so choosing them here kept the inventory
+        // on the vector marks while the rest of the game moved to rendered
+        // ones.
+        const kind: CurrencyKind = item.typeId === 'currency-credit'
+          ? 'credit'
+          : item.typeId === 'currency-gem' ? 'gem' : 'energy';
+        const textureKey = currencyTexture(scene, kind);
         const count = item.tier === 1 ? 1 : item.tier === 2 ? 2 : Math.min(6, item.tier + 1);
         const positions: [number, number][] = [
           [0, 4], [-10, 7], [10, 0], [-6, -9], [8, -11], [1, 12]

@@ -11,8 +11,11 @@ import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import {
   CURRENCY_COLOR,
   applyCurrencyIcon,
+  currencyBoxFor,
   currencyChipOptions,
+  currencyDisplaySize,
   currencyPill,
+  currencyTexture,
   type CurrencyKind
 } from '../../ui/CurrencyGlyph';
 import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
@@ -111,7 +114,47 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
   closeBtn.on('pointerdown', () => scene.time.delayedCall(0, () => closeShop(scene)));
 
-  overlay.add([dim, panelBg, panelCatcher, title, closeBtn]);
+  // The EXACT balance, not the HUD's abbreviated one. The chip that opens
+  // this panel has to abbreviate to fit the bar, so this is the only place
+  // a player can read what they actually hold. Drawn as the SAME chip the
+  // HUD uses - recessed ground, accent edge, mark hung a third off the left
+  // - so it reads as the bar's chip enlarged rather than a new widget.
+  const balanceKind: CurrencyKind = mode === 'gem' ? 'gem' : 'credit';
+  const balanceAccent = mode === 'gem' ? Theme.currencyGem : Theme.currencyCredit;
+  const balanceValue = mode === 'gem' ? scene.economy.gems : scene.economy.coins;
+  const balanceText = scene.add.text(0, 0, balanceValue.toLocaleString(), {
+    resolution: textResolution,
+    fontFamily: Theme.fontNumeric, fontSize: '13px', fontStyle: 'bold',
+    color: hex(materialLighting(balanceAccent, 4).light)
+  }).setOrigin(1, 0.5);
+  const balanceIconSize = currencyDisplaySize(scene, balanceKind, currencyBoxFor(balanceKind, 20));
+  const balanceH = 22;
+  const balanceW = Math.ceil(balanceText.width) + balanceIconSize + 18;
+  const balanceX = panelX - panelW / 2 + 22;
+  const balanceY = panelY - panelH / 2 + 20;
+  const balanceBg = scene.add.graphics();
+  const balanceGround = materialLighting(Theme.bgElevated, 2);
+  balanceBg.fillGradientStyle(balanceGround.light, balanceGround.base, balanceGround.dark, balanceGround.shadow, 1);
+  balanceBg.fillRoundedRect(balanceX, balanceY - balanceH / 2, balanceW, balanceH, Theme.radiusChip);
+  const balanceEdge = materialLighting(balanceAccent, 6);
+  balanceBg.lineGradientStyle(
+    Theme.borderWidth + 0.5,
+    balanceEdge.highlight, balanceEdge.light, balanceEdge.dark, balanceEdge.shadow, 0.95
+  );
+  balanceBg.strokeRoundedRect(balanceX, balanceY - balanceH / 2, balanceW, balanceH, Theme.radiusChip);
+  const balanceIconKey = currencyTexture(scene, balanceKind);
+  const balanceIconX = balanceX + balanceIconSize / 6;
+  const balanceIconShadow = scene.add.image(balanceIconX, balanceY + 1.5, balanceIconKey)
+    .setDisplaySize(balanceIconSize, balanceIconSize).setTintFill(0x000000).setAlpha(0.28);
+  const balanceIcon = scene.add.image(balanceIconX, balanceY, balanceIconKey)
+    .setDisplaySize(balanceIconSize, balanceIconSize);
+  balanceText.setPosition(balanceX + balanceW - 8, balanceY);
+
+  overlay.add([
+    dim, panelBg, panelCatcher, title,
+    balanceBg, balanceIconShadow, balanceIcon, balanceText,
+    closeBtn
+  ]);
 
   // Sits in the gap the title already leaves above the first section, so
   // showing it never reflows the rows below.

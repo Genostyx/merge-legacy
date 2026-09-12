@@ -1,12 +1,5 @@
 import Phaser from 'phaser';
-import { CurrencyKind, currencyBoxFor } from './CurrencyGlyph';
-
-/** The SVG mark each currency is drawn from. */
-const TEXTURE_KEY: Record<CurrencyKind, string> = {
-  credit: 'currency-coin',
-  gem: 'currency-gem',
-  energy: 'currency-energy'
-};
+import { CurrencyKind, currencyBoxFor, currencyTexture, currencyDisplaySize } from './CurrencyGlyph';
 
 /**
  * What a pile of currency looks like, defined ONCE.
@@ -84,8 +77,18 @@ export function buildCurrencyCluster(
   scene: Phaser.Scene, kind: CurrencyKind, tier: number, box: number
 ): ClusterPart[] {
   const layout = clusterLayoutFor(kind, tier);
-  const iconSize = currencyBoxFor(kind, box * clusterDrawnFraction(kind, layout.length));
-  const textureKey = TEXTURE_KEY[kind];
+  // THROUGH `currencyTexture`, not a map of its own.
+  //
+  // This module kept its own hard-coded list of the SVG keys, so every pile
+  // it draws - the shop, the panels, the daily rewards, the board's own
+  // clusters - stayed on the flat vector marks no matter what the renderer
+  // produced. That is why every gem in the game looked identical and unlike
+  // the one on the HUD chip: the chip was the only surface resolving its
+  // texture properly.
+  const textureKey = currencyTexture(scene, kind);
+  const iconSize = currencyDisplaySize(
+    scene, kind, currencyBoxFor(kind, box * clusterDrawnFraction(kind, layout.length)));
+  const rendered = textureKey.startsWith('item-');
   // The cluster offsets were authored against round marks, which hang evenly
   // around their centre. A bolt's mass sits low, so the same offsets drop the
   // whole group below the middle; energy lifts by a few percent to put it back.
@@ -95,10 +98,12 @@ export function buildCurrencyCluster(
     const px = x * box;
     const py = (y + lift) * box;
     const art = scene.add.image(px, py, textureKey).setDisplaySize(iconSize, iconSize);
+    // No white wash over a render - it is already lit, and the gloss only
+    // flattens the shading that makes it read as a solid.
     const gloss = scene.add.image(px, py, textureKey)
       .setDisplaySize(iconSize, iconSize)
       .setTintFill(0xffffff)
-      .setAlpha(0.2);
+      .setAlpha(rendered ? 0 : 0.2);
     gloss.setCrop(0, 0, gloss.width, gloss.height * 0.42);
     return { art, gloss };
   });

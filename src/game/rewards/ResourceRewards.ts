@@ -27,7 +27,11 @@ export const RESOURCE_PRODUCERS: Record<ResourceProducerId, {
 
 export const RESOURCE_PAYOUTS: Record<string, number[]> = {
   'currency-credit': [1, 3, 10, 35, 150, 1000],
-  'currency-energy': [1, 3, 8, 25, 100],
+  // Near merge-neutral on purpose: two of a tier are worth about what the
+  // tier above pays, so merging a Hydro Core drop up is a small bonus, not a
+  // multiplier. The old [1, 3, 8, 25, 100] roughly doubled the value at every
+  // step, which let a 40-60 drop be merged past 100.
+  'currency-energy': [1, 2, 5, 12, 30],
   'currency-gem': [1, 3, 8, 18, 40]
 };
 
