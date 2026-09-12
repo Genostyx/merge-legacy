@@ -2947,14 +2947,24 @@ LEGACY_STAGES = 7
 # That cost three attempts to find. The loop was built on tooth pitch, and
 # every measurement said the wrap jumped by more than a step no matter how
 # the rotation was fixed.
-GEAR_SPOKES = 6
-GEAR_SYMMETRY_PITCHES = GEAR_TEETH // GEAR_SPOKES
+# THE END WHEELS keep six spokes - they are the only ones you read, and
+# the open wheel is the machine's signature. THE BURIED PLATES take one
+# per tooth: nobody can see a plate's spokes through a stack fifty deep,
+# and it buys back the symmetry the six-spoke version cost.
+# CLOSED, not spoked. The open wheel looked right, but its six spokes made
+# the gear repeat only every sixty degrees - see `spin_legacy_machine` -
+# and a loop long enough to close on that was five times the frames. A
+# closed web repeats every tooth, and the reference's own barrel is so
+# dense that the webs are invisible behind the teeth anyway.
+GEAR_SPOKES = 0
+PLATE_SPOKES = 0
 
-# The loop covers exactly one of those, so gear one comes back to itself.
-# Gear two would need three loops to do the same, so it is held - which is
-# not much of a loss at a third the speed, and far better than the whole
-# barrel snapping every time the loop wraps.
-MACHINE_LOOP_PITCHES = GEAR_SYMMETRY_PITCHES
+# NINE TEETH per loop: gear one covers nine, gear two three, gear three
+# one - every one a whole tooth, so all three come back to themselves and
+# the wrap is exact. Gear four would need twenty-seven and is held, which
+# is honest, since at a 27:1 reduction it moves a third of a tooth over
+# the whole loop.
+MACHINE_LOOP_PITCHES = 9
 MACHINE_FRAMES = 18
 
 
@@ -2988,7 +2998,8 @@ def pose_on_barrel_axis(ob):
 
 
 def build_legacy_gear(spin: float = 0.0, pose: bool = True,
-                      radius: float = 1.0, dressed: bool = True):
+                      radius: float = 1.0, dressed: bool = True,
+                      spokes: int = GEAR_SPOKES):
     """ONE spur gear at the barrel's angle, spun `spin` radians on its axis.
 
     One gear, not a pre-rendered stack: the panel places eight of these and
@@ -3005,7 +3016,7 @@ def build_legacy_gear(spin: float = 0.0, pose: bool = True,
     outer, root = 0.50 * radius, 0.425 * radius
     rim_in = 0.355 * radius
     hub, bore = 0.135 * radius, 0.060 * radius
-    spokes, spoke_half = GEAR_SPOKES, math.radians(7.5)
+    spoke_half = math.radians(7.5 * 6 / spokes) if spokes > 0 else 0.0
     thickness = GEAR_THICKNESS
 
     mesh = bpy.data.meshes.new("gear")
@@ -3051,24 +3062,37 @@ def build_legacy_gear(spin: float = 0.0, pose: bool = True,
         bm.faces.new((bore_low[i], bore_low[j], hub_low[j], hub_low[i]))
         bm.faces.new((hub_up[i], hub_up[j], bore_up[j], bore_up[i]))
 
-    # The arms. Straight bars from hub to rim, thin enough that the windows
-    # between them are most of the wheel.
-    for k in range(spokes):
-        centre = spin + 2 * math.pi * k / spokes
-        ring = []
-        for radius in (hub * 0.98, rim_in * 1.02):
-            for side in (-1, 1):
-                angle = centre + side * spoke_half
-                ring.append((math.cos(angle) * radius, math.sin(angle) * radius))
-        # hub-left, hub-right, rim-right, rim-left, wound so the box closes.
-        order = [ring[0], ring[1], ring[3], ring[2]]
-        low = [bm.verts.new((x, y, 0.0)) for x, y in order]
-        up = [bm.verts.new((x, y, thickness)) for x, y in order]
-        for i in range(4):
-            j = (i + 1) % 4
-            bm.faces.new((low[i], low[j], up[j], up[i]))
-        bm.faces.new(tuple(reversed(low)))
-        bm.faces.new(tuple(up))
+    if spokes <= 0:
+        # A CLOSED WEB. A spoked wheel only repeats every few teeth - six
+        # spokes on thirty teeth means the gear maps onto itself once every
+        # sixty degrees, not every twelve - and that coarse symmetry is
+        # what forced the rotation loop to be five times longer than it
+        # needed to be, which in turn is why only the first gear could be
+        # allowed to move. Closing the web makes every tooth a repeat, so a
+        # loop of nine teeth covers gears one, two AND three.
+        for i in range(count):
+            j = (i + 1) % count
+            bm.faces.new((hub_low[j], lower[j], lower[i], hub_low[i]))
+            bm.faces.new((hub_up[i], upper[i], upper[j], hub_up[j]))
+    else:
+        # The arms. Straight bars from hub to rim, thin enough that the
+        # windows between them are most of the wheel.
+        for k in range(spokes):
+            centre = spin + 2 * math.pi * k / spokes
+            ring = []
+            for radius in (hub * 0.98, rim_in * 1.02):
+                for side in (-1, 1):
+                    angle = centre + side * spoke_half
+                    ring.append((math.cos(angle) * radius, math.sin(angle) * radius))
+            # hub-left, hub-right, rim-right, rim-left, wound so it closes.
+            order = [ring[0], ring[1], ring[3], ring[2]]
+            low = [bm.verts.new((x, y, 0.0)) for x, y in order]
+            up = [bm.verts.new((x, y, thickness)) for x, y in order]
+            for i in range(4):
+                j = (i + 1) % 4
+                bm.faces.new((low[i], low[j], up[j], up[i]))
+            bm.faces.new(tuple(reversed(low)))
+            bm.faces.new(tuple(up))
     bm.to_mesh(mesh)
     bm.free()
     ob = bpy.data.objects.new("gear", mesh)
@@ -3182,7 +3206,7 @@ def build_legacy_machine():
                 # as well, so a stack of identically-aligned plates does
                 # not read as one extruded shape.
                 spin=(math.pi / GEAR_TEETH) * ((i + row) % 2),
-                pose=False, dressed=False)
+                pose=False, dressed=False, spokes=PLATE_SPOKES)
             # POSITION KEPT AS A TRANSFORM, not baked into the vertices.
             # `translate_to` applies the offset and leaves the origin at
             # the world origin, and an object turns about ITS ORIGIN -
@@ -3195,7 +3219,8 @@ def build_legacy_machine():
             parts.append(gear)
             # ITS OWN RATE: gear i advances a third of what gear i-1 does,
             # so the near plates turn and the far ones visibly do not.
-            rates.append((gear, direction / (3 ** min(i, LEGACY_STAGES - 1))))
+            # A plate repeats every single tooth, so its symmetry is 1.
+            rates.append((gear, direction / (3 ** min(i, LEGACY_STAGES - 1)), 1))
 
         # THE END WHEEL on the near face, the one whose spokes you actually
         # read - everything behind it is teeth. Same size as every other
@@ -3209,7 +3234,8 @@ def build_legacy_machine():
         wheel = build_legacy_gear(pose=False, dressed=False, radius=1.0)
         placed.append((wheel, Vector((row * spacing, 0.0, pitch * 3.2))))
         parts.append(wheel)
-        rates.append((wheel, direction))
+        # Closed, so it repeats every tooth like the plates.
+        rates.append((wheel, direction, 1))
 
         # The shaft everything on this row rides, stub ends proud of the
         # wheels the way the photograph has them.
@@ -3260,8 +3286,8 @@ def build_legacy_machine():
     # tooth pitch.
     # Every part shares one pose, so every gear shares one axle.
     spinners = [
-        (gear, rate, gear.rotation_euler.to_matrix().to_4x4(), axle)
-        for gear, rate in rates
+        (gear, rate, symmetry, gear.rotation_euler.to_matrix().to_4x4(), axle)
+        for gear, rate, symmetry in rates
     ]
 
     # THE COUNTERTOP. Every photograph of this machine is a black object on
@@ -3293,12 +3319,13 @@ def spin_legacy_machine(spinners, phase: float):
     drifting, and rounding cannot accumulate across a loop.
     """
     pitch_angle = 2 * math.pi / GEAR_TEETH
-    for gear, rate, rest, axis in spinners:
-        # Teeth this gear covers over the whole loop. It has to be a whole
-        # number of SYMMETRY steps, not of teeth - see GEAR_SYMMETRY_PITCHES
-        # - or the gear cannot come back to where it started.
-        pitches = MACHINE_LOOP_PITCHES * abs(rate) / GEAR_SYMMETRY_PITCHES
-        if abs(pitches - round(pitches)) > 1e-6:
+    for gear, rate, symmetry, rest, axis in spinners:
+        # Teeth this gear covers over the loop, measured in ITS OWN repeat.
+        # A plate repeats every tooth; a six-spoke end wheel every five. A
+        # gear that would finish part way through its repeat is held, or it
+        # snaps back at the wrap and the whole barrel clips.
+        steps = MACHINE_LOOP_PITCHES * abs(rate) / symmetry
+        if abs(steps - round(steps)) > 1e-6:
             turned = 0.0
         else:
             turned = pitch_angle * phase * MACHINE_LOOP_PITCHES * rate
@@ -3606,6 +3633,29 @@ def build_lights():
 def configure_render():
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
+    # GPU IF THERE IS ONE, and set here rather than left to the session.
+    #
+    # The scene's device is live state that no amount of editing this file
+    # changes - it sat on CPU through every render in this project, at
+    # around fourteen seconds a frame for the machine, because nothing ever
+    # asked for the card. Enabling the backend's devices is required too:
+    # a device that is present but not `use`d is not used.
+    prefs = bpy.context.preferences.addons.get("cycles")
+    if prefs is not None:
+        backend = prefs.preferences
+        for kind in ('OPTIX', 'CUDA', 'HIP', 'METAL', 'ONEAPI'):
+            try:
+                backend.compute_device_type = kind
+            except TypeError:
+                continue          # not built for this backend
+            backend.get_devices()
+            if any(d.type == kind for d in backend.devices):
+                for device in backend.devices:
+                    device.use = device.type == kind
+                sc.cycles.device = 'GPU'
+                break
+        else:
+            sc.cycles.device = 'CPU'
     # Transmission needs both: 16 samples leaves a gem full of fireflies, and
     # the default bounce limits cut the light off before it has passed through
     # a stone and back out, which renders a sapphire as a black lump.
