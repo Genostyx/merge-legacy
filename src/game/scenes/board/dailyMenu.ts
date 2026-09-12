@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { buildCurrencyCluster } from '../../ui/CurrencyCluster';
-import { CRATE_DRAWN, crateArt, drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, CRATE_RENDER_BOX, crateArt, drawCrate } from '../../objects/TierIcons';
+import { loadedItemSprite } from '../../objects/itemSprites';
 import { claimDaily, dailyAvailable, dailyRewardFor } from '../../rewards/Rewards';
 import { addCoins } from '../../economy/Economy';
 import { floatingScore } from '../../fx/MergeFx';
@@ -102,6 +103,14 @@ export function openDailyMenu(scene: BoardScene): void {
   const CRATE_ART = 44 / CRATE_DRAWN.width;
   /** The box the Credit artwork is normalised into, matching the crates. */
   const DAILY_ICON = 46;
+  // Measured off the PNGs: how much of its square each render's art
+  // covers, and how far down the square its lowest pixel sits. Day one
+  // needs both to put a coin on the same line, at the same height, as
+  // the crates further along the row.
+  const CRATE_ART_H = 0.656;
+  const CRATE_ART_BOTTOM = 0.828;
+  const MARK_ART_H = 0.859;
+  const MARK_ART_BOTTOM = 0.930;
   // The well the strip sits in. Recessed - dark fill, lit BOTTOM edge -
   // which is the inverse of the raised panel around it, and what makes the
   // tabs read as sitting inside something.
@@ -230,18 +239,34 @@ export function openDailyMenu(scene: BoardScene): void {
       // mark rather than a drawn silhouette - and day 2 is the Credit Stack,
       // tier 3. One coin against a stack is the whole statement.
       if (index === 0) {
-        // THROUGH THE CLUSTER, like day two, and sized so the single coin
-        // draws as wide as the crates further along the row. A lone
-        // `currencyIcon(38)` came out as a 28px box - `currencyIcon`
-        // shrinks a rendered mark to draw what the old SVG did - so day
-        // one was the smallest thing on a row of rewards.
-        for (const { art, gloss } of buildCurrencyCluster(
-          scene, 'credit', 1, DAILY_ICON * 1.8
-        )) {
-          for (const part of [art, gloss]) {
-            part.setPosition(iconX + part.x, iconY + part.y);
-            if (isClaimed) part.setAlpha(0.45);
-            tab.add(part);
+        // MATCHED TO THE CRATES, in drawn art and in baseline.
+        //
+        // Both of those have to be solved, and they are different sums:
+        // the crate's art is 0.656 of its image and sits 0.828 down it,
+        // the coin's art is 0.859 of its image and sits 0.930 down it.
+        // Equal image boxes therefore give unequal art, and equal
+        // centres give a coin that hangs lower than the row - which is
+        // what it was doing.
+        const crateBox = 44 * CRATE_RENDER_BOX;
+        const coinBox = (crateBox * CRATE_ART_H) / MARK_ART_H;
+        const markKey = loadedItemSprite(scene, 'credit-mark', 1);
+        if (markKey) {
+          const coinY = iconY
+            + (CRATE_ART_BOTTOM - 0.5) * crateBox
+            - (MARK_ART_BOTTOM - 0.5) * coinBox;
+          const coin = scene.add.image(iconX, coinY, markKey)
+            .setDisplaySize(coinBox, coinBox);
+          if (isClaimed) coin.setAlpha(0.45);
+          tab.add(coin);
+        } else {
+          for (const { art, gloss } of buildCurrencyCluster(
+            scene, 'credit', 1, DAILY_ICON * 1.2
+          )) {
+            for (const part of [art, gloss]) {
+              part.setPosition(iconX + part.x, iconY + part.y - 6.2);
+              if (isClaimed) part.setAlpha(0.45);
+              tab.add(part);
+            }
           }
         }
       } else {
