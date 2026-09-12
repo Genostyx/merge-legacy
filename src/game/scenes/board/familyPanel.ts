@@ -1,13 +1,14 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
-import { FAMILY_NAMES } from './config';
+import { FAMILY_NAMES, SPAWNER_PIECE_NAMES } from './config';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { drawSpawnerPieceIcon } from '../../objects/SpawnerPieceView';
 import { getChain } from '../../data/chains';
 import { addGems } from '../../economy/Economy';
 import { claimDiscovery, claimedInFamily, isClaimed, isDiscovered } from '../../collection/Collection';
-import { loadedItemSprite } from '../../objects/itemSprites';
+import { loadedItemSprite, loadedPieceSprite } from '../../objects/itemSprites';
 
 /**
  * ONE FAMILY'S LADDER, opened from the `i` in the action tray.
@@ -21,10 +22,73 @@ import { loadedItemSprite } from '../../objects/itemSprites';
  * one, resolved in place. Two views of one dataset that behaved differently
  * would be worse than either.
  */
-export function openFamilyPanel(scene: BoardScene, typeId: string): void {
+/**
+ * WHAT LADDER THE PANEL IS SHOWING.
+ *
+ * The `i` used to answer only one question - "what does this item turn
+ * into?" - because only item chains had a ladder to show. A player
+ * holding a source piece has exactly the same question and was getting
+ * the ITEM chain for that family, which is a different set of things.
+ *
+ * `collectable` is the difference that matters: item chains are the
+ * Collection, so a discovered tier there is worth a gem and counts
+ * towards the book. A ladder of source pieces is reference, not
+ * collection - no gems, no book, nothing to claim.
+ */
+export type LadderKind = 'items' | 'pieces';
+
+interface LadderEntry {
+  tier: number;
+  label: string;
+  color: number;
+  sprite: string | null;
+}
+
+interface Ladder {
+  title: string;
+  entries: LadderEntry[];
+  collectable: boolean;
+}
+
+function ladderFor(scene: BoardScene, kind: LadderKind, typeId: string): Ladder | null {
+  const chain = getChain(typeId);
+  if (!chain) return null;
+  if (kind === 'pieces') {
+    const names = SPAWNER_PIECE_NAMES[typeId];
+    if (!names) return null;
+    return {
+      title: `${FAMILY_NAMES[typeId] ?? typeId.toUpperCase()} SOURCE PIECES`,
+      collectable: false,
+      entries: names.map((label, index) => ({
+        tier: index + 1,
+        label,
+        // The piece takes the colour of the item tier above it, which is
+        // what `drawSpawnerPieceIcon` has always used.
+        color: chain.tiers[Math.min(index + 1, chain.tiers.length - 1)].color,
+        sprite: loadedPieceSprite(scene, typeId, index + 1)
+      }))
+    };
+  }
+  return {
+    title: FAMILY_NAMES[typeId] ?? typeId.toUpperCase(),
+    collectable: true,
+    entries: chain.tiers.map((def) => ({
+      tier: def.tier,
+      label: def.label,
+      color: def.color,
+      sprite: loadedItemSprite(scene, typeId, def.tier)
+    }))
+  };
+}
+
+export function openFamilyPanel(
+  scene: BoardScene, typeId: string, kind: LadderKind = 'items'
+): void {
   if (scene.modalOpen || scene.inputLocked) return;
   const chain = getChain(typeId);
   if (!chain) return;
+  const ladder = ladderFor(scene, kind, typeId);
+  if (!ladder) return;
   scene.modalOpen = true;
 
   const overlay = scene.add.container(0, 0).setDepth(3020);
@@ -46,7 +110,7 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   overlay.add(shade);
 
   const COLS = 3;
-  const rows = Math.ceil(chain.tiers.length / COLS);
+  const rows = Math.ceil(ladder.entries.length / COLS);
   const slot = 62;
   const gap = 8;
   const gridW = COLS * slot + (COLS - 1) * gap;
@@ -70,18 +134,20 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   const catcher = scene.add.zone(left + panelW / 2, top + panelH / 2, panelW, panelH).setInteractive();
   overlay.add([bg, catcher]);
 
-  const familyColor = chain.tiers[Math.min(4, chain.tiers.length - 1)].color;
+  const familyColor = ladder.entries[Math.min(4, ladder.entries.length - 1)].color;
   // The name IS kept, against the show-don't-tell rule, because a single
   // tier's icon does not tell you whether you are looking at Stone or Glass -
   // the art cannot carry it, which is exactly the exception that rule allows.
-  const title = scene.add.text(scene.viewW / 2, top + 24, FAMILY_NAMES[typeId] ?? typeId.toUpperCase(), {
+  const title = scene.add.text(scene.viewW / 2, top + 24, ladder.title, {
     resolution: textResolution,
     fontFamily: Theme.fontHeading, fontSize: '17px', fontStyle: 'bold',
     color: hex(familyColor)
   }).setOrigin(0.5);
   const count = scene.add.text(
     scene.viewW / 2, top + 44,
-    `${claimedInFamily(scene.collection, typeId)}/${chain.tiers.length}`,
+    ladder.collectable
+      ? `${claimedInFamily(scene.collection, typeId)}/${ladder.entries.length}`
+      : `${ladder.entries.length} PIECES`,
     {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
@@ -124,14 +190,19 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   const gridLeft = scene.viewW / 2 - gridW / 2;
   const gridTop = top + headerH;
 
-  chain.tiers.forEach((def, index) => {
+  ladder.entries.forEach((def, index) => {
     const column = index % COLS;
     const row = Math.floor(index / COLS);
     const cellTop = gridTop + row * (slot + gap);
     const cx = gridLeft + slot / 2 + column * (slot + gap);
     const cy = cellTop + slot / 2;
-    const discovered = isDiscovered(scene.collection, typeId, def.tier);
-    const claimed = isClaimed(scene.collection, typeId, def.tier);
+    // A REFERENCE LADDER IS ALWAYS OPEN. Source pieces are not in the
+    // Collection, so there is nothing to discover and nothing to claim -
+    // every tier is simply shown.
+    const discovered = ladder.collectable
+      ? isDiscovered(scene.collection, typeId, def.tier) : true;
+    const claimed = ladder.collectable
+      ? isClaimed(scene.collection, typeId, def.tier) : true;
 
     const plate = scene.add.graphics();
     let lit = discovered;
@@ -166,10 +237,16 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
     }
 
     const iconSize = slot * 0.9;
-    const spriteKey = loadedItemSprite(scene, typeId, def.tier);
+    const spriteKey = def.sprite;
     const useSprite = spriteKey !== null;
     const icon = useSprite ? scene.add.image(cx, cy, spriteKey!).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
-    const render = useSprite ? { materialAlpha: 1 } : drawTierIcon(icon as Phaser.GameObjects.Graphics, typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
+    const render = useSprite
+      ? { materialAlpha: 1 }
+      : ladder.collectable
+        ? drawTierIcon(icon as Phaser.GameObjects.Graphics, typeId, def.tier,
+                       iconSize, materialLighting(def.color, def.tier))
+        : (drawSpawnerPieceIcon(icon as Phaser.GameObjects.Graphics, typeId,
+                                def.tier, iconSize), { materialAlpha: 1 });
     icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
     if (!useSprite) {
       const present = iconPresentation(typeId, def.tier, iconSize);
@@ -204,7 +281,7 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
       scene.tweens.add({ targets: icon, alpha: render.materialAlpha, duration: 300, ease: 'Quad.Out' });
       drawPlate(true, false);
       select(def.tier, def.label, def.color);
-      count.setText(`${claimedInFamily(scene.collection, typeId)}/${chain.tiers.length}`);
+      count.setText(`${claimedInFamily(scene.collection, typeId)}/${ladder.entries.length}`);
     });
   });
 }

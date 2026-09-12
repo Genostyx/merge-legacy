@@ -268,7 +268,7 @@ import {
   stashSave,
   toggleFullscreen,
 } from './board/config';
-import { openFamilyPanel } from './board/familyPanel';
+import { openFamilyPanel, type LadderKind } from './board/familyPanel';
 import {
   onPointerUp as onPointerUpExt,
   onPointerDown as onPointerDownExt,
@@ -2289,7 +2289,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       if (!pressedInfo) return;
       pressedInfo = false;
       const family = this.familyForSelection();
-      if (family) openFamilyPanel(this, family);
+      if (family) openFamilyPanel(this, family.typeId, family.kind);
     });
     // A release anywhere else clears it, so a press that wanders off the button
     // and comes back cannot open the panel either.
@@ -2362,13 +2362,20 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
    * Currency chains are excluded on purpose: Credits and Energy are payouts
    * rather than a collection to complete.
    */
-  private familyForSelection(): string | null {
+  private familyForSelection(): { typeId: string; kind: LadderKind } | null {
     const selected = this.selectedItemKey ? this.views.get(this.selectedItemKey) : null;
-    if (selected instanceof TileView && !isCurrencyChain(selected.typeId)) return selected.typeId;
-    if (selected instanceof SpawnerPieceView) return selected.typeId;
-    if (selected instanceof SpawnerView) return selected.spawner.typeId;
+    if (selected instanceof TileView && !isCurrencyChain(selected.typeId)) {
+      return { typeId: selected.typeId, kind: 'items' };
+    }
+    // A PIECE ASKS ABOUT PIECES. Holding a Joined Beams and pressing the
+    // `i` used to answer with the wood ITEM chain, which is a different
+    // set of things entirely.
+    if (selected instanceof SpawnerPieceView) {
+      return { typeId: selected.typeId, kind: 'pieces' };
+    }
+    if (selected instanceof SpawnerView) return { typeId: selected.spawner.typeId, kind: 'items' };
     const rushed = this.rushTargetKey ? this.views.get(this.rushTargetKey) : null;
-    if (rushed instanceof SpawnerView) return rushed.spawner.typeId;
+    if (rushed instanceof SpawnerView) return { typeId: rushed.spawner.typeId, kind: 'items' };
     return null;
   }
 
