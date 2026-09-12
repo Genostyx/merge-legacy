@@ -19,11 +19,16 @@
  * traced values is exactly how they came out the wrong size.
  */
 export const ART_FILL_RATIO: Record<string, number> = {
+  // The pouch is still the drawn SVG, and keeps its traced number.
   'producer-coin-pouch': 0.611,
-  'producer-coin-basket': 0.751,
-  'producer-energy-basket': 0.795,
-  'producer-gem-basket': 0.766,
-  'energy-basket': 0.795,
+  // THE THREE BASKETS ARE RENDERS, and they came through one shared
+  // frame, so they share one measured fill. They were still carrying
+  // their traced values - 0.751 to 0.795 against an actual 0.847 - and
+  // were drawn up to 13% oversized on the board.
+  'producer-coin-basket': 0.847,
+  'producer-energy-basket': 0.847,
+  'producer-gem-basket': 0.847,
+  'energy-basket': 0.847,
 
   // EVERY SOURCE IS A RENDER NOW, so all four families follow the rule
   // the well already did: ONE number per family, taken from its largest
@@ -125,4 +130,180 @@ export function sourceBoxForCell(textureKey: string, drawn: number, cellSize: nu
     (MAX_H * cellSize) / (box * extent.h)
   );
   return box * fit;
+}
+
+/**
+ * Each rendered item's and piece's drawn box within its square canvas.
+ *
+ * `w` and `h` are the alpha bounds as fractions of the canvas; `bottom`
+ * is how far down the canvas the art's lowest pixel sits, which is what
+ * lets a piece be stood on the cell floor rather than centred in it.
+ *
+ * Measured by rasterising every PNG and scanning the alpha bounds. They
+ * are what `itemPlacement` sizes from - actual dimensions, not an area
+ * metric, because area cannot tell a flat wide thing from a tall narrow
+ * one and both of those exist in every family.
+ */
+export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number }> = {
+  'wood-1': { w: 0.865, h: 0.661, bottom: 0.833 },
+  'wood-2': { w: 0.865, h: 0.615, bottom: 0.807 },
+  'wood-3': { w: 0.865, h: 0.729, bottom: 0.865 },
+  'wood-4': { w: 0.865, h: 0.573, bottom: 0.786 },
+  'wood-5': { w: 0.865, h: 0.563, bottom: 0.781 },
+  'wood-6': { w: 0.865, h: 0.854, bottom: 0.927 },
+  'wood-7': { w: 0.865, h: 0.630, bottom: 0.818 },
+  'wood-8': { w: 0.833, h: 0.865, bottom: 0.932 },
+  'wood-9': { w: 0.844, h: 0.865, bottom: 0.932 },
+
+  'mineral-1': { w: 0.865, h: 0.469, bottom: 0.734 },
+  'mineral-2': { w: 0.865, h: 0.292, bottom: 0.646 },
+  'mineral-3': { w: 0.865, h: 0.510, bottom: 0.755 },
+  'mineral-4': { w: 0.865, h: 0.385, bottom: 0.693 },
+  'mineral-5': { w: 0.542, h: 0.865, bottom: 0.932 },
+  'mineral-6': { w: 0.865, h: 0.552, bottom: 0.776 },
+  'mineral-7': { w: 0.865, h: 0.667, bottom: 0.833 },
+  'mineral-8': { w: 0.865, h: 0.865, bottom: 0.932 },
+  'mineral-9': { w: 0.865, h: 0.771, bottom: 0.885 },
+
+  'glass-1': { w: 0.865, h: 0.438, bottom: 0.719 },
+  'glass-2': { w: 0.396, h: 0.703, bottom: 0.854 },
+  'glass-3': { w: 0.479, h: 0.448, bottom: 0.724 },
+  'glass-4': { w: 0.417, h: 0.573, bottom: 0.786 },
+  'glass-5': { w: 0.479, h: 0.406, bottom: 0.703 },
+  'glass-6': { w: 0.635, h: 0.625, bottom: 0.813 },
+  'glass-7': { w: 0.406, h: 0.667, bottom: 0.833 },
+  'glass-8': { w: 0.479, h: 0.531, bottom: 0.766 },
+  'glass-9': { w: 0.760, h: 0.828, bottom: 0.911 },
+
+  'water-1': { w: 0.313, h: 0.323, bottom: 0.661 },
+  'water-2': { w: 0.448, h: 0.333, bottom: 0.667 },
+  'water-3': { w: 0.635, h: 0.292, bottom: 0.646 },
+  'water-4': { w: 0.708, h: 0.323, bottom: 0.661 },
+  'water-5': { w: 0.865, h: 0.323, bottom: 0.661 },
+  'water-6': { w: 0.625, h: 0.375, bottom: 0.688 },
+  'water-7': { w: 0.635, h: 0.797, bottom: 0.901 },
+  'water-8': { w: 0.625, h: 0.573, bottom: 0.786 },
+  'water-9': { w: 0.667, h: 0.438, bottom: 0.719 },
+  'water-10': { w: 0.521, h: 0.521, bottom: 0.760 },
+  'water-11': { w: 0.677, h: 0.401, bottom: 0.703 },
+  'water-12': { w: 0.656, h: 0.375, bottom: 0.688 },
+
+  'currency-credit-1': { w: 0.604, h: 0.354, bottom: 0.677 },
+  'currency-credit-2': { w: 0.729, h: 0.302, bottom: 0.651 },
+  'currency-credit-3': { w: 0.552, h: 0.677, bottom: 0.839 },
+  'currency-credit-4': { w: 0.740, h: 0.583, bottom: 0.792 },
+  'currency-credit-5': { w: 0.792, h: 0.693, bottom: 0.844 },
+  'currency-credit-6': { w: 0.844, h: 0.865, bottom: 0.932 },
+
+  'currency-energy-1': { w: 0.396, h: 0.625, bottom: 0.813 },
+  'currency-energy-2': { w: 0.719, h: 0.688, bottom: 0.844 },
+  'currency-energy-3': { w: 0.776, h: 0.740, bottom: 0.870 },
+  'currency-energy-4': { w: 0.813, h: 0.750, bottom: 0.875 },
+  'currency-energy-5': { w: 0.865, h: 0.792, bottom: 0.896 },
+
+  'currency-gem-1': { w: 0.458, h: 0.583, bottom: 0.792 },
+  'currency-gem-2': { w: 0.740, h: 0.625, bottom: 0.813 },
+  'currency-gem-3': { w: 0.786, h: 0.677, bottom: 0.839 },
+  'currency-gem-4': { w: 0.823, h: 0.688, bottom: 0.844 },
+  'currency-gem-5': { w: 0.865, h: 0.719, bottom: 0.859 },
+
+  'piece-wood-1': { w: 0.500, h: 0.375, bottom: 0.688 },
+  'piece-wood-2': { w: 0.583, h: 0.401, bottom: 0.703 },
+  'piece-wood-3': { w: 0.510, h: 0.760, bottom: 0.880 },
+  'piece-wood-4': { w: 0.625, h: 0.865, bottom: 0.932 },
+
+  'piece-mineral-1': { w: 0.500, h: 0.375, bottom: 0.688 },
+  'piece-mineral-2': { w: 0.583, h: 0.401, bottom: 0.703 },
+  'piece-mineral-3': { w: 0.510, h: 0.760, bottom: 0.880 },
+  'piece-mineral-4': { w: 0.625, h: 0.865, bottom: 0.932 },
+
+  'piece-glass-1': { w: 0.500, h: 0.375, bottom: 0.688 },
+  'piece-glass-2': { w: 0.583, h: 0.406, bottom: 0.703 },
+  'piece-glass-3': { w: 0.510, h: 0.760, bottom: 0.880 },
+  'piece-glass-4': { w: 0.625, h: 0.865, bottom: 0.932 },
+
+  'piece-water-1': { w: 0.625, h: 0.365, bottom: 0.682 },
+  'piece-water-2': { w: 0.583, h: 0.865, bottom: 0.932 },
+  'piece-water-3': { w: 0.646, h: 0.521, bottom: 0.760 },
+  'piece-water-4': { w: 0.750, h: 0.708, bottom: 0.854 },
+
+  'piece-decagon-1': { w: 0.448, h: 0.344, bottom: 0.672 },
+  'piece-decagon-2': { w: 0.688, h: 0.354, bottom: 0.677 },
+  'piece-decagon-3': { w: 0.865, h: 0.490, bottom: 0.745 },
+  'piece-decagon-4': { w: 0.667, h: 0.406, bottom: 0.703 },
+  'piece-decagon-5': { w: 0.813, h: 0.563, bottom: 0.781 },
+};
+
+/**
+ * Where one item sits in its cell, and how big it is drawn.
+ *
+ * CENTRED FIRST, then pushed up only if it would drop out the bottom.
+ * An item may stand taller than its cell and overhang the row above -
+ * that is what makes a board of them read as objects on a surface
+ * rather than as icons in a grid - but it must never cross its own
+ * left, right or bottom edge, because those are the edges a player
+ * reads as "this is the piece I am about to drag". So a short item
+ * sits in the middle of its cell, and a tall one rises out of the top
+ * with its feet on the floor.
+ *
+ * Centring is on the ART, not on the canvas. The renders put their
+ * subject wherever the frame happened to land it, so centring the
+ * image leaves a low-sitting object low and a high one floating.
+ *
+ * WIDTH is the cap. Height gets a ceiling too, but a generous one well
+ * above a cell: without it the glass obelisk - narrow and tall - scales
+ * past one and a half cells chasing the width target.
+ *
+ * Sizing on width and height rather than on `sqrt(w * h)` is the point:
+ * an area metric cannot tell a flat wide thing from a tall narrow one.
+ *
+ * ONE SIZE FOR EVERY TIER. A tier nine item is a different SHAPE from a
+ * tier one, not a bigger one.
+ */
+const ITEM_TARGET_W = 0.86;
+const ITEM_MAX_H = 1.30;
+/** The cell's own floor, as a fraction of the size the caller passes. */
+const ITEM_FLOOR = 0.50;
+
+export function itemPlacement(
+  textureKey: string, cellSize: number
+): { box: number; offsetY: number } {
+  const extent = ITEM_EXTENT[textureKey];
+  // An unmeasured key keeps the old behaviour rather than guessing: a
+  // missing entry should be invisible, not a regression.
+  if (!extent) return { box: cellSize, offsetY: 0 };
+  const box = cellSize * Math.min(
+    ITEM_TARGET_W / extent.w, ITEM_MAX_H / extent.h);
+  // Where the art's own centre and feet sit inside the image, which is
+  // drawn centred on the origin.
+  const artCentre = (extent.bottom - extent.h / 2 - 0.5) * box;
+  let offsetY = -artCentre;
+  const feet = offsetY + (extent.bottom - 0.5) * box;
+  const floor = cellSize * ITEM_FLOOR;
+  if (feet > floor) offsetY -= feet - floor;
+  return { box, offsetY };
+}
+
+export function itemBoxForCell(textureKey: string, cellSize: number): number {
+  return itemPlacement(textureKey, cellSize).box;
+}
+
+/**
+ * The same thing addressed the way callers actually hold it: a family
+ * and a tier, rather than a texture key.
+ */
+export function itemDisplaySize(typeId: string, tier: number, cellSize: number): number {
+  return itemBoxForCell(`${typeId}-${tier}`, cellSize);
+}
+
+export function pieceDisplaySize(typeId: string, tier: number, cellSize: number): number {
+  return itemBoxForCell(`piece-${typeId}-${tier}`, cellSize);
+}
+
+export function itemPlacementFor(typeId: string, tier: number, cellSize: number) {
+  return itemPlacement(`${typeId}-${tier}`, cellSize);
+}
+
+export function piecePlacementFor(typeId: string, tier: number, cellSize: number) {
+  return itemPlacement(`piece-${typeId}-${tier}`, cellSize);
 }

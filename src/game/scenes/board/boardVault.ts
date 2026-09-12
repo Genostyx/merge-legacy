@@ -11,6 +11,7 @@ import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView'
 import { getTierDef } from '../../data/chains';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import { boxForDrawnArt } from '../../objects/ArtFill';
+import { itemDisplaySize, pieceDisplaySize } from '../../objects/ArtFill';
 import { loadedItemSprite, loadedPieceSprite } from '../../objects/itemSprites';
 
 /**
@@ -146,14 +147,16 @@ export function makeForcedSpawnIcon(
   if (spawn.kind === 'spawner-piece') {
     const key = loadedPieceSprite(scene, spawn.typeId, spawn.tier);
     if (key) {
-      container.add(scene.add.image(0, 0, key).setDisplaySize(size, size));
+      const box = pieceDisplaySize(spawn.typeId, spawn.tier, size);
+      container.add(scene.add.image(0, 0, key).setDisplaySize(box, box));
       return container;
     }
   }
   if (spawn.kind === 'item') {
     const key = loadedItemSprite(scene, spawn.typeId, spawn.tier);
     if (key) {
-      container.add(scene.add.image(0, 0, key).setDisplaySize(size, size));
+      const box = itemDisplaySize(spawn.typeId, spawn.tier, size);
+      container.add(scene.add.image(0, 0, key).setDisplaySize(box, box));
       return container;
     }
   }

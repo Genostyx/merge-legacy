@@ -14,6 +14,7 @@ import {
   unclaimedDiscoveryCount
 } from '../../collection/Collection';
 import { loadedItemSprite } from '../../objects/itemSprites';
+import { itemDisplaySize } from '../../objects/ArtFill';
 
 /**
  * collectionPanel, lifted out of BoardScene whole.
@@ -202,7 +203,10 @@ export function openCollection(scene: BoardScene, initialScroll = 0): void {
       const iconSize = slotSize * 0.9;
       const spriteKey = loadedItemSprite(scene, chain.typeId, def.tier);
       const useSprite = spriteKey !== null;
-      const icon = useSprite ? scene.add.image(cx, cy, spriteKey!).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
+      const spriteBox = itemDisplaySize(chain.typeId, def.tier, iconSize);
+      const icon = useSprite
+        ? scene.add.image(cx, cy, spriteKey!).setDisplaySize(spriteBox, spriteBox)
+        : scene.add.graphics();
       const render = useSprite ? { materialAlpha: 1 } : drawTierIcon(icon as Phaser.GameObjects.Graphics, chain.typeId, def.tier, iconSize, materialLighting(def.color, def.tier));
       icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
       if (!useSprite) {

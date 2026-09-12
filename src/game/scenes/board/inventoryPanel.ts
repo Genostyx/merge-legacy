@@ -32,6 +32,7 @@ import {
 } from '../../inventory/Inventory';
 import { loadedPieceSprite } from '../../objects/itemSprites';
 import { loadedItemSprite } from '../../objects/itemSprites';
+import { itemDisplaySize, pieceDisplaySize } from '../../objects/ArtFill';
 
 /**
  * inventoryPanel, lifted out of BoardScene whole.
@@ -454,7 +455,9 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
       } else if (item.kind === 'spawner-piece') {
         const pieceKey = loadedPieceSprite(scene, item.typeId, item.tier);
         if (pieceKey) {
-          const art = scene.add.image(cx, cy, pieceKey).setDisplaySize(size, size);
+          const pieceBox = pieceDisplaySize(item.typeId, item.tier, size);
+          const art = scene.add.image(cx, cy, pieceKey)
+            .setDisplaySize(pieceBox, pieceBox);
           visual = art;
           content.add(art);
         } else {
@@ -462,8 +465,9 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         }
         icon.setPosition(cx, cy - 2);
       } else if (loadedItemSprite(scene, item.typeId, item.tier)) {
+        const itemBox = itemDisplaySize(item.typeId, item.tier, size);
         const image = scene.add.image(cx, cy, loadedItemSprite(scene, item.typeId, item.tier)!)
-          .setDisplaySize(size, size);
+          .setDisplaySize(itemBox, itemBox);
         visual = image;
         content.add(image);
       } else if (item.typeId.startsWith('currency-') && !(item.typeId === 'currency-credit' && item.tier >= 3)) {

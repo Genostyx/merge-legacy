@@ -8,6 +8,7 @@ import type { IconFootprint } from './TierIcons';
 import { Theme, materialLighting } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
 import { loadedItemSprite } from './itemSprites';
+import { itemPlacementFor } from './ArtFill';
 
 /**
  * A locked tile is drawn as a SILHOUETTE, not as a dimmed version of itself.
@@ -148,7 +149,13 @@ export class TileView extends Phaser.GameObjects.Container {
       this.icon.setVisible(false);
       this.bg.clear();
       const art = this.scene.add.image(0, 0, sprite);
-      art.setDisplaySize(size, size);
+      // SIZED AND PLACED OFF THE ART, not off the canvas it was
+      // rendered on - see ArtFill.itemPlacement. At `size, size` a twig
+      // drew as large as an heirloom, because wood and mineral are
+      // framed tier by tier; and centring the CANVAS is not centring
+      // the art, since the frame puts each subject where it lands.
+      const { box, offsetY } = itemPlacementFor(this.typeId, this.tier, size);
+      art.setDisplaySize(box, box).setY(offsetY);
       if (this.locked) art.setTint(0x555555);
       this.bg.setScale(1).setPosition(0, 0);
       this.drawContactShadow({ width: size * 0.55, height: size * 0.5, centerX: 0, centerY: 0, baselineY: size * 0.3 });

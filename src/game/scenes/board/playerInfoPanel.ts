@@ -3,7 +3,7 @@ import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { buildCurrencyCluster } from '../../ui/CurrencyCluster';
-import { CRATE_DRAWN, drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, CRATE_RENDER_BOX, drawCrate } from '../../objects/TierIcons';
 import type { CrateTier } from '../../rewards/Rewards';
 import {
   claimDaily,
@@ -187,7 +187,7 @@ export function openPlayerInfo(scene: BoardScene): void {
     rewardCrate.clear().setAlpha(0.78);
     const key = loadedCrateSprite(scene, tier);
     if (key) {
-      const drawn = 36 * CRATE_DRAWN.width * 1.5;
+      const drawn = 36 * CRATE_DRAWN.width * CRATE_RENDER_BOX;
       rewardCrateSprite.setTexture(key).setDisplaySize(drawn, drawn)
         .setAlpha(0.78).setVisible(true);
       return;
@@ -405,7 +405,7 @@ export function openPlayerInfo(scene: BoardScene): void {
         dailyIcons[index].setPosition(centerX, iconY);
         const stripKey = loadedCrateSprite(scene, reward.tier);
         if (stripKey) {
-          const drawn = STRIP_CRATE * CRATE_DRAWN.width * 1.5;
+          const drawn = STRIP_CRATE * CRATE_DRAWN.width * CRATE_RENDER_BOX;
           dailyCrates[index].setTexture(stripKey).setPosition(centerX, iconY)
             .setDisplaySize(drawn, drawn).setAlpha(isClaimed ? 0.5 : 1)
             .setVisible(true);

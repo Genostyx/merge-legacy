@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { getTierDef } from '../data/chains';
 import { loadedPieceSprite } from './itemSprites';
+import { piecePlacementFor } from './ArtFill';
 import { Theme, materialLighting, toneForNormal } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
 
@@ -410,7 +411,11 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
         this.sprite = this.scene.add.image(0, 0, sprite);
         this.addAt(this.sprite, this.getIndex(this.art));
       }
-      this.sprite.setTexture(sprite).setDisplaySize(size, size).setVisible(true);
+      // Sized and stood off the art, like the tiles - see
+      // ArtFill.itemPlacement.
+      const { box, offsetY } = piecePlacementFor(this.typeId, this.tier, size);
+      this.sprite.setTexture(sprite).setDisplaySize(box, box)
+        .setY(offsetY).setVisible(true);
       return;
     }
     this.sprite?.setVisible(false);

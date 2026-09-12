@@ -3,7 +3,7 @@ import type { BoardScene } from '../BoardScene';
 import { loadedCrateSprite } from '../../objects/itemSprites';
 import { CHROME_BASE_CELL, CRATE_RING_LANE, CRATE_RING_R, CRATE_RING_W } from './config';
 import { Theme, hex, textResolution } from '../../ui/Theme';
-import { CRATE_DRAWN, drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, CRATE_RENDER_BOX, drawCrate } from '../../objects/TierIcons';
 import { formatCountdown } from '../../economy/Economy';
 import { playerLevel } from '../../levels/Orders';
 import {
@@ -156,7 +156,7 @@ export function refreshCrateMeter(scene: BoardScene, now = Date.now()): void {
   scene.crateMeterIcon.clear().setPosition(cx, cy).setAlpha(meterAlpha);
   const meterKey = loadedCrateSprite(scene, showTier);
   if (meterKey) {
-    const drawn = meterScale * CRATE_DRAWN.width * 1.5;
+    const drawn = meterScale * CRATE_DRAWN.width * CRATE_RENDER_BOX;
     scene.crateMeterSprite
       .setTexture(meterKey).setPosition(cx, cy)
       .setDisplaySize(drawn, drawn).setAlpha(meterAlpha).setVisible(true);

@@ -48,6 +48,7 @@ import {
 } from '../../shop/SupplyCrates';
 import { loadedPieceSprite } from '../../objects/itemSprites';
 import { loadedItemSprite } from '../../objects/itemSprites';
+import { itemDisplaySize, pieceDisplaySize } from '../../objects/ArtFill';
 
 /**
  * The shop panel, lifted out of BoardScene whole.
@@ -813,15 +814,17 @@ export function buildOfferSlot(scene: BoardScene, container: Phaser.GameObjects.
   } else if (offer.kind === 'spawner-piece') {
     const pieceKey = loadedPieceSprite(scene, offer.typeId, offer.tier);
     if (pieceKey) {
+      const pieceBox = pieceDisplaySize(offer.typeId, offer.tier, ICON_SIZE * 0.92);
       container.add(scene.add.image(x, y + 64, pieceKey)
-        .setDisplaySize(ICON_SIZE * 0.92, ICON_SIZE * 0.92));
+        .setDisplaySize(pieceBox, pieceBox));
     } else {
       drawSpawnerPieceIcon(icon, offer.typeId, offer.tier, ICON_SIZE * 0.92);
       icon.setPosition(x, y + 64);
     }
   } else if (loadedItemSprite(scene, offer.typeId, offer.tier)) {
+    const itemBox = itemDisplaySize(offer.typeId, offer.tier, ICON_SIZE);
     container.add(scene.add.image(x, y + 64, loadedItemSprite(scene, offer.typeId, offer.tier)!)
-      .setDisplaySize(ICON_SIZE, ICON_SIZE));
+      .setDisplaySize(itemBox, itemBox));
   } else {
     const { materialAlpha } = drawTierIcon(icon, offer.typeId, offer.tier, ICON_SIZE, materialLighting(baseColor, offer.tier));
     icon.setAlpha(materialAlpha);

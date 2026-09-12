@@ -813,6 +813,20 @@ export const CRATE_DRAWN = {
 };
 
 /**
+ * Display box needed to draw a rendered crate at a given drawn width.
+ *
+ * The renders are square canvases with the crate centred in them, so a
+ * box the width of the art draws it too small - it has to be divided by
+ * how much of the canvas the art actually covers. MEASURED at 0.852 of
+ * the width by rasterising the PNGs and scanning the alpha bounds.
+ *
+ * This was 1.5 while it was a guess, which drew every crate in the game
+ * about a quarter too large - the meter, the daily strip, the player
+ * card, the vault preview and the board itself.
+ */
+export const CRATE_RENDER_BOX = 1 / 0.852;
+
+/**
  * A crate as a GAME OBJECT: the render when one is loaded, the drawing
  * when it is not.
  *
@@ -833,7 +847,8 @@ export function crateArt(
   if (key) {
     // The render is a square canvas with the crate centred in it, so it
     // is sized by the box rather than by the drawn face.
-    return scene.add.image(0, 0, key).setDisplaySize(drawnWidth * 1.5, drawnWidth * 1.5);
+    const box = drawnWidth * CRATE_RENDER_BOX;
+    return scene.add.image(0, 0, key).setDisplaySize(box, box);
   }
   const g = scene.add.graphics();
   drawCrate(g, drawnWidth / CRATE_DRAWN.width, tier);
