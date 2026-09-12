@@ -10,6 +10,7 @@ import { MAX_DISPENSER_TIER } from '../../dispensers/Dispensers';
 import { addGems } from '../../economy/Economy';
 import { claimDiscovery, claimedInFamily, isClaimed, isDiscovered } from '../../collection/Collection';
 import { loadedItemSprite, loadedPieceSprite } from '../../objects/itemSprites';
+import { artBoxFor } from '../../objects/ArtFill';
 
 /**
  * ONE FAMILY'S LADDER, opened from the `i` in the action tray.
@@ -43,6 +44,9 @@ interface LadderEntry {
   label: string;
   color: number;
   sprite: string | null;
+  /** Key into the measured art tables, so the row can be sized off the
+   *  art rather than off the square it was rendered on. */
+  extentKey: string;
 }
 
 interface Ladder {
@@ -66,7 +70,8 @@ function ladderFor(scene: BoardScene, kind: LadderKind, typeId: string): Ladder 
         // The piece takes the colour of the item tier above it, which is
         // what `drawSpawnerPieceIcon` has always used.
         color: chain.tiers[Math.min(index + 1, chain.tiers.length - 1)].color,
-        sprite: loadedPieceSprite(scene, typeId, index + 1)
+        sprite: loadedPieceSprite(scene, typeId, index + 1),
+        extentKey: `piece-${typeId}-${index + 1}`
       }))
     };
   }
@@ -83,7 +88,8 @@ function ladderFor(scene: BoardScene, kind: LadderKind, typeId: string): Ladder 
         label: `Source ${String(index + 1).padStart(2, '0')}`,
         color: chain.tiers[Math.min(index, chain.tiers.length - 1)].color,
         sprite: scene.textures.exists(`source-${typeId}-${index + 1}`)
-          ? `source-${typeId}-${index + 1}` : null
+          ? `source-${typeId}-${index + 1}` : null,
+        extentKey: `source-${typeId}-${index + 1}`
       }))
     };
   }
@@ -94,7 +100,8 @@ function ladderFor(scene: BoardScene, kind: LadderKind, typeId: string): Ladder 
       tier: def.tier,
       label: def.label,
       color: def.color,
-      sprite: loadedItemSprite(scene, typeId, def.tier)
+      sprite: loadedItemSprite(scene, typeId, def.tier),
+      extentKey: `${typeId}-${def.tier}`
     }))
   };
 }
@@ -258,7 +265,14 @@ export function openFamilyPanel(
     const iconSize = slot * 0.9;
     const spriteKey = def.sprite;
     const useSprite = spriteKey !== null;
-    const icon = useSprite ? scene.add.image(cx, cy, spriteKey!).setDisplaySize(iconSize, iconSize) : scene.add.graphics();
+    // Sized off the art, like the board - see ArtFill. Left at the full
+    // square, the glass sand heap drew nearly twice the width of the
+    // shard beside it, because it is the widest thing in the frame its
+    // family shares.
+    const spriteBox = artBoxFor(def.extentKey, iconSize);
+    const icon = useSprite
+      ? scene.add.image(cx, cy, spriteKey!).setDisplaySize(spriteBox, spriteBox)
+      : scene.add.graphics();
     const render = useSprite
       ? { materialAlpha: 1 }
       : ladder.collectable

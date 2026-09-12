@@ -11,6 +11,7 @@ import {
 import type { GridPosition } from '../../types';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { itemDisplaySize } from '../../objects/ArtFill';
 import { CRATE_LABELS } from '../../rewards/Rewards';
 import { TileView } from '../../objects/TileView';
 import { SpawnerView } from '../../objects/SpawnerView';
@@ -506,7 +507,8 @@ scene: BoardScene,
   const splitSprite = loadedItemSprite(scene, target.typeId, target.tier);
   if (splitSprite) {
     icon.setVisible(false);
-    overlay.add(scene.add.image(cx, cy - 20, splitSprite).setDisplaySize(iconSize, iconSize));
+    const splitBox = itemDisplaySize(target.typeId, target.tier, iconSize);
+    overlay.add(scene.add.image(cx, cy - 20, splitSprite).setDisplaySize(splitBox, splitBox));
   }
 
   const close = (): void => {

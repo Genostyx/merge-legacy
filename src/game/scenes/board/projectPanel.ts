@@ -26,6 +26,7 @@ import type { CrateTier } from '../../rewards/Rewards';
 import { RoomView3D } from '../../rooms/RoomView3D';
 import { ROOM_PIECES, ROOM_SCOPES, roomPiecesForStage, type RoomPiece } from '../../rooms/RoomView3D';
 import { loadedItemSprite } from '../../objects/itemSprites';
+import { itemDisplaySize } from '../../objects/ArtFill';
 
 /**
  * projectPanel, lifted out of BoardScene whole.
@@ -755,8 +756,9 @@ export function openProject(scene: BoardScene): void {
         const reqSprite = loadedItemSprite(scene, row.req.typeId, row.req.tier);
         if (reqSprite) {
           icon.setVisible(false);
+          const reqBox = itemDisplaySize(row.req.typeId, row.req.tier, art);
           footer.add(scene.add.image(left + 20, y, reqSprite)
-            .setDisplaySize(art, art).setAlpha(row.met ? 1 : 0.55));
+            .setDisplaySize(reqBox, reqBox).setAlpha(row.met ? 1 : 0.55));
         }
         textX = left + 40;
       }

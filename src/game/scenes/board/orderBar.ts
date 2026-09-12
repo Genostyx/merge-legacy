@@ -41,6 +41,7 @@ import {
 import { CRATE_LABELS, isMeterCooling, shippingContainerPayload } from '../../rewards/Rewards';
 import { SHOP_ROW_KEYS, rerollShopRow } from '../../shop/Shop';
 import { loadedItemSprite } from '../../objects/itemSprites';
+import { itemDisplaySize } from '../../objects/ArtFill';
 
 /**
  * orderBar, lifted out of BoardScene whole.
@@ -479,7 +480,8 @@ export function refreshOrderBar(scene: BoardScene): void {
     if (itemKey) {
       icon.setVisible(false);
       shadow.setVisible(false);
-      token.add(scene.add.image(px, 0, itemKey).setDisplaySize(reqArt, reqArt));
+      const reqBox = itemDisplaySize(line.typeId, line.tier, reqArt);
+      token.add(scene.add.image(px, 0, itemKey).setDisplaySize(reqBox, reqBox));
     }
     // The plate is its own press target, sitting above the card's zone so
     // `topOnly` routes the press here. It still arms the bar's horizontal

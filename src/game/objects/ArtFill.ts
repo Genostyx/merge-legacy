@@ -250,9 +250,11 @@ export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number 
  * subject wherever the frame happened to land it, so centring the
  * image leaves a low-sitting object low and a high one floating.
  *
- * WIDTH is the cap. Height gets a ceiling too, but a generous one well
- * above a cell: without it the glass obelisk - narrow and tall - scales
- * past one and a half cells chasing the width target.
+ * WIDTH is the cap. Height gets a ceiling too, a little above a cell:
+ * without one the glass obelisk - narrow and tall - scales past one and
+ * a half cells chasing the width target. Anything that reaches the
+ * ceiling is too deep to centre, so it stands on the floor and
+ * overhangs the top by whatever is left.
  *
  * Sizing on width and height rather than on `sqrt(w * h)` is the point:
  * an area metric cannot tell a flat wide thing from a tall narrow one.
@@ -261,7 +263,10 @@ export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number 
  * tier one, not a bigger one.
  */
 const ITEM_TARGET_W = 0.86;
-const ITEM_MAX_H = 1.30;
+// 1.10 of the size passed in, which is 1.056 of a real cell, so a
+// capped item clears the top edge by about 6% of a cell. Below roughly
+// 1.02 nothing overhangs at all.
+const ITEM_MAX_H = 1.10;
 /** The cell's own floor, as a fraction of the size the caller passes. */
 const ITEM_FLOOR = 0.50;
 
@@ -298,6 +303,17 @@ export function itemDisplaySize(typeId: string, tier: number, cellSize: number):
 
 export function pieceDisplaySize(typeId: string, tier: number, cellSize: number): number {
   return itemBoxForCell(`piece-${typeId}-${tier}`, cellSize);
+}
+
+/**
+ * The same sizing for a caller that only holds an extent key - the info
+ * ladder builds its rows from mixed kinds and carries one string.
+ * Sources fall through to their own table.
+ */
+export function artBoxFor(extentKey: string, size: number): number {
+  if (ITEM_EXTENT[extentKey]) return itemBoxForCell(extentKey, size);
+  if (ART_EXTENT[extentKey]) return sourceBoxForCell(extentKey, size, size);
+  return size;
 }
 
 export function itemPlacementFor(typeId: string, tier: number, cellSize: number) {
