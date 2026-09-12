@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
-import { currencyBoxFor, currencyIcon } from '../../ui/CurrencyGlyph';
+
 import { buildCurrencyCluster } from '../../ui/CurrencyCluster';
 import { CRATE_DRAWN, CRATE_RENDER_BOX, drawCrate } from '../../objects/TierIcons';
 import type { CrateTier } from '../../rewards/Rewards';
@@ -229,8 +229,13 @@ export function openPlayerInfo(scene: BoardScene): void {
   // wide for a tab that has had to shrink, which is the other half of "the
   // days don't fit".
   const dailyFit = Phaser.Math.Clamp(dailyTabW / 62, 0.72, 1);
-  /** How much ART each day's reward draws, coin and crate alike. */
+  /** How much ART each day's crate draws. */
   const DAILY_ART = 36;
+  /** Day two's pair. */
+  const DAILY_COIN = 44;
+  /** Day one's single coin - BIGGER, because it is on its own. Two coins
+   *  fill a slot between them; one at the same size just looks small. */
+  const DAILY_COIN_SINGLE = 62;
   const dailyLabelPx = Math.round(Phaser.Math.Clamp(10 * dailyFit, 8, 10));
   const dailyValuePx = Math.round(Phaser.Math.Clamp(9 * dailyFit, 7, 9));
   const dailyStrip = scene.add.graphics();
@@ -242,19 +247,21 @@ export function openPlayerInfo(scene: BoardScene): void {
   // Day 1 is the single Credit, which is an SVG mark and so an Image; day 2
   // is the Credit Stack, a drawn silhouette on the same graphics the crate
   // days use.
-  // SIZED TO THE CRATES IT SITS BESIDE, in drawn art rather than in box.
-  // `currencyIcon` shrinks a rendered mark to draw the same amount as the
-  // old SVG did, so a raw 30 came out as ~19 of actual coin against the
-  // 36 of actual crate on the days either side of it - the coin looked
-  // half the size of everything else on the strip. `currencyBoxFor` is
-  // the conversion: give it the mark height you want drawn.
-  const dailyCoin = currencyIcon(
-    scene, 'credit', currencyBoxFor('credit', DAILY_ART * dailyFit)
-  ).setVisible(false);
+  // DAY ONE IS BUILT BY THE SAME CODE AS DAY TWO, at the same size.
+  //
+  // It used to be a lone `currencyIcon` at a hand-picked number while the
+  // pair beside it came from `buildCurrencyCluster` at 44, so one coin
+  // drew visibly smaller than either of the two next to it - the same
+  // reward, at two scales, on one row. Going through the cluster builder
+  // with a count of one is the fix: whatever it does to a pair, it does
+  // to a single.
+  const dailyCoin = buildCurrencyCluster(scene, 'credit', 1, DAILY_COIN_SINGLE * dailyFit)
+    .flatMap(({ art, gloss }) => [art, gloss])
+    .map((part) => part.setData('ox', part.x).setData('oy', part.y).setVisible(false));
   // Day 2's pair, built once and repositioned as the strip redraws. Each
   // mark keeps its layout offset in data, since reading it back off `x`
   // after a reposition would compound.
-  const dailyPair = buildCurrencyCluster(scene, 'credit', 2, 44 * dailyFit)
+  const dailyPair = buildCurrencyCluster(scene, 'credit', 2, DAILY_COIN * dailyFit)
     .flatMap(({ art, gloss }) => [art, gloss])
     .map((part) => part.setData('ox', part.x).setData('oy', part.y).setVisible(false));
   const dailyDayLabels = Array.from({ length: 5 }, (_, index) => scene.add.text(0, 0,
@@ -400,9 +407,11 @@ export function openPlayerInfo(scene: BoardScene): void {
       // the coin uses, so the two cannot drift apart again.
       const STRIP_CRATE = (DAILY_ART * dailyFit) / CRATE_DRAWN.width;
       if (index === 0) {
-        dailyCoin.setVisible(reward.kind === 'credits')
-          .setPosition(centerX, iconY)
-          .setAlpha(isClaimed ? 0.5 : 1);
+        for (const part of dailyCoin) {
+          part.setVisible(reward.kind === 'credits')
+            .setPosition(centerX + part.getData('ox'), iconY + part.getData('oy'))
+            .setAlpha(isClaimed ? 0.5 : part.isTinted ? 0.2 : 1);
+        }
       } else if (index === 1) {
         for (const part of dailyPair) {
           part.setVisible(reward.kind === 'credits')
@@ -713,7 +722,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   card.add([
     cardBg, titleRule, title, profileBand, levelDisc, levelText, levelLabel, xpBar,
     rewardCrate, rewardCrateSprite, divider, guidance,
-    dailyStrip, ...dailyIcons, ...dailyCrates, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
+    dailyStrip, ...dailyIcons, ...dailyCrates, ...dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
     collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
     bookPanel, bookIcon, bookBadge, bookZone,
     legacyPanel, ...legacyArt, legacyLock, legacyLockNote, legacyBadge, legacyZone,

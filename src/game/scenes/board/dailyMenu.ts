@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
-import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { buildCurrencyCluster } from '../../ui/CurrencyCluster';
 import { CRATE_DRAWN, crateArt, drawCrate } from '../../objects/TierIcons';
 import { claimDaily, dailyAvailable, dailyRewardFor } from '../../rewards/Rewards';
@@ -231,9 +230,20 @@ export function openDailyMenu(scene: BoardScene): void {
       // mark rather than a drawn silhouette - and day 2 is the Credit Stack,
       // tier 3. One coin against a stack is the whole statement.
       if (index === 0) {
-        const coin = currencyIcon(scene, 'credit', 38).setPosition(iconX, iconY);
-        if (isClaimed) coin.setAlpha(0.45);
-        tab.add(coin);
+        // THROUGH THE CLUSTER, like day two, and sized so the single coin
+        // draws as wide as the crates further along the row. A lone
+        // `currencyIcon(38)` came out as a 28px box - `currencyIcon`
+        // shrinks a rendered mark to draw what the old SVG did - so day
+        // one was the smallest thing on a row of rewards.
+        for (const { art, gloss } of buildCurrencyCluster(
+          scene, 'credit', 1, DAILY_ICON * 1.8
+        )) {
+          for (const part of [art, gloss]) {
+            part.setPosition(iconX + part.x, iconY + part.y);
+            if (isClaimed) part.setAlpha(0.45);
+            tab.add(part);
+          }
+        }
       } else {
         // Twin Credits, the family's tier 2 - the same pair the board draws,
         // through the shared cluster so there is one definition of what a
