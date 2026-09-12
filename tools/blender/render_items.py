@@ -46,6 +46,29 @@ MARGIN = 1.16                        # frame padding, as a multiple of the fit
 # resolution from 192 to 384 to 768 never fixed it and never could.
 #
 # 256 gives every board item a real mipmap chain down to the ~74px tile.
+# HOW FAR THE FACE-ON MARKS TURN, in degrees about the screen vertical.
+#
+# 0, measured rather than chosen. At -30 the coin, the gem and the token all
+# turned their faces away from both lamps and came back dull - the chip coin
+# averaged 0x765f1c with 3 percent of it lit. Square on it averages 0xccb67e
+# with 60 percent lit. Every attempt to make these three "shinier" through
+# roughness or a clear coat moved the highlight by less than half a percent,
+# because the studio's lamps are large and soft: on these surfaces brightness
+# comes from facing a lamp, not from polish.
+MARK_SWING = 10
+
+# And how far the camera sits ABOVE them, as a tilt on the mark itself - the
+# camera is shared by every family, so the same view is had by tipping the
+# piece. Negative looks down on it, the way the lightning bolt is seen.
+MARK_TILT = 12
+
+# The token keeps the -10 it was set at; only the coin and the gem moved to
+# +10. Same axis, its own number.
+TOKEN_SWING = -10
+
+# The coin's own tilt. Leaving it on MARK_TILT would drag the gem with it.
+COIN_TILT = 6
+
 RESOLUTION = 256
 
 # Families that need more than the default, and why.
@@ -1272,9 +1295,10 @@ def facing_profile(ob):
     # presented at one angle instead of each having its own. The 9 degree
     # drop that used to go with it is gone for the same reason: the coins do
     # not have one, and it only tipped these out of line with them.
-    swing = Matrix.Rotation(math.radians(-30), 4, view @ Vector((0, 1, 0)))
+    swing = Matrix.Rotation(math.radians(MARK_SWING), 4, view @ Vector((0, 1, 0)))
+    tilt = Matrix.Rotation(math.radians(MARK_TILT), 4, view @ Vector((1, 0, 0)))
     ob.rotation_euler = (
-        swing @ ob.rotation_euler.to_matrix().to_4x4()
+        tilt @ swing @ ob.rotation_euler.to_matrix().to_4x4()
     ).to_euler()
     return ob
 
@@ -1599,8 +1623,17 @@ def build_currency(kind: str):
                 piece = extrude_profile(BOLT, 0.10)
             else:
                 piece = extrude_profile(GEM, 0.20)
-            pieces.append(translate_to(facing_profile(piece),
-                                       beside(right, back)))
+            if kind == "currency-energy":
+                # 74.79 degrees about the VERTICAL - a door turn, and the
+                # only rotation the bolt gets. Taken off the pose the owner
+                # set in tools/blender/bolt.blend rather than guessed: every
+                # attempt at facing it to the camera, tipping it back or
+                # laying it flat was wrong, and the answer was simply a much
+                # bigger turn than any of them.
+                piece.rotation_euler.rotate_axis("Z", math.radians(74.79))
+            else:
+                facing_profile(piece)
+            pieces.append(translate_to(piece, beside(right, back)))
         out[tier] = stack(pieces)
     return out
 
@@ -1695,7 +1728,7 @@ def dress_currency(kind: str, out):
             shader.inputs["Transmission Weight"].default_value = 0.5
             shader.inputs["Roughness"].default_value = 0.04
             shader.inputs["IOR"].default_value = 1.75
-            polished(material, coat_roughness=0.03)
+            polished(material, coat_roughness=0.01)
         # A REAL CHAMFER on the credit pieces. The drawn coin has a stroked
         # outline inside its edge, and on a solid that is a chamfered rim -
         # at 0.010 on a 0.042-thick coin it was a hairline and the edge read
@@ -1714,6 +1747,11 @@ def currency_family(kind: str):
 # ---- the event token -------------------------------------------------------
 
 EVENT_TOKEN_HEX = 0x2fb59a
+
+# MEASURED off a render, the way every other family is. The token had no
+# correction at all, so it rendered at whatever the studio gave it - 0x15473d
+# against a swatch of 0x2fb59a, less than a third of its value.
+EVENT_TOKEN_MEASURED = 0x15473d
 
 
 def build_event_token():
@@ -1853,11 +1891,13 @@ def build_event_token():
     facing_camera(token)
     view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
     token.rotation_euler = (
-        Matrix.Rotation(math.radians(-30), 4, view @ Vector((0, 1, 0)))
+        Matrix.Rotation(math.radians(MARK_TILT), 4, view @ Vector((1, 0, 0)))
+        @ Matrix.Rotation(math.radians(TOKEN_SWING), 4, view @ Vector((0, 1, 0)))
         @ token.rotation_euler.to_matrix().to_4x4()
     ).to_euler()
 
-    material = tier_material("event-token", EVENT_TOKEN_HEX, EVENT_TOKEN_HEX)
+    material = tier_material("event-token", EVENT_TOKEN_HEX,
+                             EVENT_TOKEN_MEASURED, max_gain=3.0)
     shader = _shader(material)
     # 0.22 keeps a real metallic sheen. Roughing the surface to 0.38, or to
     # the chip coin's 0.541, also hides the banding - but it hides it by
@@ -1865,8 +1905,11 @@ def build_event_token():
     # banding was never a reflection problem. It is the rim chamfer's facets
     # being picked out one by one, which is fixed below in the geometry so
     # the finish does not have to pay for it.
-    shader.inputs["Metallic"].default_value = 1.0
-    shader.inputs["Roughness"].default_value = 0.22
+    # The credit chain's exact metal, in the token's own colour: 0.94 and
+    # 0.13, no coat, with the same max_gain 1.45 on the brightness
+    # correction above.
+    shader.inputs["Metallic"].default_value = 0.1
+    shader.inputs["Roughness"].default_value = 0.3
     # A HAIRLINE bevel. At 0.006 it was wider than the rays are thick and
     # melted the whole device into blobs - a struck mark needs its edges.
     # 20 DEGREES, and the number is not free. Too high and the rays' facets
@@ -1889,7 +1932,13 @@ def build_event_token():
     #
     # The width stays a hairline: width is what melts a struck device, and
     # the crown's rays are only 0.014 thick.
-    token.modifiers["Bevel"].segments = 6
+    # 16, matching the rim chamfer. Six segments over the arch's edges leaves
+    # each rounded strip coarse enough to shade as its own ridge, which is
+    # the banding across the band. Raising the segment count fixes it without
+    # moving a single vertex, so the arch keeps exactly the angle it had -
+    # raising the disc's side count to 128 also cleared the ridges but
+    # changed how the highlight runs along it.
+    token.modifiers["Bevel"].segments = 16
     return {1: token}
 
 
@@ -1927,26 +1976,72 @@ def build_chip_coin():
     bpy.context.view_layer.objects.active = body
     bpy.ops.object.modifier_apply(modifier="RimChamfer")
 
+    # FACED TO THE CAMERA, then swung and tilted like the other marks. A hard
+    # (90, 0, 0) was tried and points the struck face away from the camera -
+    # `coin` cuts its well and slot on +Z, so the mark only reads when +Z is
+    # what the camera sees. It came back as a blank disc.
     facing_camera(body)
     view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
     body.rotation_euler = (
-        Matrix.Rotation(math.radians(-30), 4, view @ Vector((0, 1, 0)))
+        Matrix.Rotation(math.radians(COIN_TILT), 4, view @ Vector((1, 0, 0)))
+        @ Matrix.Rotation(math.radians(MARK_SWING), 4, view @ Vector((0, 1, 0)))
         @ body.rotation_euler.to_matrix().to_4x4()
     ).to_euler()
 
-    measured = CURRENCY_MEASURED["currency-credit"][1]
+    # CALIBRATED THE WAY THE TOKEN IS: measured on this mark, at this
+    # material and this pose, with the same 3.0 cap. The board coins'
+    # measurement does not transfer - those were taken lying flat at 0.94
+    # metallic, where the render is a different colour entirely. Face on at
+    # 0.2 metallic the swatch comes back 0x5e4313.
     material = tier_material("credit-mark", CURRENCY_HEX["currency-credit"][1],
-                             measured, max_gain=1.45)
+                             0x5e4313, max_gain=3.0)
     shader = _shader(material)
     # Same finish as the event token. 0.541 was the right call while the rim
     # was banding, because roughness was the only lever that hid it - but it
     # hid it by throwing away the reflection that makes metal read as metal.
     # With the chamfer fixed above the banding is gone from the geometry, so
     # the sheen can come back.
+    # Low metallic so the base colour carries the brightness, the way the
+    # token does.
+    # GOLD LEAF. Real leaf is fully metallic with a warm yellow tint and a
+    # slightly broken surface - not a mirror, but nowhere near matte. The
+    # crinkle is what spreads a lamp into the soft sheen it has.
     shader.inputs["Metallic"].default_value = 1.0
-    shader.inputs["Roughness"].default_value = 0.22
+    shader.inputs["Roughness"].default_value = 0.28
+
+    # WARMED WITHOUT LOSING THE CALIBRATION. At low metallic the specular
+    # turns white and dilutes the gold, so the hue needs a push - but
+    # assigning a hand-picked Base Color REPLACES what tier_material
+    # computed and throws the measured correction away, which is what
+    # happened when this was a literal 0xffb82a.
+    #
+    # So the calibrated colour is warmed in place: the channels are tilted
+    # towards orange, then the whole triple is scaled back so its luminance
+    # is exactly what the calibration produced. Hue moves, value does not.
+    # A metal's base colour is the colour it TINTS its reflection, so for
+    # leaf it is the leaf's own yellow rather than a calibrated value - the
+    # calibration above only sets the starting point.
+    leaf = [srgb_to_linear(c) for c in (0xe8, 0xb6, 0x3c)]
+    shader.inputs["Base Color"].default_value = (*leaf, 1.0)
     finish(body, "credit-mark", material, bevel=0.0015,
            smooth_angle=math.radians(20))
+    return {1: body}
+
+
+def build_chip_gem():
+    """A brighter gem presentation reserved for the tiny HUD chip glyph."""
+    body = extrude_profile(GEM, 0.20)
+    # The profile is already built upright in X/Z, matching the energy bolt.
+    body.rotation_euler = (0.0, 0.0, 0.0)
+    material = tier_material("gem-mark", 0xdabaf4, 0x55406f, max_gain=2.1)
+    shader = _shader(material)
+    shader.inputs["Transmission Weight"].default_value = 0.05
+    shader.inputs["Roughness"].default_value = 0.06
+    shader.inputs["IOR"].default_value = 1.65
+    shader.inputs["Emission Color"].default_value = shader.inputs["Base Color"].default_value
+    shader.inputs["Emission Strength"].default_value = 0.12
+    polished(material, coat_roughness=0.025)
+    finish(body, "gem-mark", material, bevel=0.004)
     return {1: body}
 
 
@@ -2188,7 +2283,10 @@ def archive(path: str = ""):
     build_lights()
     configure_render()
 
-    builders = [("wood", build_wood), ("mineral", build_mineral)]
+    builders = [("wood", build_wood), ("mineral", build_mineral),
+                ("event-token", build_event_token),
+                ("credit-mark", build_chip_coin),
+                ("gem-mark", build_chip_gem)]
     for kind in CURRENCY_HEX:
         builders.append((kind, (lambda k: lambda: currency_family(k))(kind)))
 
@@ -2215,7 +2313,8 @@ def main(only: str = ""):
 
     families = [("wood", build_wood), ("mineral", build_mineral),
                 ("event-token", build_event_token),
-                ("credit-mark", build_chip_coin)]
+                ("credit-mark", build_chip_coin),
+                ("gem-mark", build_chip_gem)]
     for kind in CURRENCY_HEX:
         families.append((kind, (lambda k: lambda: currency_family(k))(kind)))
     for family, build in families:
