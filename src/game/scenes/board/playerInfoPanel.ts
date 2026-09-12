@@ -16,7 +16,7 @@ import { playerLevel, playerXpProgress } from '../../levels/Orders';
 import { addCoins } from '../../economy/Economy';
 import { floatingScore } from '../../fx/MergeFx';
 import { unclaimedDiscoveryCount } from '../../collection/Collection';
-import { claimableLegacyMilestones } from '../../legacy/LegacyMachine';
+import { LEGACY_UNLOCK_LEVEL, claimableLegacyMilestones } from '../../legacy/LegacyMachine';
 
 /**
  * playerInfoPanel, lifted out of BoardScene whole.
@@ -529,7 +529,12 @@ export function openPlayerInfo(scene: BoardScene): void {
 
   const legacyX = -left - 42;
   const legacyY = collectionY;
-  const legacyReady = claimableLegacyMilestones(scene.legacyMachine).length > 0;
+  // Its OWN gate, not the project's. They shared `projectUnlocked` at
+  // level 3, which put a system paced in days in front of a player still
+  // learning the board.
+  const legacyUnlocked = xp.level >= LEGACY_UNLOCK_LEVEL;
+  const legacyReady = legacyUnlocked
+    && claimableLegacyMilestones(scene.legacyMachine).length > 0;
   const legacyPanel = scene.add.graphics();
   legacyPanel.fillStyle(0x000000, 0.4);
   legacyPanel.fillRoundedRect(legacyX - 30, legacyY - 15.5, 60, 37, Theme.radiusChip);
@@ -542,13 +547,13 @@ export function openPlayerInfo(scene: BoardScene): void {
   legacyPanel.lineStyle(1, 0x000000, 0.35);
   legacyPanel.lineBetween(legacyX - 25, legacyY + 17.5, legacyX + 25, legacyY + 17.5);
   const legacyIcon = scene.add.graphics().setPosition(legacyX, legacyY - 2);
-  legacyIcon.fillStyle(Theme.currencyXp, projectUnlocked ? 0.95 : 0.38);
+  legacyIcon.fillStyle(Theme.currencyXp, legacyUnlocked ? 0.95 : 0.38);
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
     legacyIcon.fillRect(Math.cos(a) * 13 - 2, Math.sin(a) * 13 - 2, 4, 4);
   }
   legacyIcon.fillCircle(0, 0, 12);
-  legacyIcon.fillStyle(Theme.bg, projectUnlocked ? 0.9 : 0.38);
+  legacyIcon.fillStyle(Theme.bg, legacyUnlocked ? 0.9 : 0.38);
   legacyIcon.fillCircle(0, 0, 5);
   const legacyBadge = scene.add.text(legacyX + 23, legacyY - 14, legacyReady ? '!' : '', {
     resolution: textResolution,
@@ -559,6 +564,31 @@ export function openPlayerInfo(scene: BoardScene): void {
     backgroundColor: hex(Theme.currencyXp),
     padding: { x: 3, y: 1 }
   }).setOrigin(0.5).setVisible(legacyReady);
+  // Padlock and the requirement spelled out, the same treatment the
+  // collection gets - a greyed icon alone does not say WHEN.
+  const legacyLock = scene.add.graphics().setPosition(legacyX, legacyY - 3);
+  const legacyLockNote = scene.add.text(
+    legacyX - 36, legacyY, `UNLOCKS AT
+LEVEL ${LEGACY_UNLOCK_LEVEL}`,
+    {
+      resolution: textResolution,
+      fontFamily: Theme.fontMono,
+      fontSize: '8px',
+      fontStyle: 'bold',
+      color: hex(Theme.textOnDarkMuted),
+      align: 'right'
+    }
+  ).setOrigin(1, 0.5);
+  if (legacyUnlocked) {
+    legacyLockNote.setVisible(false);
+  } else {
+    legacyLock.fillStyle(Theme.textOnDark, 0.9);
+    legacyLock.fillRoundedRect(-7, -1, 14, 11, 2);
+    legacyLock.lineStyle(2.5, Theme.textOnDark, 0.9);
+    legacyLock.beginPath();
+    legacyLock.arc(0, -1, 4.5, Math.PI, 0);
+    legacyLock.strokePath();
+  }
   const legacyZone = scene.add.zone(legacyX, legacyY, 60, 44)
     .setInteractive({ useHandCursor: true });
 
@@ -575,7 +605,7 @@ export function openPlayerInfo(scene: BoardScene): void {
     dailyStrip, ...dailyIcons, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
     collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
     bookPanel, bookIcon, bookBadge, bookZone,
-    legacyPanel, legacyIcon, legacyBadge, legacyZone,
+    legacyPanel, legacyIcon, legacyLock, legacyLockNote, legacyBadge, legacyZone,
     closeBtn
   ]);
 
@@ -610,8 +640,8 @@ export function openPlayerInfo(scene: BoardScene): void {
   }));
   legacyZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
     dismiss();
-    if (projectUnlocked) scene.openLegacyMachine();
-    else scene.refreshActionTray('LEGACY MACHINE UNLOCKS AT LEVEL 3');
+    if (legacyUnlocked) scene.openLegacyMachine();
+    else scene.refreshActionTray(`LEGACY MACHINE UNLOCKS AT LEVEL ${LEGACY_UNLOCK_LEVEL}`);
   }));
   dailyClaimZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
       if (rewardClaimPending) return;

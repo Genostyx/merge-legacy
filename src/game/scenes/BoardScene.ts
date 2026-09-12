@@ -430,6 +430,7 @@ import {
   pieceSpritePath
 } from '../objects/itemSprites';
 import {
+  LEGACY_UNLOCK_LEVEL,
   advanceLegacyMachine,
   createDefaultLegacyMachine,
   type LegacyMachineState
@@ -3620,6 +3621,7 @@ TAP THE EVENT CARD TO SPEND IT`
    * the offline ones do.
    */
   tickLegacyMachine(): void {
+    if (playerLevel(this.orderState) < LEGACY_UNLOCK_LEVEL) return;
     const produced = advanceLegacyMachine(this.legacyMachine, Date.now());
     if (!produced.length) return;
     for (const entry of produced) {

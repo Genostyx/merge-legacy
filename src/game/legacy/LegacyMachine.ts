@@ -44,6 +44,16 @@ export type LegacyReward =
   | { kind: 'crate'; tier: CrateTier }
   | { kind: 'producer'; producerId: ResourceProducerId };
 
+/**
+ * The level the machine appears at.
+ *
+ * Later than the project's level 3, and deliberately: this is a long-haul
+ * side system measured in days and weeks, and handing it to a player who
+ * is still learning the board gives them a second economy to think about
+ * before the first one has settled.
+ */
+export const LEGACY_UNLOCK_LEVEL = 10;
+
 /** Gears the machine ships with. TORQUE adds more - see `legacyGearCount`. */
 export const LEGACY_BASE_GEARS = 8;
 
