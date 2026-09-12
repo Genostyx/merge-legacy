@@ -24,29 +24,22 @@ import {
   type LegacyReward
 } from '../../legacy/LegacyMachine';
 
-const MACHINE_TEXTURE = 'legacy-machine-0';
-/** Frames in the rendered loop. Nine teeth of gear 1, so it wraps. */
-const MACHINE_FRAMES = 18;
-/** Teeth of gear 1 the loop covers, and the gear's tooth count. */
-const MACHINE_LOOP_TEETH = 9;
-const MACHINE_GEAR_TEETH = 30;
-/** Below this the browser cannot show another frame anyway. */
-const MIN_FRAME_MS = 33;
-
 /**
- * How long one rendered frame should be held, for a given real rate.
+ * THE MACHINE IS DRAWN LIVE, not played back.
  *
- * The loop is nine teeth of a thirty-tooth gear - three tenths of a
- * revolution - so at R rotations per hour it represents 1080/R seconds of
- * the machine running. Driving the playback from that rather than from a
- * fixed delay is what makes an upgrade VISIBLE: the barrel actually speeds
- * up when gear one does.
+ * It used to be eighteen 512-square renders of the whole barrel swapped
+ * thirty times a second - 18MB of texture to animate four gears out of
+ * fifty, because a pre-rendered loop can only hold gears whose rotation
+ * divides into it exactly. One gear sprite, drawn once per gear and
+ * rotated, shows all of them at their true ratios and answers an upgrade
+ * in the frame it is bought.
+ *
+ * The gear is photographed FACE ON because a sprite can only turn about
+ * the axis pointing at the viewer. The ANGLE is an illusion built out of
+ * layout: stepping the plates diagonally, shrinking them as they recede
+ * and darkening the far ones reads as a barrel seen at an angle.
  */
-function frameDelayMs(rotationsPerHour: number): number {
-  const loopSeconds = (MACHINE_LOOP_TEETH / MACHINE_GEAR_TEETH)
-    * 3600 / Math.max(1, rotationsPerHour);
-  return Math.max(MIN_FRAME_MS, (loopSeconds * 1000) / MACHINE_FRAMES);
-}
+const GEAR_TEXTURE = 'legacy-gear';
 
 function rewardLabel(reward: LegacyReward): string {
   if (reward.kind === 'credits') return reward.amount.toLocaleString();
@@ -65,9 +58,13 @@ function rewardKind(reward: LegacyReward): 'credit' | 'gem' | 'energy' {
  * player infer it from a ratio.
  */
 function turnsLabel(gear: number): string {
-  // Gear one IS the unit, so saying "1 turns of G1" about it is noise.
-  if (gear === 0) return 'THE DRIVEN GEAR';
-  return `${Math.round(gearOneTurnsFor(gear, 1)).toLocaleString()} TURNS OF G1 EACH`;
+  // Gear one IS the unit - project stages turn it directly - so there is
+  // nothing to convert. Everything deeper is quoted in gear one's turns,
+  // spelled out, because "729 OF G1" tells a player nothing about why
+  // the number is big.
+  if (gear === 0) return 'PROJECT STAGES TURN THIS ONE DIRECTLY';
+  return `ONE TURN OF THIS = `
+    + `${Math.round(gearOneTurnsFor(gear, 1)).toLocaleString()} OF GEAR 1’S`;
 }
 
 export function openLegacyMachine(scene: BoardScene): void {
@@ -111,61 +108,88 @@ export function openLegacyMachine(scene: BoardScene): void {
   // Its own container, so the gears keep turning while the rest of the
   // panel is rebuilt under them - a claim redraws the reward list, and the
   // machine must not stutter every time it does.
-  // THE MACHINE ITSELF, rendered whole and used as the SCREEN, the way the
-  // renovations view uses its room render - not a strip of art with a
-  // column of widgets under it. The worktop runs past every edge, so the
-  // image cover-crops to any shape of screen without a seam.
   const art = scene.add.container(0, 0);
+  const gears: Phaser.GameObjects.Image[] = [];
   let spin: Phaser.Time.TimerEvent | null = null;
-  let elapsed = 0;
-  if (scene.textures.exists(MACHINE_TEXTURE)) {
-    const machine = scene.add.image(w / 2, h * 0.42, MACHINE_TEXTURE);
-    // THE BARREL GETS LONGER AS TORQUE ADDS GEARS. The render holds far
-    // more plates than the game ever uses, so growth is a matter of
-    // pulling the camera back and letting more of the stack into frame -
-    // no second render, and the machine on screen is always the machine
-    // the player has bought.
-    const grown = Math.min(0.32, (legacyGearCount(scene.legacyMachine)
-      - LEGACY_BASE_GEARS) * 0.012);
-    machine.setScale(
-      Math.max(w / machine.width, (h * 0.86) / machine.height) * (1 - grown));
-    art.add(machine);
-    // THE GEARS TURN. Gear one advances a whole tooth over the loop, gear
-    // two a third of that, and so on down the barrel - so what the player
-    // watches is the near end working and the far end sitting still.
-    let frame = 0;
-    // RE-READ EVERY TICK, so buying a speed upgrade is visible the moment
-    // the panel redraws rather than on the next time the screen is opened.
+
+  // NO WORKTOP. The pale bench was carried over from the photographs,
+  // and on a dark panel it reads as a white card the machine is stuck to
+  // rather than as a surface it stands on.
+
+  if (scene.textures.exists(GEAR_TEXTURE)) {
+    const stages = legacyGearCount(scene.legacyMachine);
+    const plates = 26;
+
+    // STRAIGHT UP THE SCREEN, near end at the bottom, the two barrels
+    // side by side. Running them diagonally made the pair drift apart
+    // across the frame; vertical keeps them parallel and lets them sit
+    // close enough that driving each other is believable.
+    const barrelSpans = 0.13 * (plates - 1) + 1;
+    // Sized to fill the band rather than sit in the middle of it. Every
+    // other measurement here is derived from `near`, so raising it scales
+    // the step and the centre distance with it and the mesh holds.
+    const near = Math.min(
+      (w * 0.92) / 1.95,
+      (h * 0.56) / barrelSpans
+    );
+    // The sprite is padded: the drawn wheel fills 0.863 of its canvas, so
+    // spacing has to be measured on the tooth circle, not the box.
+    const toothed = near * 0.863;
+    const step = toothed * 0.13;
+    // Just inside one tooth circle, so the two barrels overlap slightly
+    // and read as being in mesh rather than as two separate stacks.
+    const gap = toothed * 0.94;
+    const baseY = h * 0.58;
+
+    for (let i = plates - 1; i >= 0; i--) {
+      // Receding, so the far end is smaller - the only depth cue left
+      // once the barrels are square to the screen.
+      const shrink = 0.982 ** i;
+      // THE SPACING SHRINKS WITH THE PLATES. Held at the near end's
+      // distance it left a gap that widened all the way up the barrel -
+      // the first two wheels looked like they drove each other and
+      // nothing above them did. Two shafts converge as they recede, so
+      // the centre distance has to take the same falloff the diameter
+      // does.
+      const halfGap = (gap * shrink) / 2;
+      for (let row = 0; row < 2; row++) {
+        const gear = scene.add.image(
+          w * 0.5 + (row ? halfGap : -halfGap),
+          baseY - step * i,
+          GEAR_TEXTURE
+        ).setDisplaySize(near * shrink, near * shrink);
+        gear.setData('stage', Math.min(i, stages - 1));
+        // Meshing rows COUNTER-ROTATE, which is what two gears in mesh
+        // actually do - the driven row runs backwards against the driver.
+        gear.setData('sense', row ? -1 : 1);
+        gears.push(gear);
+        art.add(gear);
+      }
+    }
+
+    // DRIVEN BY REAL ELAPSED TIME, not by an assumed tick length. At a
+    // fixed 16ms per step the machine ran slow whenever a frame took
+    // longer than that, so the barrel and the "rotations per hour" on
+    // the header quietly disagreed. Now a gear that says 250 an hour
+    // turns 250 times an hour, and the deeper ones divide exactly.
+    let last = scene.time.now;
     spin = scene.time.addEvent({
-      delay: MIN_FRAME_MS,
+      delay: 16,
       loop: true,
       callback: () => {
-        // STOPPED MEANS STOPPED. Nothing turns until the first upgrade.
-        if (!legacyIsRunning(scene.legacyMachine)) return;
-        const delay = frameDelayMs(legacyRotationsPerHour(scene.legacyMachine.gearOneLevel));
-        elapsed += MIN_FRAME_MS;
-        if (elapsed < delay) return;
-        elapsed = 0;
-        frame = (frame + 1) % MACHINE_FRAMES;
-        machine.setTexture(`legacy-machine-${frame}`);
+        const now = scene.time.now;
+        const seconds = Math.min(0.25, (now - last) / 1000);
+        last = now;
+        const rph = legacyRotationsPerHour(scene.legacyMachine.gearOneLevel);
+        // STOPPED IS STOPPED: nothing turns before the first upgrade.
+        if (rph <= 0) return;
+        const radians = (rph / 3600) * 2 * Math.PI * seconds;
+        for (const gear of gears) {
+          gear.rotation += (gear.getData('sense') as number) * radians
+            / LEGACY_GEAR_RATIO ** (gear.getData('stage') as number);
+        }
       }
     });
-    // The readout sits over the worktop's lower half, which is pale and
-    // empty; a scrim there keeps the text legible without dimming the
-    // machine itself.
-    const scrim = scene.add.graphics();
-    // A FADE, then solid. The counts row and everything under it has to
-    // sit on a dark ground or the pale worktop swallows it - green text on
-    // near-white was unreadable at both ends of the screen.
-    // NO SCRIM OVER THE MACHINE. The render carries its own dark lower
-    // half, and laying a gradient over it cut the image in two - the
-    // worktop the whole render was built for stopped halfway down the
-    // screen. Only the header keeps one.
-    scrim.fillStyle(0x0d1012, 0.92);
-    scrim.fillRect(0, 0, w, 46 * s);
-    scrim.fillGradientStyle(0x0d1012, 0x0d1012, 0x0d1012, 0x0d1012, 0.92, 0.92, 0, 0);
-    scrim.fillRect(0, 46 * s, w, 34 * s);
-    art.add(scrim);
   }
 
   const content = scene.add.container(0, 0);
@@ -173,13 +197,11 @@ export function openLegacyMachine(scene: BoardScene): void {
     content.removeAll(true);
     const state = scene.legacyMachine;
     const rph = legacyRotationsPerHour(state.gearOneLevel);
-    const tooFast = frameDelayMs(rph) <= MIN_FRAME_MS;
     subtitle.setText(
       rph === 0
         ? 'STOPPED  ·  NOTHING IS DRIVING IT'
         : `GEAR 1  ·  ${rph.toLocaleString()} ROTATIONS / HOUR`
-          + (rph >= LEGACY_MAX_RPH ? '  ·  AT THE TEETH’S LIMIT'
-            : tooFast ? '  ·  FASTER THAN THE EYE' : '')
+          + (rph >= LEGACY_MAX_RPH ? '  ·  AT THE TEETH’S LIMIT' : '')
     );
     // EVERY GEAR'S COUNT ON ONE LINE, evenly spaced under the art. Eight
     // labels pinned to eight drawn gears collided the moment the barrel was
@@ -194,13 +216,25 @@ export function openLegacyMachine(scene: BoardScene): void {
     const upgradeY = listBottom - 92 * s;
     const barY = upgradeY - 52 * s;
     const countY = barY - 34 * s;
+    // SAY WHAT THE ROW IS. "G1 1,400" is a label and a number with no
+    // relationship stated - the player has to guess the number counts
+    // rotations. That is worth saying; the ratio is not, because the
+    // machine shows it.
+    content.add(scene.add.text(
+      w / 2, countY - 14 * s, 'ROTATIONS COMPLETED',
+      {
+        resolution: textResolution, fontFamily: Theme.fontMono,
+        fontSize: `${Math.round(8 * s)}px`, fontStyle: 'bold',
+        color: hex(Theme.textOnDarkMuted)
+      }
+    ).setOrigin(0.5, 1));
     // The machine GROWS, so the row is laid out from its current length.
     const gears = legacyGearCount(state);
     const countStep = Math.min(46 * s, (w - 30 * s) / gears);
     const countLeft = w / 2 - (countStep * (gears - 1)) / 2;
     for (let i = 0; i < gears; i++) {
       const turns = state.turns[i] ?? 0;
-      content.add(scene.add.text(countLeft + countStep * i, countY, `G${i + 1}`, {
+      content.add(scene.add.text(countLeft + countStep * i, countY, `GEAR ${i + 1}`, {
         resolution: textResolution, fontFamily: Theme.fontMono,
         fontSize: `${Math.round(7 * s)}px`, fontStyle: 'bold',
         color: hex(Theme.textOnDarkMuted)
@@ -239,14 +273,30 @@ export function openLegacyMachine(scene: BoardScene): void {
       next
         ? (rph === 0
           ? 'START IT AND PROJECT STAGES WILL TURN GEAR 1'
-          : `GEAR ${focus + 1} -> ${next.milestone} ROTATION${next.milestone === 1 ? '' : 'S'}  ·  ${turnsLabel(focus)}`)
-        : 'THE MACHINE IS COMPLETE',
+          : `NEXT REWARD AT GEAR ${focus + 1}’S `
+            + `${next.milestone}${next.milestone === 1 ? 'ST' : 'TH'} ROTATION`
+            + `  ·  ${Math.round(next.progress * 100)}% THERE`)
+        : 'EVERY GEAR HAS PAID OUT',
       {
         resolution: textResolution, fontFamily: Theme.fontMono,
         fontSize: `${Math.round(9 * s)}px`, fontStyle: 'bold',
         color: hex(next ? Theme.textOnDarkMuted : Theme.currencyXp)
       }
     ).setOrigin(0.5));
+
+    // What the gear being waited on actually costs, in the only unit the
+    // player can act on - turns of gear one, which is the gear they can
+    // buy speed for.
+    // ONLY FOR THE DEEP GEARS, and above the bar rather than under it.
+    // Gear one's version just repeated the footer, and at barY + 28 it
+    // landed on the top edge of the upgrade button.
+    if (next && rph > 0 && focus > 0) {
+      content.add(scene.add.text(w / 2, barY - 17 * s, turnsLabel(focus), {
+        resolution: textResolution, fontFamily: Theme.fontMono,
+        fontSize: `${Math.round(8 * s)}px`,
+        color: hex(Theme.textOnDarkMuted)
+      }).setOrigin(0.5));
+    }
 
     // ---- the upgrade ----
     // ONE BUTTON, TWO TRACKS. Speed while the teeth can take it, torque
@@ -358,7 +408,8 @@ export function openLegacyMachine(scene: BoardScene): void {
       content.add(row);
       content.add(scene.add.text(
         w / 2 - rowW / 2 + 12 * s, yRow,
-        `GEAR ${claim.gear + 1}  ·  ${claim.milestone} ROT`,
+        `GEAR ${claim.gear + 1} REACHED ${claim.milestone} `
+        + `ROTATION${claim.milestone === 1 ? '' : 'S'}`,
         {
           resolution: textResolution, fontFamily: Theme.fontMono,
           fontSize: `${Math.round(10 * s)}px`, fontStyle: 'bold', color: hex(Theme.textOnDark)
@@ -389,7 +440,7 @@ export function openLegacyMachine(scene: BoardScene): void {
 
     content.add(scene.add.text(
       w / 2, h - 16 * s,
-      `PROJECT STAGES TURN GEAR 1  ·  EACH GEAR IS ${LEGACY_GEAR_RATIO}:1`,
+      'FINISH PROJECT STAGES TO TURN GEAR 1',
       {
         resolution: textResolution, fontFamily: Theme.fontMono,
         fontSize: `${Math.round(9 * s)}px`, color: hex(Theme.textOnDarkMuted)

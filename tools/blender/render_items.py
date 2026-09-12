@@ -2958,6 +2958,8 @@ LEGACY_STAGES = 7
 # dense that the webs are invisible behind the teeth anyway.
 GEAR_SPOKES = 0
 PLATE_SPOKES = 0
+# The open wheel, for the one gear the panel spins live.
+GEAR_SPOKES_OPEN = 6
 
 # NINE TEETH per loop: gear one covers nine, gear two three, gear three
 # one - every one a whole tooth, so all three come back to themselves and
@@ -3101,6 +3103,13 @@ def build_legacy_gear(spin: float = 0.0, pose: bool = True,
 
     if pose:
         pose_on_barrel_axis(ob)
+    elif pose is None:
+        # FACE ON, for the live panel. A sprite can only be rotated about
+        # the axis pointing at the viewer, so a gear that is going to be
+        # turned in the game has to be photographed down its own axle -
+        # any other angle and spinning the sprite is a lie the silhouette
+        # gives away immediately.
+        facing_camera(ob)
     if not dressed:
         # Part of a bigger assembly: it gets its material and its bevel
         # once, after the join, so the machine is one object and not
@@ -3195,6 +3204,7 @@ def build_legacy_machine():
         # showed on both rows. The half-TOOTH rotational offset below is
         # what makes teeth sit in gaps; the axial offset only broke it.
         z0 = 0.0
+        # Meshing rows counter-rotate, as two gears in mesh do.
         direction = 1.0 if row == 0 else -1.0
         for i in range(count):
             gear = build_legacy_gear(
@@ -3433,6 +3443,53 @@ def pack_legacy_gear_sheet(frame_dir: str, out_path: str):
         image.close()
     shutil.rmtree(frame_dir, ignore_errors=True)
     print("packed legacy gear sheet", sheet.size)
+
+
+def render_face_on_gear(cam, out_path: str):
+    """One closed gear, square to the camera, for the panel to spin.
+
+    This replaces the eighteen full-screen frames of the whole machine.
+    Those cost 18MB of texture rebound thirty times a second to show four
+    gears moving out of fifty; one 512 sprite, drawn once per gear and
+    rotated, shows ALL of them at their true ratios and reacts to an
+    upgrade in the same frame it is bought.
+    """
+    for ob in list(bpy.data.objects):
+        if ob.type == 'MESH':
+            bpy.data.objects.remove(ob, do_unlink=True)
+    # SPOKED AGAIN. The closed web was only ever forced by the frame
+    # loop - a six-spoke wheel repeats every sixty degrees, which is what
+    # stopped the pre-rendered loop closing. Rotating the sprite live has
+    # no loop to close, so the open wheel comes back.
+    gear = build_legacy_gear(pose=None, spokes=GEAR_SPOKES_OPEN,
+                             dressed=False)
+
+    # TWO MATERIALS, split at the rim. The angled barrel read well because
+    # its teeth caught the light against a darker body; rendered face on
+    # in one flat dark grey the whole wheel became a silhouette and the
+    # spokes disappeared into it. The teeth take a light steel, the web
+    # and hub stay near-black, and the wheel is legible at any size.
+    rim = tier_material("legacy-gear-rim", 0x9aa1a9, 0x9aa1a9, max_gain=1.0)
+    _shader(rim).inputs["Metallic"].default_value = 0.80
+    _shader(rim).inputs["Roughness"].default_value = 0.34
+    body = tier_material("legacy-gear-body", 0x2b2f34, 0x2b2f34, max_gain=1.0)
+    _shader(body).inputs["Metallic"].default_value = 0.55
+    _shader(body).inputs["Roughness"].default_value = 0.45
+    finish(gear, "legacy-gear", rim, bevel=0.006,
+           smooth_angle=math.radians(16))
+    gear.data.materials.append(body)
+    # Assigned by RADIUS, after the bevel: a face belongs to the rim if it
+    # sits outside the root circle, and to the body if it does not.
+    root_radius = 0.425
+    for poly in gear.data.polygons:
+        centre = poly.center
+        poly.material_index = 0 if math.hypot(centre.x, centre.y) > root_radius * 0.97 else 1
+    sc = bpy.context.scene
+    sc.render.resolution_x = sc.render.resolution_y = 512
+    sc.render.film_transparent = True
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    render(gear, cam, out_path)
+    print("rendered face-on gear")
 
 
 def render_legacy_gear(cam, out_dir: str):
@@ -3840,6 +3897,15 @@ def main(only: str = ""):
         # heavy has no business holding one connection open for sixteen
         # of them. See `setup_legacy_machine` and `render_legacy_frame`.
         print("use setup_legacy_machine() then render_legacy_frame(i) per call")
+
+    if not only or only == "legacy-face-gear":
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        build_lights()
+        configure_render()
+        render_face_on_gear(cam, os.path.join(root, "public", "assets",
+                                              "machine", "gear.png"))
 
     if not only or only == "legacy-gear":
         for ob in list(bpy.data.objects):

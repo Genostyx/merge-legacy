@@ -249,8 +249,15 @@ export function legacyReward(gear: number, milestone: number): LegacyReward {
 export function claimableLegacyMilestones(state: LegacyMachineState): Array<{ gear: number; milestone: number; reward: LegacyReward }> {
   const claims: Array<{ gear: number; milestone: number; reward: LegacyReward }> = [];
   for (let gear = 0; gear < legacyGearCount(state); gear++) {
+    // TOLERATES A SHORT ARRAY. The gear count is derived from the torque
+    // level, so anything that raises torque without calling
+    // `syncLegacyGears` - a hand-edited save, a debug poke - leaves the
+    // arrays behind the machine and this used to throw on the first gear
+    // past the end.
+    const claimed = state.claimed[gear] ?? [];
+    const turns = state.turns[gear] ?? 0;
     for (const milestone of legacyMilestones(gear)) {
-      if (state.turns[gear] < milestone || state.claimed[gear].includes(milestone)) continue;
+      if (turns < milestone || claimed.includes(milestone)) continue;
       claims.push({ gear, milestone, reward: legacyReward(gear, milestone) });
     }
   }
@@ -261,16 +268,18 @@ export function claimableLegacyMilestones(state: LegacyMachineState): Array<{ ge
 export function nextLegacyMilestone(
   state: LegacyMachineState, gear: number
 ): { milestone: number; progress: number } | null {
+  const claimed = state.claimed[gear] ?? [];
   for (const milestone of legacyMilestones(gear)) {
-    if (state.claimed[gear].includes(milestone)) continue;
+    if (claimed.includes(milestone)) continue;
     return {
       milestone,
-      progress: Math.max(0, Math.min(1, state.turns[gear] / milestone))
+      progress: Math.max(0, Math.min(1, (state.turns[gear] ?? 0) / milestone))
     };
   }
   return null;
 }
 
 export function markLegacyClaimed(state: LegacyMachineState, gear: number, milestone: number): void {
+  if (!state.claimed[gear]) state.claimed[gear] = [];
   if (!state.claimed[gear].includes(milestone)) state.claimed[gear].push(milestone);
 }
