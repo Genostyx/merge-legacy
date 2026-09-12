@@ -52,7 +52,11 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   const gridW = COLS * slot + (COLS - 1) * gap;
   const panelW = Math.min(scene.viewW - 32, gridW + 44);
   const headerH = 62;
-  const panelH = headerH + rows * slot + (rows - 1) * gap + 22;
+  // 22 was the bottom margin alone. The caption under the grid needs a line
+  // of its own: tapping a tier names it, which is the only place in the game
+  // a player can learn what an item is called.
+  const captionH = 26;
+  const panelH = headerH + rows * slot + (rows - 1) * gap + 22 + captionH;
   const left = scene.viewW / 2 - panelW / 2;
   const top = scene.viewH / 2 - panelH / 2;
 
@@ -93,6 +97,30 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
   xHit.on('pointerup', close);
   overlay.add([x, xHit]);
 
+  // THE ONE CAPTION, under the grid, naming whatever is selected. A label
+  // under every tile at once would be the thing show-don't-tell cuts - the
+  // art already says which tier is which. A name the player ASKED for by
+  // tapping is the allowed case: it is a name they could not deduce.
+  const caption = scene.add.text(
+    scene.viewW / 2, top + panelH - 20, 'TAP A TIER TO SEE ITS NAME',
+    {
+      resolution: textResolution,
+      fontFamily: Theme.fontMono, fontSize: '11px', fontStyle: 'bold',
+      color: hex(Theme.textOnDarkMuted)
+    }
+  ).setOrigin(0.5);
+  overlay.add(caption);
+
+  // Every tile's own redraw, so selecting one can clear the last.
+  const redraw: (() => void)[] = [];
+  let selectedTier: number | null = null;
+  const select = (tier: number, label: string, colour: number): void => {
+    selectedTier = tier;
+    caption.setText(`${String(tier).padStart(2, '0')}  ·  ${label.toUpperCase()}`)
+      .setColor(hex(colour));
+    redraw.forEach((fn) => fn());
+  };
+
   const gridLeft = scene.viewW / 2 - gridW / 2;
   const gridTop = top + headerH;
 
@@ -106,14 +134,26 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
     const claimed = isClaimed(scene.collection, typeId, def.tier);
 
     const plate = scene.add.graphics();
-    const drawPlate = (lit: boolean, unclaimed: boolean): void => {
+    let lit = discovered;
+    let unclaimed = discovered && !claimed;
+    const drawPlate = (nextLit: boolean, nextUnclaimed: boolean): void => {
+      lit = nextLit;
+      unclaimed = nextUnclaimed;
+      const chosen = selectedTier === def.tier;
       plate.clear();
       plate.fillStyle(Theme.bg, lit ? 0.92 : 0.48);
       plate.fillRoundedRect(cx - slot / 2, cellTop, slot, slot, Theme.radiusChip);
-      plate.lineStyle(1, unclaimed ? Theme.currencyGem : Theme.borderOnDark, unclaimed ? 0.9 : 0.55);
+      // The selected tile takes the family's own colour at full strength, so
+      // which one the caption is describing is never in question.
+      plate.lineStyle(
+        chosen ? 2 : 1,
+        chosen ? def.color : (unclaimed ? Theme.currencyGem : Theme.borderOnDark),
+        chosen ? 1 : (unclaimed ? 0.9 : 0.55)
+      );
       plate.strokeRoundedRect(cx - slot / 2, cellTop, slot, slot, Theme.radiusChip);
     };
     drawPlate(discovered, discovered && !claimed);
+    redraw.push(() => drawPlate(lit, unclaimed));
     overlay.add(plate);
 
     if (!discovered) {
@@ -137,7 +177,12 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
     }
     overlay.add(icon);
 
-    if (claimed) return;
+    if (claimed) {
+      const pick = scene.add.zone(cx, cy, slot, slot).setInteractive({ useHandCursor: true });
+      pick.on('pointerup', () => select(def.tier, def.label, def.color));
+      overlay.add(pick);
+      return;
+    }
 
     const scrim = scene.add.graphics();
     scrim.fillStyle(Theme.bg, 0.35);
@@ -158,6 +203,7 @@ export function openFamilyPanel(scene: BoardScene, typeId: string): void {
       scene.tweens.add({ targets: [scrim, gem], alpha: 0, duration: 260, ease: 'Quad.Out' });
       scene.tweens.add({ targets: icon, alpha: render.materialAlpha, duration: 300, ease: 'Quad.Out' });
       drawPlate(true, false);
+      select(def.tier, def.label, def.color);
       count.setText(`${claimedInFamily(scene.collection, typeId)}/${chain.tiers.length}`);
     });
   });

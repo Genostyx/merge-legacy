@@ -252,6 +252,27 @@ CURRENCY_RGB = {
     for kind, tiers in CURRENCY_HEX.items()
 }
 
+# Straight from WATER_CHAIN in src/game/data/chains.ts. Twelve tiers, the
+# longest chain in the game.
+WATER_HEX = {
+    1: 0x315f86, 2: 0x356f9b, 3: 0x3980ae, 4: 0x3d90be, 5: 0x42a0cc,
+    6: 0x48afd7, 7: 0x52bde0, 8: 0x60c9e7, 9: 0x72d3ec, 10: 0x86dcf0,
+    11: 0x9ce5f4, 12: 0xb4edf7,
+}
+# Measured off the first clean pass, the way wood and mineral were. A half
+# transmissive body under a bright studio loses its saturation before it
+# loses its value, so these are mostly cuts to red and green.
+WATER_MEASURED = {
+    1: 0x456580, 2: 0x486f8c, 3: 0x78a1bd, 4: 0x78a3be, 5: 0x648ca4,
+    6: 0x70a1bb, 7: 0x6ea2ba, 8: 0x6c9db1, 9: 0x9cc0cd, 10: 0x79a6b5,
+    11: 0xa6c3cb, 12: 0xb0c7cc,
+}
+WATER_RGB = {
+    tier: tuple(((c >> shift) & 255) / 255.0 for shift in (16, 8, 0))
+    for tier, c in WATER_HEX.items()
+}
+
+
 BEVEL_WIDTH = 0.016      # a sawn arris, not a moulded edge
 BEVEL_SEGMENTS = 2
 SMOOTH_ANGLE = math.radians(30)
@@ -2117,6 +2138,554 @@ def build_chip_gem():
     return {1: body}
 
 
+# ---- water -----------------------------------------------------------------
+
+def revolve(profile, segments: int = 40, close_bottom: bool = True):
+    """A solid of revolution from a (radius, z) profile, spun about Z.
+
+    Water has no flat faces and no fractures, so none of the mineral
+    primitives fit it: a hull is broken rock by construction and a prism is
+    cut stone. Almost every shape in this chain - the droplet, the bowl, the
+    vortex, the sphere - is a silhouette spun about a vertical axis, which is
+    one helper rather than six.
+
+    The profile runs BOTTOM TO TOP. A radius of zero at either end is treated
+    as an apex and fans to a single vertex instead of a degenerate ring, so
+    the droplet's tip and the vortex's throat are real points.
+    """
+    mesh = bpy.data.meshes.new("revolve")
+    bm = bmesh.new()
+    rings, apexes = [], {}
+    for index, (radius, z) in enumerate(profile):
+        if radius <= 1e-6:
+            apexes[index] = bm.verts.new((0.0, 0.0, z))
+            rings.append(None)
+            continue
+        rings.append([
+            bm.verts.new((math.cos(2 * math.pi * i / segments) * radius,
+                          math.sin(2 * math.pi * i / segments) * radius, z))
+            for i in range(segments)
+        ])
+    for index in range(len(profile) - 1):
+        lower, upper = rings[index], rings[index + 1]
+        for i in range(segments):
+            j = (i + 1) % segments
+            if lower is None:
+                bm.faces.new((apexes[index], upper[i], upper[j]))
+            elif upper is None:
+                bm.faces.new((lower[j], lower[i], apexes[index + 1]))
+            else:
+                bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
+    if close_bottom and rings[0] is not None:
+        bm.faces.new(tuple(reversed(rings[0])))
+    if rings[-1] is not None:
+        bm.faces.new(tuple(rings[-1]))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("revolve", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def droplet(radius: float, height: float, steps: int = 20):
+    """The teardrop: a point at the top rounding into a full belly below.
+
+    Traced off the cubic in `drawWaterTier`'s `drop` rather than invented -
+    the drawn mark is what the player already knows a droplet in this game
+    looks like. A hanging drop is widest well below its middle, which is the
+    whole difference between a teardrop and a cone with a rounded bottom.
+    """
+    profile = []
+    for i in range(steps + 1):
+        u = i / steps
+        # sin gives the round base; the exponent pulls the shoulder up into
+        # the tip instead of letting it bulge like an egg.
+        profile.append((radius * math.sin(math.pi * u) ** 1.35 * (1.0 - u * 0.22),
+                        height * u))
+    profile[0] = (0.0, 0.0)
+    profile[-1] = (0.0, height)
+    return revolve(profile, close_bottom=False)
+
+
+def blob(radius: float, height: float, seed: int, wobble: float = 0.16,
+         segments: int = 44):
+    """A lopsided shallow pool - a puddle, or the water lying in a basin.
+
+    A tidy ellipse reads as something poured on purpose. Two harmonics out of
+    phase with each other, the same trick the drawn puddle uses, so no lobe
+    lands opposite its twin: one wave alone just makes a flower.
+    """
+    rng = random.Random(seed)
+    phase_a, phase_b = rng.uniform(0, 6.28), rng.uniform(0, 6.28)
+    rim = [radius * (1.0 + wobble * math.sin(2 * math.pi * i / segments * 3 + phase_a)
+                     + wobble * 0.55 * math.sin(2 * math.pi * i / segments * 5 + phase_b))
+           for i in range(segments)]
+    mesh = bpy.data.meshes.new("blob")
+    bm = bmesh.new()
+
+    def ringverts(scale, z):
+        return [bm.verts.new((math.cos(2 * math.pi * i / segments) * rim[i] * scale,
+                              math.sin(2 * math.pi * i / segments) * rim[i] * scale, z))
+                for i in range(segments)]
+
+    # Three rings: a flat floor, the widest point, and a slightly drawn-in
+    # top, so the pool carries a meniscus rather than a knife edge.
+    floor = ringverts(0.94, 0.0)
+    edge = ringverts(1.0, height * 0.55)
+    top = ringverts(0.88, height)
+    for i in range(segments):
+        j = (i + 1) % segments
+        bm.faces.new((floor[i], floor[j], edge[j], edge[i]))
+        bm.faces.new((edge[i], edge[j], top[j], top[i]))
+    bm.faces.new(tuple(reversed(floor)))
+    bm.faces.new(tuple(top))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("blob", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def torus(major: float, minor: float, squash: float = 1.0,
+          major_segments: int = 44, minor_segments: int = 14):
+    """A ring: the tidal ring's body, and every ripple in the chain."""
+    mesh = bpy.data.meshes.new("torus")
+    bm = bmesh.new()
+    rings = []
+    for i in range(major_segments):
+        a = 2 * math.pi * i / major_segments
+        centre = Vector((math.cos(a) * major, math.sin(a) * major, 0.0))
+        out = Vector((math.cos(a), math.sin(a), 0.0))
+        rings.append([
+            bm.verts.new(centre
+                         + out * (math.cos(2 * math.pi * k / minor_segments) * minor)
+                         + Vector((0.0, 0.0,
+                                   math.sin(2 * math.pi * k / minor_segments)
+                                   * minor * squash)))
+            for k in range(minor_segments)
+        ])
+    for i in range(major_segments):
+        n = (i + 1) % major_segments
+        for k in range(minor_segments):
+            m = (k + 1) % minor_segments
+            bm.faces.new((rings[i][k], rings[n][k], rings[n][m], rings[i][m]))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("torus", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    low = min(v.co.z for v in mesh.vertices)
+    for v in mesh.vertices:
+        v.co.z -= low
+    return ob
+
+
+def ball(radius: float, segments: int = 32):
+    """A sphere, sitting on z=0."""
+    steps = segments // 2
+    profile = [(math.sin(math.pi * i / steps) * radius,
+                radius - math.cos(math.pi * i / steps) * radius)
+               for i in range(steps + 1)]
+    profile[0] = (0.0, 0.0)
+    profile[-1] = (0.0, radius * 2)
+    return revolve(profile, segments=segments, close_bottom=False)
+
+
+def basin(radius: float, height: float, wall: float = 0.05):
+    """An open vessel: a bowl with its inside scooped out.
+
+    ONE revolution, outer wall down and inner wall back up, rather than a
+    boolean. Carving a sphere out of a sphere leaves coincident faces at the
+    lip and the bevel catches them as a seam.
+    """
+    steps = 14
+    outer = [(math.sin(math.pi * 0.5 * i / steps) * radius,
+              height * (1 - math.cos(math.pi * 0.5 * i / steps)))
+             for i in range(steps + 1)]
+    inner = [(math.sin(math.pi * 0.5 * i / steps) * max(0.0, radius - wall),
+              wall + (height - wall) * (1 - math.cos(math.pi * 0.5 * i / steps)))
+             for i in range(steps, -1, -1)]
+    return revolve(outer + inner, close_bottom=False)
+
+
+def arc_tube(points, radius: float, sides: int = 10):
+    """A round tube swept along a path: the jet, and the cascade's falls."""
+    mesh = bpy.data.meshes.new("tube")
+    bm = bmesh.new()
+    rings = []
+    for index, point in enumerate(points):
+        nxt = Vector(points[min(index + 1, len(points) - 1)])
+        prv = Vector(points[max(index - 1, 0)])
+        forward = nxt - prv
+        if forward.length < 1e-6:
+            forward = Vector((0.0, 0.0, 1.0))
+        forward.normalize()
+        side = forward.cross(Vector((0.0, 1.0, 0.0)))
+        if side.length < 1e-6:
+            side = forward.cross(Vector((1.0, 0.0, 0.0)))
+        side.normalize()
+        up = forward.cross(side)
+        rings.append([
+            bm.verts.new(Vector(point)
+                         + side * (math.cos(2 * math.pi * k / sides) * radius)
+                         + up * (math.sin(2 * math.pi * k / sides) * radius))
+            for k in range(sides)
+        ])
+    for i in range(len(rings) - 1):
+        for k in range(sides):
+            m = (k + 1) % sides
+            bm.faces.new((rings[i][k], rings[i + 1][k], rings[i + 1][m], rings[i][m]))
+    bm.faces.new(tuple(reversed(rings[0])))
+    bm.faces.new(tuple(rings[-1]))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("tube", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def ribbon(points, widths, heights, sides: int = 14):
+    """A swept run whose cross-section is a FLAT ELLIPSE that changes along
+    its length - a stream, rather than the round constant tube `arc_tube`
+    sweeps.
+
+    A pipe is exactly what a constant circular section looks like, however
+    it is bent. Running water is wide and shallow, it is never the same
+    width twice, and it sits ON something: the section here is far wider
+    than it is deep, and both vary per point.
+    """
+    mesh = bpy.data.meshes.new("ribbon")
+    bm = bmesh.new()
+    rings = []
+    for index, point in enumerate(points):
+        nxt = Vector(points[min(index + 1, len(points) - 1)])
+        prv = Vector(points[max(index - 1, 0)])
+        forward = nxt - prv
+        if forward.length < 1e-6:
+            forward = Vector((1.0, 0.0, 0.0))
+        forward.normalize()
+        # The flat axis is horizontal whatever the run is doing vertically,
+        # so the surface stays level with the ground the water is on.
+        side = forward.cross(Vector((0.0, 0.0, 1.0)))
+        if side.length < 1e-6:
+            side = Vector((0.0, 1.0, 0.0))
+        side.normalize()
+        rings.append([
+            bm.verts.new(Vector(point)
+                         + side * (math.cos(2 * math.pi * k / sides) * widths[index])
+                         + Vector((0.0, 0.0,
+                                   math.sin(2 * math.pi * k / sides)
+                                   * heights[index])))
+            for k in range(sides)
+        ])
+    for i in range(len(rings) - 1):
+        for k in range(sides):
+            m = (k + 1) % sides
+            bm.faces.new((rings[i][k], rings[i + 1][k], rings[i + 1][m], rings[i][m]))
+    bm.faces.new(tuple(reversed(rings[0])))
+    bm.faces.new(tuple(rings[-1]))
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("ribbon", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def build_water():
+    """Drops -> a body of water -> water under pressure -> contained water.
+
+    TWELVE tiers, the longest chain in the game, and the shapes are not mine
+    to invent: `drawWaterTier` in src/game/objects/TierIcons.ts has drawn
+    every one of them since before the renderer existed, and a player who
+    has climbed this chain knows what each tier looks like. Each entry below
+    is that mark in three dimensions, not a fresh idea about water.
+
+    The count rule the currencies follow holds at the bottom here too: one
+    drop at tier one, two at tier two, three ripples at tier three.
+    """
+    out = {}
+    # Tiers that carry more than one material and so finish themselves.
+    prefinished = set()
+
+    # 1-2 DROPLET, TWIN DROPS. The count is the tier.
+    out[1] = droplet(0.22, 0.46)
+    out[2] = stack([
+        translate_to(droplet(0.19, 0.40), beside(-0.11, 0.05)),
+        translate_to(droplet(0.135, 0.29), beside(0.17, -0.09)),
+    ])
+
+    # 3 TRIPLE RIPPLE: three rings spreading from one point, each lower and
+    # wider than the last - that IS a ripple, and three of them is the tier.
+    # CONCENTRIC, not scattered: the rings share a centre and each one is
+    # thinner than the one inside it, which is how a ripple spreading out
+    # loses its energy.
+    out[3] = stack([torus(0.13 * i, 0.040 - 0.008 * i, squash=0.5)
+                    for i in (1, 2, 3)])
+
+    # 4 PUDDLE: shallower than it is wide, lopsided, with a fleck thrown
+    # clear of itself. Those three things are the whole difference between a
+    # puddle and the basin at tier six.
+    out[4] = stack([
+        blob(0.40, 0.075, seed=41),
+        translate_to(blob(0.075, 0.035, seed=42, wobble=0.22), beside(0.34, -0.08)),
+        translate_to(blob(0.055, 0.030, seed=43, wobble=0.22), beside(-0.33, 0.10)),
+    ])
+
+    # 5 FLOWING STREAM: a stream running down a rocky bed, with a step of
+    # falls partway along and a pool at the foot - the reference is a river
+    # BETWEEN BANKS, and the banks are half of what makes it read as one. A
+    # bare ribbon of water is a shape; water with stone either side of it is
+    # a place.
+    #
+    # THE ONLY TIER WITH TWO MATERIALS, so it is finished here rather than in
+    # the shared loop below: `finish` clears an object's material slots and
+    # assigns one, which would paint the rocks water-blue.
+    along = Vector((-1.0, -1.0, 0.0)).normalized()
+    across = Vector((1.0, -1.0, 0.0)).normalized()
+    steps = 56
+    path, widths, heights = [], [], []
+    for i in range(steps + 1):
+        u = i / steps
+        bend = math.sin(u * math.pi * 2.1)
+        here = along * (-0.40 + 0.80 * u) + across * (bend * 0.105)
+        # THE FALLS. A single step down just past halfway, which is what the
+        # reference hangs its whole silhouette on - a stream that runs level
+        # the whole way is a canal.
+        drop = 0.0 if u < 0.46 else min(1.0, (u - 0.46) / 0.12) * 0.075
+        path.append((here.x, here.y, 0.105 - drop - 0.012 * u))
+        # A thread at the head, opening into the pool at the foot - but a
+        # WIDE one. At 0.02-0.145 the water was a line between two banks of
+        # stone and the rocks were the subject; the river has to be the
+        # subject, so the whole run is about half again as wide.
+        widths.append(0.032 + 0.185 * u ** 1.25)
+        heights.append(0.022 + 0.018 * u)
+    water = stack([
+        ribbon(path, widths, heights),
+        # The pool the falls run out into, wider than the stream that feeds it.
+        translate_to(blob(0.200, 0.055, seed=53, wobble=0.09),
+                     tuple(along * 0.37 + across * 0.015)),
+    ])
+    water_material = tier_material("water-tier-5", WATER_HEX[5], WATER_MEASURED[5],
+                                   max_gain=2.2)
+    water_shader = _shader(water_material)
+    water_shader.inputs["Transmission Weight"].default_value = 0.5
+    water_shader.inputs["Roughness"].default_value = 0.06
+    water_shader.inputs["IOR"].default_value = 1.33
+    polished(water_material, coat_roughness=0.18)
+    water_shader.inputs["Coat Weight"].default_value = 0.35
+    finish(water, "water5-water", water_material, bevel=0.0,
+           smooth_angle=math.radians(88))
+
+    # The banks. Scattered along both sides in screen terms, because the
+    # stream runs on the screen's horizontal - placed in world axes they
+    # would pile up on one side of it.
+    # DARK, because the studio is not. A mid brown at 0.30 mottle came back
+    # pale grey - the light stop of that ramp blends toward white, and under
+    # these lamps a small rounded stone shows almost nothing but its lit
+    # side. The drawn reference is a deep warm brown, so the base starts
+    # well below it and the weathering is kept narrow.
+    # THE MINERAL CHAIN'S OWN STONE, colour and correction both. These banks
+    # are the same rock the Slate and Gravel items are made of, so they take
+    # that family's swatch rather than a brown of their own - one stone in
+    # the game, not two that nearly match.
+    stone = tier_material("water-bank", MINERAL_HEX[3], MINERAL_MEASURED[3],
+                          max_gain=1.45)
+    _shader(stone).inputs["Roughness"].default_value = MINERAL_SURFACE[3][0]
+    _shader(stone).inputs["IOR"].default_value = MINERAL_SURFACE[3][1]
+    # The blotching broken stone gets everywhere else in the game, at the
+    # same numbers the mineral chain's rubble tiers use.
+    # FINER AND WEAKER than the mineral chain's own rubble, because these
+    # stones are a quarter the size of those. Noise scale is in world units,
+    # so a scale of 9 across a 0.15 pebble lands the whole stone inside one
+    # blotch - and with that ramp blending toward white, a bank of them came
+    # out chalk. A tighter scale puts several blotches on each stone, which
+    # is what reads as texture instead of as a paint job.
+    mottle(stone, _shader(stone).inputs["Base Color"].default_value[:3],
+           scale=26.0, strength=0.20)
+    weathered(stone, strength=0.30, scale=90.0)
+    rng = random.Random(55)
+    banks = []
+    for index in range(30):
+        u = rng.uniform(0.02, 0.98)
+        side = -1 if index % 2 else 1
+        bend = math.sin(u * math.pi * 2.1)
+        offset = (0.032 + 0.185 * u ** 1.25) + rng.uniform(0.050, 0.125)
+        here = (along * (-0.40 + 0.80 * u)
+                + across * (bend * 0.105 + side * offset))
+        # BIGGER AND ROUNDER. At 0.07-0.15 with nine hull points they came
+        # out as grey slivers beside the water rather than as a bank; river
+        # stones are worn, so they want more points and less jitter.
+        size = rng.uniform(0.130, 0.235)
+        banks.append(translate_to(
+            rock(size, size * rng.uniform(0.40, 0.58), seed=550 + index,
+                 points=13, jitter=0.16),
+            (here.x, here.y, 0.0)))
+    bank = stack(banks)
+    finish(bank, "water5-bank", stone, bevel=0.012)
+    out[5] = stack([water, bank])
+    prefinished.add(5)
+
+    # 6 WATER BASIN: the vessel plus the water sitting in it. Two objects,
+    # because the rim has to read as something holding the water in.
+    out[6] = stack([
+        basin(0.40, 0.26),
+        translate_to(blob(0.335, 0.045, seed=61, wobble=0.04), (0.0, 0.0, 0.11)),
+    ])
+
+    # 7 FOUNTAIN: the floating AERATOR kind - a V of spray thrown up and
+    # outward off the surface of open water, with no dish and no pedestal.
+    #
+    # Built as a hollow cone, not a solid one. The pattern those fountains
+    # throw is a SHELL: water leaves the nozzle in a ring and spreads as it
+    # rises, so the middle is empty and you can see the far side through it.
+    # A solid cone of the same silhouette reads as a lampshade.
+    # DISCRETE JETS, not a surface. Two passes at a hollow cone both read as
+    # a cone - a revolved shell has a continuous silhouette and a continuous
+    # highlight, and that is what a solid object looks like however thin its
+    # wall is. Spray has GAPS: the eye reads the pattern from the separate
+    # strands and the ground showing between them, so the V has to be built
+    # out of the jets that make it.
+    jets = []
+    count = 16
+    for k in range(count):
+        angle = 2 * math.pi * k / count
+        # Alternating lengths, so the crown is ragged rather than machined.
+        reach = 0.34 if k % 2 == 0 else 0.29
+        rise = 0.86 if k % 2 == 0 else 0.76
+        path = []
+        for i in range(13):
+            u = i / 12
+            # Out in a straight run, then tipping over at the top as the jet
+            # runs out of speed - that turn is what says thrown, not poured.
+            radius = 0.035 + reach * u ** 1.08
+            path.append((math.cos(angle) * radius,
+                         math.sin(angle) * radius,
+                         rise * (u ** 0.78) * (1.0 - 0.18 * u * u)))
+        jets.append(arc_tube(path, radius=0.017, sides=8))
+    out[7] = stack([
+        # The water it stands in, churned flat and wide where the spray lands.
+        blob(0.40, 0.045, seed=70, wobble=0.07),
+    ] + [translate_to(jet, (0.0, 0.0, 0.030)) for jet in jets])
+
+    # 8 CASCADE: a THREE-TIERED CASCADING FOUNTAIN - the wedding-cake kind.
+    # Concentric on one axis, widest dish at the bottom, each smaller one
+    # carried above it on a stem, and water spilling over every rim.
+    #
+    # The first pass offset the three bowls sideways, which read as a stack
+    # of plates knocked askew rather than as one piece of waterworks.
+    parts = []
+    levels = ((0.40, 0.0, 0.14), (0.27, 0.30, 0.11), (0.155, 0.54, 0.085))
+    for index, (radius, z, depth) in enumerate(levels):
+        parts.append(translate_to(basin(radius, depth), (0.0, 0.0, z)))
+        parts.append(translate_to(blob(radius * 0.80, 0.028, seed=80 + index,
+                                       wobble=0.035),
+                                  (0.0, 0.0, z + depth * 0.55)))
+        if index:
+            # The stem carrying this dish up off the one below it.
+            lower = levels[index - 1]
+            parts.append(translate_to(
+                revolve([(0.055, 0.0), (0.040, (z - lower[1]) * 0.5),
+                         (0.055, z - lower[1])]),
+                (0.0, 0.0, lower[1] + lower[2] * 0.5)))
+            # Four curtains of water over the rim of the dish above, falling
+            # into this one. Four, not two: a fountain spills all the way
+            # round, and two strands read as a leak.
+            for k in range(4):
+                angle = math.pi / 4 + k * math.pi / 2
+                parts.append(translate_to(
+                    arc_tube([(0.0, 0.0, -(z - lower[1]) * (i / 10))
+                              for i in range(11)], radius=0.024),
+                    (math.cos(angle) * radius * 0.96,
+                     math.sin(angle) * radius * 0.96,
+                     z + depth * 0.5)))
+    out[8] = stack(parts)
+
+    # 9 WHIRLPOOL: a funnel. The identity is the THROAT - a cone of water
+    # with a hole pulled down its middle - so the profile dives to a narrow
+    # waist and the rim flares wide above it.
+    out[9] = revolve(
+        [(0.055, 0.0), (0.075, 0.05), (0.13, 0.13), (0.22, 0.22),
+         (0.34, 0.30), (0.42, 0.35), (0.42, 0.38), (0.33, 0.34),
+         (0.20, 0.25), (0.10, 0.14), (0.055, 0.06)],
+        close_bottom=True)
+
+    # 10 WATER SPHERE: water with no container at all, held by nothing. The
+    # simplest shape in the chain and the one that says "this is not a puddle
+    # any more" fastest.
+    out[10] = ball(0.33)
+
+    # 11 TIDAL RING: a THICK ring and nothing else. The drawn mark skips the
+    # sphere entirely at this tier - `if(t!==11)` in drawWaterTier - and
+    # strokes the ring at 0.095 where tier twelve strokes it at 0.038. A fat
+    # ring alone is the silhouette; putting a ball inside it here is what
+    # made it read as a smaller hydro core.
+    #
+    # TILTED, because the drawn ellipse is. A ring lying flat on the board
+    # projects to an ellipse too, but a level one - the drawn mark leans,
+    # which is what stops it reading as a hole in the ground.
+    out[11] = torus(0.34, 0.115, squash=0.9)
+    out[11].rotation_euler = Euler((math.radians(24), 0.0, math.radians(-18)))
+
+    # 12 HYDRO CORE: the sphere with the ring AROUND ITS MIDDLE, the way the
+    # drawn mark has it - a thin ring crossing the body, not a hoop resting
+    # on top of one. Concentric and larger than the ball, so the ring passes
+    # in front of the core on one side and behind it on the other, which is
+    # the whole read.
+    core = ball(0.235)
+    hoop = torus(0.40, 0.038, squash=0.9)
+    hoop.rotation_euler = Euler((math.radians(22), 0.0, math.radians(-16)))
+    out[12] = stack([
+        translate_to(core, (0.0, 0.0, 0.0)),
+        translate_to(hoop, (0.0, 0.0, 0.235 - 0.038)),
+    ])
+
+    for tier, ob in out.items():
+        if tier in prefinished:
+            continue
+        material = tier_material("water-tier-%d" % tier,
+                                 WATER_HEX[tier], WATER_MEASURED[tier],
+                                 max_gain=2.2)
+        shader = _shader(material)
+        # WATER IS GLASS WITH A COLOUR IN IT, and that is not a style choice:
+        # its IOR is 1.33, it is perfectly smooth, and what makes a body of
+        # water blue is Beer-Lambert absorption through its depth, not a
+        # painted surface. A diffuse blue solid is what this chain looked
+        # like before, and it read as plastic.
+        #
+        # HALF TRANSMISSION, the same split the gems landed on. Full glass
+        # costs the value - the colour only exists as light that got through,
+        # and what it has to transmit is a dark studio - and fully opaque
+        # loses every refraction. At 0.55 the drawn blue survives AND the
+        # shape bends what is behind it.
+        shader.inputs["Transmission Weight"].default_value = 0.5
+        shader.inputs["Roughness"].default_value = 0.06
+        shader.inputs["IOR"].default_value = 1.33
+        # NO `absorbing` HERE, and that is the whole difference between this
+        # chain reading as water and reading as porcelain. Volume absorption
+        # whitens the BASE colour by design - the tint is supposed to live in
+        # the body, which works when the surface is fully transmissive. At a
+        # half split the opaque half is then pure white diffuse, and it
+        # dominates: every tier came back around 0xc0c5c8 against chain
+        # colours from 0x315f86 to 0xb4edf7, and cutting the coat, the
+        # transmission and the roughness moved it by three points, because
+        # none of them were what was white.
+        #
+        # The gems settled this already: keep the colour on the SURFACE, and
+        # let half the surface refract.
+        polished(material, coat_roughness=0.18)
+        shader.inputs["Coat Weight"].default_value = 0.35
+        # NO BEVEL ANYWHERE IN THIS CHAIN. Every shape here is already a
+        # curved surface with no arris to cut - a bevel on a sphere or a
+        # revolved droplet only adds a band of geometry along the seam.
+        finish(ob, "water%d" % tier, material, bevel=0.0,
+               smooth_angle=math.radians(88))
+    return out
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -2362,6 +2931,7 @@ def archive(path: str = ""):
     configure_render()
 
     builders = [("wood", build_wood), ("mineral", build_mineral),
+                ("water", build_water),
                 ("event-token", build_event_token),
                 ("credit-mark", build_chip_coin),
                 ("gem-mark", build_chip_gem)]
@@ -2390,6 +2960,7 @@ def main(only: str = ""):
     configure_render()
 
     families = [("wood", build_wood), ("mineral", build_mineral),
+                ("water", build_water),
                 ("event-token", build_event_token),
                 ("credit-mark", build_chip_coin),
                 ("gem-mark", build_chip_gem)]

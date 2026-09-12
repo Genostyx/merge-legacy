@@ -16,6 +16,9 @@ import Phaser from 'phaser';
 export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
   wood: 9,
   mineral: 9,
+  // The longest chain in the game, and the only one whose shapes had to come
+  // from the drawn art rather than a shape grammar - see build_water.
+  water: 12,
   // The currency chains are shorter, and the count matters: preloading nine
   // tiers for a five-tier chain asks the server for four files that do not
   // exist on every boot.
@@ -48,7 +51,7 @@ export function itemSpriteKey(typeId: string, tier: number): string {
  * A version in the query string makes the URL new, so every client refetches
  * once and then caches again normally.
  */
-export const ITEM_ART_VERSION = 32;
+export const ITEM_ART_VERSION = 33;
 
 /** Where the renderer writes it, relative to `public/`. */
 export function itemSpritePath(typeId: string, tier: number): string {
