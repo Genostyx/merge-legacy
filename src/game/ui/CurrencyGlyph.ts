@@ -146,7 +146,7 @@ export function currencyTexture(scene: Phaser.Scene, kind: CurrencyKind): string
  * different ladder and these have to be measured again.
  */
 const RENDER_FILL_RATIO: Record<CurrencyKind, number> = {
-  credit: 0.867, gem: 0.594, energy: 0.633
+  credit: 0.867, gem: 0.867, energy: 0.633
 };
 
 /**

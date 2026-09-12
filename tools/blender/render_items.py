@@ -67,7 +67,18 @@ MARK_TILT = 12
 TOKEN_SWING = -10
 
 # The coin's own tilt. Leaving it on MARK_TILT would drag the gem with it.
-COIN_TILT = 6
+# THE CHIP MARKS' OWN ORIENTATION, shared by the coin and the gem so the two
+# sitting side by side on the HUD bar cannot drift apart. The board's pieces
+# keep MARK_SWING / MARK_TILT.
+CHIP_SWING = 16
+CHIP_TILT = -25
+
+# The coin looks down a little more than the gem does.
+COIN_TILT = -18
+
+
+# Measured on the gem mark itself, at its own material and pose.
+GEM_MARK_MEASURED = 0x705d8e
 
 RESOLUTION = 256
 
@@ -77,7 +88,8 @@ RESOLUTION = 256
 # ample. These two are seen FACE ON and read by fine detail: the token's
 # crown is thin diagonal rays, which are the first thing to break up. 512,
 # still a power of two so they mipmap properly.
-FAMILY_RESOLUTION = {"event-token": 512, "credit-mark": 512}
+FAMILY_RESOLUTION = {"event-token": 512, "credit-mark": 512,
+                     "gem-mark": 512}
 
 # Screen-horizontal in world terms, for this camera. Anything that has to
 # splay left and right on screen leans along this, NOT along +X and +Y - those
@@ -1980,13 +1992,7 @@ def build_chip_coin():
     # (90, 0, 0) was tried and points the struck face away from the camera -
     # `coin` cuts its well and slot on +Z, so the mark only reads when +Z is
     # what the camera sees. It came back as a blank disc.
-    facing_camera(body)
-    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
-    body.rotation_euler = (
-        Matrix.Rotation(math.radians(COIN_TILT), 4, view @ Vector((1, 0, 0)))
-        @ Matrix.Rotation(math.radians(MARK_SWING), 4, view @ Vector((0, 1, 0)))
-        @ body.rotation_euler.to_matrix().to_4x4()
-    ).to_euler()
+    chip_facing(body, 'Z')
 
     # CALIBRATED THE WAY THE TOKEN IS: measured on this mark, at this
     # material and this pose, with the same 3.0 cap. The board coins'
@@ -2007,7 +2013,13 @@ def build_chip_coin():
     # slightly broken surface - not a mirror, but nowhere near matte. The
     # crinkle is what spreads a lamp into the soft sheen it has.
     shader.inputs["Metallic"].default_value = 1.0
-    shader.inputs["Roughness"].default_value = 0.28
+    # 0.30, chosen because it SURVIVES THE SHRINK. The chip draws this at
+    # 19 pixels from a 512 source, and a sharp specular is smaller than one
+    # of those pixels by the time it gets there - at roughness 0 the
+    # brightest pixel falls from 765 to 564 on the way down, which is the
+    # highlight going missing in the game while looking fine in the PNG. A
+    # broader, softer sheen is large enough to still be there: 758 to 688.
+    shader.inputs["Roughness"].default_value = 0.30
 
     # WARMED WITHOUT LOSING THE CALIBRATION. At low metallic the specular
     # turns white and dilutes the gold, so the hue needs a push - but
@@ -2028,19 +2040,50 @@ def build_chip_coin():
     return {1: body}
 
 
+def chip_facing(ob, axis: str):
+    """Points a HUD mark at the camera and swings it to the chip angle.
+
+    `axis` is which of the object's own axes is its face - 'Z' for a coin,
+    which `coin` strikes on +Z, and 'Y' for an extruded outline, which
+    carries its face along the extrusion.
+    """
+    view = Euler((math.pi / 2 - ELEVATION, 0.0, AZIMUTH)).to_quaternion()
+    forward = view @ Vector((0, 0, -1))
+    up = 'Y' if axis == 'Z' else 'Z'
+    ob.rotation_euler = (-forward).to_track_quat(axis, up).to_euler()
+    ob.rotation_euler = (
+        Matrix.Rotation(math.radians(COIN_TILT if axis == 'Z' else CHIP_TILT),
+                        4, view @ Vector((1, 0, 0)))
+        @ Matrix.Rotation(math.radians(CHIP_SWING), 4, view @ Vector((0, 1, 0)))
+        @ ob.rotation_euler.to_matrix().to_4x4()
+    ).to_euler()
+    return ob
+
+
 def build_chip_gem():
-    """A brighter gem presentation reserved for the tiny HUD chip glyph."""
+    """The gem as a MARK for the HUD chip, the coin's treatment in purple.
+
+    Same two fixes the coin needed. It was built with rotation_euler set to
+    zero - no facing at all - so the camera saw it edge on, and it carried an
+    emission hack to brighten it. Both gone: it faces the camera through the
+    shared mark constants, and its brightness comes from a calibration
+    measured on this piece at this material.
+    """
     body = extrude_profile(GEM, 0.20)
-    # The profile is already built upright in X/Z, matching the energy bolt.
-    body.rotation_euler = (0.0, 0.0, 0.0)
-    material = tier_material("gem-mark", 0xdabaf4, 0x55406f, max_gain=2.1)
+    chip_facing(body, 'Y')
+
+    material = tier_material("gem-mark", CURRENCY_HEX["currency-gem"][1],
+                             GEM_MARK_MEASURED, max_gain=3.0)
     shader = _shader(material)
-    shader.inputs["Transmission Weight"].default_value = 0.05
-    shader.inputs["Roughness"].default_value = 0.06
-    shader.inputs["IOR"].default_value = 1.65
-    shader.inputs["Emission Color"].default_value = shader.inputs["Base Color"].default_value
-    shader.inputs["Emission Strength"].default_value = 0.12
-    polished(material, coat_roughness=0.025)
+    # The board gem's own recipe: half glass, half stone.
+    shader.inputs["Transmission Weight"].default_value = 0.5
+    shader.inputs["Roughness"].default_value = 0.04
+    shader.inputs["IOR"].default_value = 1.75
+    # A much softer coat than the board gems'. Round lamps took the square
+    # out of the reflection and blur is what stops it reading as the lamp at
+    # all - coat WEIGHT barely moved it, because a weaker coat is a fainter
+    # copy of the same shape, not a different one.
+    polished(material, coat_roughness=0.25)
     finish(body, "gem-mark", material, bevel=0.004)
     return {1: body}
 
@@ -2083,6 +2126,12 @@ def build_lights():
     ):
         data = bpy.data.lights.get(name) or bpy.data.lights.new(name, type='AREA')
         data.type, data.energy, data.size = 'AREA', power, size
+        # DISC lamps, not squares. A polished surface mirrors the light's own
+        # outline, so a square area lamp puts a white RECTANGLE on the face -
+        # you can read the studio in the reflection. A disc leaves a round
+        # highlight, which is what a lit object is supposed to have. Same
+        # size, same power, same position: only the shape changes.
+        data.shape = 'DISK'
         ob = bpy.data.objects.get(name)
         if ob is None:
             ob = bpy.data.objects.new(name, data)

@@ -27,7 +27,8 @@ export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
   // the panels, where a coin lying flat at the board's angle is an ellipse
   // with a scratch on it. They live here because this is what preloads them.
   'event-token': 1,
-  'credit-mark': 1
+  'credit-mark': 1,
+  'gem-mark': 1
 };
 
 /** The texture key for a tier, whether or not it has actually been loaded. */
@@ -47,7 +48,7 @@ export function itemSpriteKey(typeId: string, tier: number): string {
  * A version in the query string makes the URL new, so every client refetches
  * once and then caches again normally.
  */
-export const ITEM_ART_VERSION = 21;
+export const ITEM_ART_VERSION = 30;
 
 /** Where the renderer writes it, relative to `public/`. */
 export function itemSpritePath(typeId: string, tier: number): string {
