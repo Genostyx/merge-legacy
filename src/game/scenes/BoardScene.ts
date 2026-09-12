@@ -408,6 +408,10 @@ import {
 } from './board/playerInfoPanel';
 
 import {
+  openLegacyMachine as openLegacyMachineExt
+} from './board/legacyMachinePanel';
+
+import {
   openShop as openShopPanel,
   closeShop as closeShopPanel,
   reopenShop as reopenShopPanel,
@@ -417,6 +421,7 @@ import {
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
 import { SPRITE_FAMILIES, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
+import { createDefaultLegacyMachine, type LegacyMachineState } from '../legacy/LegacyMachine';
 
 export class BoardScene extends Phaser.Scene {
   grid = new Grid(COLS, ROWS);
@@ -596,6 +601,7 @@ export class BoardScene extends Phaser.Scene {
   inventory: InventoryState = createDefaultInventory();
   collection: CollectionState = createDefaultCollectionState();
   timedEvents: TimedEventState = createDefaultTimedEventState();
+  legacyMachine: LegacyMachineState = createDefaultLegacyMachine();
   /** The event board's own state. Its Grid is built when the panel opens. */
   eventBoard: EventBoardState = createDefaultEventBoardState();
   eventChip: Phaser.GameObjects.Container | null = null;
@@ -3485,6 +3491,7 @@ TAP THE EVENT CARD TO SPEND IT`
   // still read as methods.
   openPlayerInfo(): void { openPlayerInfoExt(this); }
   dailyLevel(now: number): number { return dailyLevelExt(this, now); }
+  openLegacyMachine(): void { openLegacyMachineExt(this); }
 
   // Forwards to board/dailyMenu.ts, so the scene's own call sites
   // still read as methods.

@@ -36,6 +36,8 @@ import type { EventBoardState } from '../../events/EventBoard';
 import type { TimedEventState } from '../../events/TimedEvents';
 import type { CollectionState } from '../../collection/Collection';
 import { ROOM_PIECES } from '../../rooms/RoomView3D';
+import { normalizeLegacyMachine } from '../../legacy/LegacyMachine';
+import type { LegacyMachineState } from '../../legacy/LegacyMachine';
 
 /**
  * saveGame, lifted out of BoardScene whole.
@@ -93,6 +95,7 @@ export function loadOrSeed(scene: BoardScene): void {
         collection?: Partial<CollectionState>;
         timedEvents?: Partial<TimedEventState>;
         eventBoard?: Partial<EventBoardState>;
+        legacyMachine?: Partial<LegacyMachineState>;
         inventory?: Partial<InventoryState>;
         pendingSpawners?: { typeId: string; tier: number }[];
         forcedSpawnVault?: ForcedSpawn[];
@@ -152,6 +155,7 @@ export function loadOrSeed(scene: BoardScene): void {
       scene.collection = normalizeCollectionState(parsed.collection);
       scene.timedEvents = normalizeTimedEventState(parsed.timedEvents);
       scene.eventBoard = normalizeEventBoardState(parsed.eventBoard);
+      scene.legacyMachine = normalizeLegacyMachine(parsed.legacyMachine);
       scene.inventory = normalizeInventory(parsed.inventory);
       const savedVault = Array.isArray(parsed.forcedSpawnVault)
         ? parsed.forcedSpawnVault.filter((entry): entry is ForcedSpawn => {
@@ -370,6 +374,7 @@ export function saveState(scene: BoardScene): void {
     collection: scene.collection,
     timedEvents: scene.timedEvents,
     eventBoard: scene.eventBoard,
+    legacyMachine: scene.legacyMachine,
     inventory: scene.inventory,
     forcedSpawnVault: scene.forcedSpawnVault,
     boardExpansion: { unlockedCells: [...scene.boardExpansionUnlocked] }

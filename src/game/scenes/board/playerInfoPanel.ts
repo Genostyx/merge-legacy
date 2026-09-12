@@ -16,6 +16,7 @@ import { playerLevel, playerXpProgress } from '../../levels/Orders';
 import { addCoins } from '../../economy/Economy';
 import { floatingScore } from '../../fx/MergeFx';
 import { unclaimedDiscoveryCount } from '../../collection/Collection';
+import { claimableLegacyMilestones } from '../../legacy/LegacyMachine';
 
 /**
  * playerInfoPanel, lifted out of BoardScene whole.
@@ -526,6 +527,41 @@ export function openPlayerInfo(scene: BoardScene): void {
     }).setOrigin(0.5).setVisible(collectionReady > 0);
   const bookZone = scene.add.zone(bookX, bookY, 60, 44).setInteractive({ useHandCursor: true });
 
+  const legacyX = -left - 42;
+  const legacyY = collectionY;
+  const legacyReady = claimableLegacyMilestones(scene.legacyMachine).length > 0;
+  const legacyPanel = scene.add.graphics();
+  legacyPanel.fillStyle(0x000000, 0.4);
+  legacyPanel.fillRoundedRect(legacyX - 30, legacyY - 15.5, 60, 37, Theme.radiusChip);
+  legacyPanel.fillStyle(Theme.panelAlt, 0.72);
+  legacyPanel.fillRoundedRect(legacyX - 30, legacyY - 18.5, 60, 37, Theme.radiusChip);
+  legacyPanel.lineStyle(1, legacyReady ? Theme.currencyXp : Theme.borderOnDark, legacyReady ? 0.9 : 1);
+  legacyPanel.strokeRoundedRect(legacyX - 30, legacyY - 18.5, 60, 37, Theme.radiusChip);
+  legacyPanel.lineStyle(1, 0xffffff, 0.16);
+  legacyPanel.lineBetween(legacyX - 25, legacyY - 17.5, legacyX + 25, legacyY - 17.5);
+  legacyPanel.lineStyle(1, 0x000000, 0.35);
+  legacyPanel.lineBetween(legacyX - 25, legacyY + 17.5, legacyX + 25, legacyY + 17.5);
+  const legacyIcon = scene.add.graphics().setPosition(legacyX, legacyY - 2);
+  legacyIcon.fillStyle(Theme.currencyXp, projectUnlocked ? 0.95 : 0.38);
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    legacyIcon.fillRect(Math.cos(a) * 13 - 2, Math.sin(a) * 13 - 2, 4, 4);
+  }
+  legacyIcon.fillCircle(0, 0, 12);
+  legacyIcon.fillStyle(Theme.bg, projectUnlocked ? 0.9 : 0.38);
+  legacyIcon.fillCircle(0, 0, 5);
+  const legacyBadge = scene.add.text(legacyX + 23, legacyY - 14, legacyReady ? '!' : '', {
+    resolution: textResolution,
+    fontFamily: Theme.fontNumeric,
+    fontSize: '8px',
+    fontStyle: 'bold',
+    color: hex(Theme.bg),
+    backgroundColor: hex(Theme.currencyXp),
+    padding: { x: 3, y: 1 }
+  }).setOrigin(0.5).setVisible(legacyReady);
+  const legacyZone = scene.add.zone(legacyX, legacyY, 60, 44)
+    .setInteractive({ useHandCursor: true });
+
   const closeBtn = scene.add.text(-left - 22, top + 22, '✕', {
     resolution: textResolution,
     fontFamily: Theme.fontHeading,
@@ -538,7 +574,9 @@ export function openPlayerInfo(scene: BoardScene): void {
     rewardCrate, divider, guidance,
     dailyStrip, ...dailyIcons, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
     collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
-    bookPanel, bookIcon, bookBadge, bookZone, closeBtn
+    bookPanel, bookIcon, bookBadge, bookZone,
+    legacyPanel, legacyIcon, legacyBadge, legacyZone,
+    closeBtn
   ]);
 
   const dismiss = (): void => {
@@ -569,6 +607,11 @@ export function openPlayerInfo(scene: BoardScene): void {
   bookZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
     dismiss();
     scene.openCollection();
+  }));
+  legacyZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
+    dismiss();
+    if (projectUnlocked) scene.openLegacyMachine();
+    else scene.refreshActionTray('LEGACY MACHINE UNLOCKS AT LEVEL 3');
   }));
   dailyClaimZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
       if (rewardClaimPending) return;

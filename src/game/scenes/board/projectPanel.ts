@@ -26,6 +26,7 @@ import type { CrateTier } from '../../rewards/Rewards';
 import { RoomView3D } from '../../rooms/RoomView3D';
 import { ROOM_PIECES, ROOM_SCOPES, roomPiecesForStage, type RoomPiece } from '../../rooms/RoomView3D';
 import { loadedItemSprite } from '../../objects/itemSprites';
+import { addLegacyMomentum, projectStageLegacyMomentum } from '../../legacy/LegacyMachine';
 
 /**
  * projectPanel, lifted out of BoardScene whole.
@@ -905,6 +906,7 @@ scene: BoardScene,
   scene.refreshOrderBar();
   scene.checkDeadlock();
   const unlockedStage = ++scene.projectStage;
+  addLegacyMomentum(scene.legacyMachine, projectStageLegacyMomentum(unlockedStage));
   // Every hand-in pays, including the one that opens the furniture-less
   // surfaces stage. This used to be the ONLY case that paid on unlock,
   // which is why handing over the items felt like nothing had happened.
