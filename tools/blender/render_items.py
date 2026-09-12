@@ -3829,6 +3829,324 @@ def decagon_piece_family():
     return built
 
 
+# ---- reward art: crates and producers --------------------------------------
+
+# Straight from CRATE_LABELS in src/game/rewards/Rewards.ts.
+CRATE_TIERS = ("bronze", "silver", "gold", "vault", "shipping")
+
+# The banding metal each crate is bound with, and the timber under it.
+CRATE_METAL = {
+    "bronze": 0x9c6434,
+    # A METAL MIRRORS THE STUDIO. Silver at 0xb9c2ca and roughness 0.30
+    # came back at 0xb5b5b5 against bronze's 0x785c49 - the same crate
+    # reading as a white box, because nearly half of it is hardware and
+    # polished hardware returns the lamps, not its own colour.
+    "silver": 0x7f868e,
+    "gold": 0xe0ad3a,
+    "vault": 0x8f969e,
+    "shipping": 0x9aa3ab,
+}
+# How polished each tier's hardware is. Silver is the only one that has
+# to be held back; bronze and gold are dark enough to take a shine.
+CRATE_METAL_ROUGHNESS = {
+    "bronze": 0.30, "silver": 0.46, "gold": 0.30, "vault": 0.34,
+    "shipping": 0.38,
+}
+CRATE_TIMBER = {
+    "bronze": 0x6b4a2f,
+    # DARKER than the bronze one, not lighter. A pale timber under bright
+    # silver hardware made the whole crate read as a white box, which is
+    # the one thing that does not look like a packing case.
+    "silver": 0x4f4a44,
+    "gold": 0x7a5f33,
+    "vault": 0x3d4248,
+    # The container's painted body, not timber at all.
+    "shipping": 0x3f5a6d,
+}
+
+
+def crate_materials(tier: str):
+    """Timber and its banding, for one crate tier.
+
+    The tier is carried by the METAL, not by tinting the whole box: a
+    bronze crate and a gold one are the same packing case with different
+    hardware, which is how the drawn set reads and why a gold crate does
+    not look like it is made of gold.
+    """
+    timber = tier_material("crate-%s-timber" % tier, CRATE_TIMBER[tier],
+                           CRATE_TIMBER[tier], max_gain=1.0)
+    _shader(timber).inputs["Roughness"].default_value = 0.62
+    grain(timber, _shader(timber).inputs["Base Color"].default_value[:3],
+          contrast=0.22, scale=(1.0, 18.0, 4.0))
+    metal = tier_material("crate-%s-metal" % tier, CRATE_METAL[tier],
+                          CRATE_METAL[tier], max_gain=1.0)
+    _shader(metal).inputs["Metallic"].default_value = 0.88
+    _shader(metal).inputs["Roughness"].default_value = CRATE_METAL_ROUGHNESS[tier]
+    return timber, metal
+
+
+def build_packing_case(width: float, depth: float, height: float,
+                       bands: int = 2):
+    """A bound wooden case: the body, its lid, and the straps around it.
+
+    Returns (timber parts, metal parts) so the two can be finished with
+    their own materials and joined afterwards - a crate is the first
+    reward object with more than one surface on it.
+    """
+    body = [cube(width, depth, height, base=False)]
+    # A LID, not a plate. At 1.04 by 0.16 it overhung on every side and
+    # read as a tray balanced on the box.
+    body.append(translate_to(cube(width * 1.01, depth * 1.01, height * 0.10,
+                                  base=False),
+                             (0.0, 0.0, height * 0.48)))
+    straps = []
+    for index in range(bands):
+        offset = (index + 1) / (bands + 1) - 0.5
+        straps.append(translate_to(
+            cube(width * 0.055, depth * 1.03, height * 1.01, base=False),
+            (width * offset * 1.6, 0.0, 0.0)))
+        straps.append(translate_to(
+            cube(width * 1.03, depth * 0.055, height * 1.01, base=False),
+            (0.0, depth * offset * 1.6, 0.0)))
+    # Corner irons, which is most of what says CRATE rather than box -
+    # but NARROW. At 0.14 of the width they met in the middle of each
+    # face and the timber they are supposed to be protecting vanished.
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            straps.append(translate_to(
+                cube(width * 0.07, depth * 0.07, height * 1.03, base=False),
+                (sx * width * 0.47, sy * depth * 0.47, 0.0)))
+    return body, straps
+
+
+def build_crate(tier: str):
+    """One crate, at the tier's own hardware."""
+    # ITS OWN MATERIALS, ALWAYS. The shipping container used to borrow
+    # the silver crate's, and `tier_material` deletes any material of the
+    # same name before rebuilding it - so building the container removed
+    # the materials the silver crate was already using and left it with
+    # two empty slots, rendering in Blender's default grey. Every colour
+    # change made to it afterwards did nothing, which is exactly how it
+    # looked.
+    timber_mat, metal_mat = crate_materials(tier)
+
+    if tier == "vault":
+        # THE VAULT is not a crate at all: a strongbox with a dial, which
+        # is why it sits above gold in the set.
+        body, straps = build_packing_case(0.62, 0.50, 0.50, bands=1)
+        # BIGGER, and on a face the camera can see. At 0.11 behind the
+        # corner irons it was invisible, which left the vault reading as a
+        # dark crate rather than as a strongbox.
+        dial = revolve([(0.0, 0.0), (0.15, 0.0), (0.15, 0.04), (0.10, 0.06),
+                        (0.0, 0.06)])
+        dial.rotation_euler = Euler((math.radians(90), 0.0, 0.0))
+        bpy.ops.object.select_all(action='DESELECT')
+        dial.select_set(True)
+        bpy.context.view_layer.objects.active = dial
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        # ON BOTH VISIBLE FACES. The board's camera shows two sides of a
+        # box and which two depends on the azimuth; a dial on one of them
+        # is a coin flip, and it lost - the vault rendered as a dark crate.
+        straps.append(translate_to(dial, (0.0, -0.27, 0.04)))
+        side_dial = revolve([(0.0, 0.0), (0.15, 0.0), (0.15, 0.04),
+                             (0.10, 0.06), (0.0, 0.06)])
+        side_dial.rotation_euler = Euler((0.0, math.radians(-90), 0.0))
+        bpy.ops.object.select_all(action='DESELECT')
+        side_dial.select_set(True)
+        bpy.context.view_layer.objects.active = side_dial
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        straps.append(translate_to(side_dial, (-0.33, 0.0, 0.04)))
+        for angle in (0, 90):
+            spoke = cube(0.22 if angle else 0.035, 0.05,
+                         0.035 if angle else 0.22, base=False)
+            straps.append(translate_to(spoke, (0.0, -0.32, 0.04)))
+            spoke_side = cube(0.05, 0.22 if angle else 0.035,
+                              0.035 if angle else 0.22, base=False)
+            straps.append(translate_to(spoke_side, (-0.38, 0.0, 0.04)))
+    elif tier == "shipping":
+        # A CONTAINER: long, corrugated, doors on the near end. The flutes
+        # are the whole read - a smooth box this shape is a trailer.
+        length, width, height = 1.15, 0.46, 0.44
+        body = [cube(length, width, height, base=False)]
+        straps = []
+        flutes = 26
+        for index in range(flutes):
+            u = (index + 0.5) / flutes - 0.5
+            straps.append(translate_to(
+                cube(length * 0.018, width * 1.03, height * 0.92, base=False),
+                (u * length * 0.95, 0.0, 0.0)))
+        # Top and bottom rails, and the door furniture on the near end.
+        for z in (-1, 1):
+            straps.append(translate_to(
+                cube(length * 1.02, width * 1.05, height * 0.10, base=False),
+                (0.0, 0.0, z * height * 0.47)))
+        for x in (-1, 1):
+            straps.append(translate_to(
+                cube(length * 0.05, width * 1.06, height * 1.03, base=False),
+                (x * length * 0.49, 0.0, 0.0)))
+        for y in (-1, 1):
+            straps.append(translate_to(
+                cube(length * 0.02, width * 0.06, height * 0.86, base=False),
+                (-length * 0.50, y * width * 0.17, 0.0)))
+        # The locking bars on the doors, which is what the near end of a
+        # container actually looks like.
+        for y in (-0.32, -0.11, 0.11, 0.32):
+            straps.append(translate_to(
+                cube(length * 0.02, width * 0.035, height * 0.80, base=False),
+                (-length * 0.505, y * width, 0.0)))
+    else:
+        body, straps = build_packing_case(0.60, 0.48, 0.44,
+                                          bands=1 if tier == "bronze" else 2)
+
+    timber = stack(body)
+    finish(timber, "crate-%s-body" % tier, timber_mat, bevel=0.012)
+    metal = stack(straps)
+    finish(metal, "crate-%s-iron" % tier, metal_mat, bevel=0.006)
+    return stack([timber, metal])
+
+
+def build_crates():
+    return {index + 1: build_crate(tier) for index, tier in enumerate(CRATE_TIERS)}
+
+
+# ---- the producers ---------------------------------------------------------
+
+def scale_to_width(ob, target: float):
+    """Scales a piece so its widest axis measures `target`.
+
+    The currency profiles are drawn at their own unit size - a GEM is
+    most of a unit across - and dropping them into a basket a third of a
+    unit wide put gems bigger than the vessel holding them through its
+    sides. Everything that goes IN something gets sized to it.
+    """
+    bpy.context.view_layer.update()
+    pts = [ob.matrix_world @ v.co for v in ob.data.vertices]
+    span = max(max(p.x for p in pts) - min(p.x for p in pts),
+               max(p.y for p in pts) - min(p.y for p in pts),
+               max(p.z for p in pts) - min(p.z for p in pts))
+    if span <= 1e-6:
+        return ob
+    ob.scale = (target / span,) * 3
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    return ob
+
+
+def build_basket(radius: float = 0.34, height: float = 0.30):
+    """The open basket the three baskets share, with its handle."""
+    steps = 12
+    outer = [(math.sin(math.pi * 0.5 * i / steps) * radius,
+              height * (1 - math.cos(math.pi * 0.5 * i / steps)))
+             for i in range(steps + 1)]
+    inner = [(math.sin(math.pi * 0.5 * i / steps) * (radius - 0.035),
+              0.035 + (height - 0.035) * (1 - math.cos(math.pi * 0.5 * i / steps)))
+             for i in range(steps, -1, -1)]
+    bowl = revolve(outer + inner, close_bottom=False)
+    handle = torus(radius * 0.92, 0.028, squash=1.0, major_segments=40)
+    handle.rotation_euler = Euler((math.radians(90), 0.0, 0.0))
+    bpy.ops.object.select_all(action='DESELECT')
+    handle.select_set(True)
+    bpy.context.view_layer.objects.active = handle
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    return bowl, translate_to(handle, (0.0, 0.0, height * 0.92))
+
+
+def build_producers():
+    """Pouch, coin basket, energy basket, gem basket.
+
+    The three baskets are ONE basket with three fills, which is what the
+    drawn set does and what keeps them reading as a family - the contents
+    say which currency, the vessel says what it is.
+    """
+    out = {}
+
+    # 1 - COIN POUCH. A drawstring bag: full in the belly, gathered at
+    # the neck, with the tie above it. The first attempt was a straight
+    # revolve with a disc on top and read as a tin of shoe polish.
+    pouch = revolve([
+        (0.0, 0.0), (0.19, 0.01), (0.30, 0.09), (0.33, 0.21),
+        (0.28, 0.32), (0.17, 0.38), (0.13, 0.44), (0.16, 0.50),
+        (0.10, 0.54), (0.0, 0.55)
+    ], segments=32)
+    tie = torus(0.145, 0.028, squash=0.8)
+    out[1] = ("pouch", pouch, [translate_to(tie, (0.0, 0.0, 0.40))])
+
+    for index, (name, fill) in enumerate((
+        ("coin", "credit"), ("energy", "energy"), ("gem", "gem")
+    )):
+        bowl, handle = build_basket()
+        # The fill: a heap of the currency's own item sitting in the bowl.
+        pile = []
+        rng = random.Random(700 + index)
+        for _ in range(9):
+            angle = rng.uniform(0, 6.28)
+            spread = rng.uniform(0.0, 0.13)
+            # Low in the bowl: a heap standing proud of the rim reads as
+            # spilling rather than as a basket that is full.
+            spot = (math.cos(angle) * spread, math.sin(angle) * spread,
+                    0.15 + rng.uniform(0.0, 0.04))
+            if fill == "credit":
+                piece = coin(radius=0.085, thickness=0.024, slot=False)
+            elif fill == "gem":
+                piece = extrude_profile(GEM, 0.07)
+                facing_profile(piece)
+                scale_to_width(piece, 0.17)
+            else:
+                piece = extrude_profile(BOLT, 0.05)
+                piece.rotation_euler.rotate_axis("Z", math.radians(74.79))
+                scale_to_width(piece, 0.16)
+            pile.append(translate_to(piece, spot))
+        out[index + 2] = (fill, stack([bowl, handle]), pile)
+    return out
+
+
+def producer_family():
+    """Vessels and their contents, each on its own surface."""
+    built = build_producers()
+    leather = tier_material("producer-leather", 0x8a5a36, 0x8a5a36, max_gain=1.0)
+    _shader(leather).inputs["Roughness"].default_value = 0.58
+    mottle(leather, _shader(leather).inputs["Base Color"].default_value[:3],
+           scale=22.0, strength=0.10)
+    brass = tier_material("producer-brass", 0x9a8250, 0x9a8250, max_gain=1.0)
+    _shader(brass).inputs["Metallic"].default_value = 0.85
+    _shader(brass).inputs["Roughness"].default_value = 0.34
+
+    out = {}
+    for tier, (kind, vessel, fill) in built.items():
+        finish(vessel, "producer-vessel-%d" % tier,
+               leather if kind == "pouch" else brass, bevel=0.008)
+        parts = [vessel]
+        if fill:
+            contents = stack(fill)
+            if kind == "pouch":
+                material = brass
+            else:
+                # The currency's own calibrated material, so a basket of
+                # gems matches the gems on the board.
+                key = "currency-%s" % kind
+                material = tier_material(
+                    "producer-fill-%s" % kind, CURRENCY_HEX[key][2],
+                    CURRENCY_MEASURED.get(key, CURRENCY_HEX[key])[2],
+                    max_gain=2.2)
+                shader = _shader(material)
+                if kind == "credit":
+                    shader.inputs["Metallic"].default_value = 0.94
+                    shader.inputs["Roughness"].default_value = 0.13
+                elif kind == "gem":
+                    shader.inputs["Transmission Weight"].default_value = 0.5
+                    shader.inputs["Roughness"].default_value = 0.04
+                    shader.inputs["IOR"].default_value = 1.75
+                    polished(material, coat_roughness=0.25)
+                else:
+                    shader.inputs["Roughness"].default_value = 0.18
+            finish(contents, "producer-fill-%d" % tier, material, bevel=0.004)
+            parts.append(contents)
+        out[tier] = stack(parts)
+    return out
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -4160,6 +4478,26 @@ def main(only: str = ""):
         for tier, ob in tiers:
             render(ob, cam, os.path.join(family_dir, "%d.png" % tier), widest)
             print("rendered", family, "tier", tier)
+
+    # THE REWARD ART: crates and producers, in the same folder shape the
+    # pieces use. Each set shares one scale - a bronze crate has to read
+    # as smaller than a shipping container.
+    reward_sets = [("crates", build_crates), ("producers", producer_family)]
+    for reward_name, reward_build in reward_sets:
+        if only and only != "reward-" + reward_name:
+            continue
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        reward_dir = os.path.join(root, "public", "assets", "rewards", reward_name)
+        os.makedirs(reward_dir, exist_ok=True)
+        sc = bpy.context.scene
+        sc.render.resolution_x = sc.render.resolution_y = RESOLUTION
+        reward_tiers = sorted(reward_build().items())
+        reward_widest = max(frame(ob, cam)[1] for _, ob in reward_tiers)
+        for tier, ob in reward_tiers:
+            render(ob, cam, os.path.join(reward_dir, "%d.png" % tier), reward_widest)
+            print("rendered reward", reward_name, tier)
 
     # THE SPAWNER PIECES: the parts a player merges together into a
     # source. Their own folder, and ONE SCALE across each family's four -

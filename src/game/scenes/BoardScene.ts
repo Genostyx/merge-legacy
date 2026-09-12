@@ -421,8 +421,11 @@ import {
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
 import {
+  CRATE_SPRITE_INDEX,
   ITEM_ART_VERSION,
   PIECE_FAMILIES,
+  crateSpriteKey,
+  crateSpritePath,
   SPRITE_FAMILIES,
   itemSpriteKey,
   itemSpritePath,
@@ -780,17 +783,26 @@ export class BoardScene extends Phaser.Scene {
         imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
       }
     }
+    // The rendered crates, one per tier.
+    for (const tier of Object.keys(CRATE_SPRITE_INDEX)) {
+      imageOnce(crateSpriteKey(tier), crateSpritePath(tier));
+    }
     // The spawner pieces, rendered per family - see PIECE_FAMILIES.
     for (const [family, tiers] of Object.entries(PIECE_FAMILIES)) {
       for (let tier = 1; tier <= tiers; tier++) {
         imageOnce(pieceSpriteKey(family, tier), pieceSpritePath(family, tier));
       }
     }
-    svgOnce('energy-basket', 'energy-basket.svg', iconPx);
+    imageOnce('energy-basket', `assets/rewards/producers/3.png?v=${ITEM_ART_VERSION}`);
     svgOnce('producer-coin-pouch', 'coin-pouch.svg', iconPx);
-    svgOnce('producer-coin-basket', 'coin-basket.svg', iconPx);
-    svgOnce('producer-energy-basket', 'energy-basket.svg', iconPx);
-    svgOnce('producer-gem-basket', 'gem-basket.svg', iconPx);
+    // THE THREE BASKETS ARE RENDERS NOW, loaded under the keys the SVGs
+    // used - so every call site that already asks for
+    // `producer-gem-basket` gets the render without knowing anything
+    // changed. The coin POUCH keeps its painted SVG: its render came out
+    // a pot with a lid rather than a leather bag.
+    imageOnce('producer-coin-basket', `assets/rewards/producers/2.png?v=${ITEM_ART_VERSION}`);
+    imageOnce('producer-energy-basket', `assets/rewards/producers/3.png?v=${ITEM_ART_VERSION}`);
+    imageOnce('producer-gem-basket', `assets/rewards/producers/4.png?v=${ITEM_ART_VERSION}`);
     // Living room project art. The shell is one full 1024-square frame; every
     // furniture piece is its own sprite, border-rendered and cropped to just
     // its own screen rect, with the shell acting as a shadow catcher so each

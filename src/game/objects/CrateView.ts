@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
+import { loadedCrateSprite } from './itemSprites';
 import { drawCrate } from './TierIcons';
 
 /**
@@ -50,6 +51,9 @@ export class CrateView extends Phaser.GameObjects.Container {
     scene.add.existing(this);
   }
 
+  /** The rendered crate, once one exists for this tier. */
+  private sprite: Phaser.GameObjects.Image | null = null;
+
   private draw(): void {
     // 1.30, not 0.9: `drawCrate` draws its box at 0.5 of the size it is given,
     // so at 0.9 the crate came out 0.45 of a cell wide - little more than half
@@ -75,6 +79,17 @@ export class CrateView extends Phaser.GameObjects.Container {
     // on the origin, projection included. This used to shift left by half the
     // isometric depth, and every other caller had to remember to do the same.
     this.art.clear().setPosition(0, 0);
+    // The render when it is loaded, the drawing when it is not.
+    const sprite = loadedCrateSprite(this.scene, this.crateTier);
+    if (sprite) {
+      if (!this.sprite) {
+        this.sprite = this.scene.add.image(0, 0, sprite);
+        this.addAt(this.sprite, this.getIndex(this.art));
+      }
+      this.sprite.setTexture(sprite).setDisplaySize(size, size).setVisible(true);
+      return;
+    }
+    this.sprite?.setVisible(false);
     drawCrate(this.art, size, this.crateTier);
   }
 

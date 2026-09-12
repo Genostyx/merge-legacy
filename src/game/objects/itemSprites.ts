@@ -49,6 +49,30 @@ export const PIECE_FAMILIES: Readonly<Record<string, number>> = {
   decagon: 5
 };
 
+/**
+ * The rendered crates, in the order build_crates writes them.
+ *
+ * Keyed by tier name rather than by index so a call site asks for what
+ * it means - `crate-vault`, not `crate-4`.
+ */
+export const CRATE_SPRITE_INDEX: Readonly<Record<string, number>> = {
+  bronze: 1, silver: 2, gold: 3, vault: 4, shipping: 5
+};
+
+export function crateSpriteKey(tier: string): string {
+  return `crate-${tier}`;
+}
+
+export function crateSpritePath(tier: string): string {
+  return `assets/rewards/crates/${CRATE_SPRITE_INDEX[tier]}.png?v=${ITEM_ART_VERSION}`;
+}
+
+/** The rendered crate if it is loaded, or null to draw it procedurally. */
+export function loadedCrateSprite(scene: Phaser.Scene, tier: string): string | null {
+  const key = crateSpriteKey(tier);
+  return scene.textures.exists(key) ? key : null;
+}
+
 /** The texture key for a spawner piece, loaded or not. */
 export function pieceSpriteKey(typeId: string, tier: number): string {
   return `piece-${typeId}-${tier}`;
