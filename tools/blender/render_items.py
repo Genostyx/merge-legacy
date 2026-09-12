@@ -2820,6 +2820,294 @@ def _course(radius: float, z: float, height: float, blocks: int, offset: float):
     return out
 
 
+# ---- the source buildings --------------------------------------------------
+#
+# Wood, stone and glass dispense from BUILDINGS, and the drawn set is
+# specific about what kind. Three things carry those drawings and the
+# first pass had none of them:
+#
+#   GLASS DOMINATES. They are glazed boxes with cladding as the accent,
+#   not clad boxes with window slots. Panes run nearly floor to ceiling
+#   and WRAP THE CORNER, which is what makes them read as architecture
+#   rather than as a hotel.
+#
+#   THEY ARE NOT SYMMETRICAL. Every drawn tier is a clad volume against
+#   a glazed one, offset - one uniform box stacked taller is the thing
+#   that looked wrong.
+#
+#   THE ROOF IS A BLADE. Thin, dark, and overhanging well past the
+#   walls; a thick slab reads as another storey.
+#
+# (width, depth, storeys, wing) - `wing` is a second volume set behind
+# and beside the main one, as (width, depth, storeys) or None. Growth is
+# floor area and a wing, never a wedding-cake set-back.
+SOURCE_PLAN = {
+    "wood": [
+        (0.56, 0.46, 1, None),
+        (0.62, 0.50, 2, None),
+        (0.62, 0.50, 2, (0.30, 0.38, 1)),
+        (0.66, 0.54, 2, (0.36, 0.44, 2)),
+    ],
+    "mineral": [
+        (0.54, 0.48, 1, None),
+        (0.62, 0.52, 2, None),
+        (0.62, 0.52, 2, (0.30, 0.40, 1)),
+        (0.66, 0.54, 3, (0.32, 0.42, 1)),
+        # THE BIGGEST OF THE FIVE, and it has to look it: at 0.70 with a
+        # two-storey mass it came out smaller than the three-storey tier
+        # four beside it, so the last upgrade read as a downgrade.
+        (1.02, 0.64, 2, (0.52, 0.52, 1)),
+    ],
+    "glass": [
+        (0.56, 0.48, 1, None),
+        (0.66, 0.54, 1, (0.28, 0.40, 1)),
+        (0.64, 0.52, 2, None),
+        (0.70, 0.56, 2, (0.34, 0.44, 1)),
+    ],
+}
+# MEASURED OFF THE DRAWINGS, not borrowed from the item chains.
+#
+# Every colour below is the mean of a dominant cluster in the traced SVG,
+# taken by rasterising it and histogramming the pixels. Two of them
+# overturned what the first pass assumed:
+#
+#   THE GLAZING IS LIGHT, not dark. Wood and stone windows come back at
+#   #93a4a5 and glass at #d2e6e4 - pale blue-grey sky reflections. The
+#   renders used a near-black 0x22303b, which is why they read as office
+#   blocks at night while the drawings read as daylight.
+#
+#   THE TIMBER IS DARK BROWN, around #4b3322, except on tier one which
+#   is a light #a86d43. The item chain's WOOD_HEX is a warm mid-brown
+#   and came out orange against everything else.
+SOURCE_CLAD = {
+    "wood": [0xa86d43, 0x4b3322, 0x4a3020, 0x5c4032],
+    "mineral": [0x69727c, 0x5d6972, 0x6d7882, 0x546873, 0x5c636e],
+    "glass": [0xeceada, 0xecebdb, 0xd8d9ca, 0xcbcac7],
+}
+SOURCE_ROOF = {
+    "wood": [0x414850, 0x4b525a, 0x444c55, 0x3b434c],
+    # Stone's sky blue is much lighter than a primary - and it drops the
+    # colour entirely at the top two tiers, exactly as the drawings do.
+    # ONE BLUE FOR THE WHOLE FAMILY. The drawings let the top two go
+    # charcoal, but a roof colour that stops being the family's mark
+    # halfway up the ladder just reads as two different buildings.
+    "mineral": [0x5b8bbe] * 5,
+    "glass": [0x39414b, 0x38444d, 0x363f48, 0x333944],
+}
+# Pale blue-grey daylight in the windows, warmer and paler on the glass
+# houses, whose whole envelope is glazing.
+SOURCE_GLAZING = {"wood": 0x93a4a5, "mineral": 0x8b9aa4, "glass": 0xd2e6e4}
+# The mullions and fascias. Cream on the glass houses, cool white on the
+# other two - the drawings are specific about that difference.
+SOURCE_FRAME = {"wood": 0xd1d2ce, "mineral": 0xc6cbce, "glass": 0xf4f3e6}
+SOURCE_TERRACE = 0xa8a8a6
+
+# Storey height and the terrace slab. Both were measured against the
+# drawings: at 0.28 the buildings came out at an aspect of 1.39 against
+# the drawn 1.10 and read as bungalows.
+SOURCE_STOREY = 0.38
+SOURCE_PLINTH = 0.030
+
+# THE STUDIO LIFTS EVERYTHING, and by far more than a swatch suggests.
+#
+# Measured, not guessed: a PURE BLACK surface under these lamps still
+# renders #5d5e61 on its lit face, because most of what comes back off a
+# dielectric at roughness 0.46 is specular, not albedo. So the drawing's
+# #414850 roof sits essentially at the floor of what this studio can
+# make, and reaching it means both a near-black base AND less specular -
+# a first pass that only scaled the colour by 2.12 came back at #7b8289.
+#
+# These are multipliers on the linear base colour, per ROLE, with the
+# specular level dropped on the two that have to read as dark matter
+# rather than as lit plastic.
+SOURCE_TONE = {"roof": 0.06, "clad": 0.30, "glazing": 0.85,
+               "frame": 0.62, "terrace": 0.42}
+# Stone's roof is the one coloured one, and colour cannot take the same
+# crushing as charcoal: at 0.06 the drawn #5b8bbe sky blue came back
+# #4c647c, a slate. It gets its own tone.
+SOURCE_ROOF_TONE = {"wood": 0.06, "mineral": 0.34, "glass": 0.06}
+SOURCE_SPECULAR = {"roof": 0.16, "clad": 0.26, "glazing": 0.5,
+                   "frame": 0.35, "terrace": 0.30}
+
+
+def _tone(mat, role: str, k: float = 0.0):
+    """Pushes a material to where AgX will land it on the drawn colour."""
+    shader = _shader(mat)
+    colour = shader.inputs["Base Color"].default_value
+    k = k or SOURCE_TONE[role]
+    shader.inputs["Base Color"].default_value = (
+        colour[0] * k, colour[1] * k, colour[2] * k, 1.0)
+    if "Specular IOR Level" in shader.inputs:
+        shader.inputs["Specular IOR Level"].default_value = SOURCE_SPECULAR[role]
+    return mat
+
+
+def _source_materials(family: str, tier: int):
+    """Cladding, glazing, frame and terrace, at the drawing's own colours.
+
+    Cladding is per TIER because the drawings change it - wood one is a
+    light larch and wood two is nearly black-brown - while the glazing,
+    frame and terrace hold across a family.
+    """
+    clad_hex = SOURCE_CLAD[family][tier - 1]
+    clad = tier_material("source-%s-clad-%d" % (family, tier), clad_hex,
+                         clad_hex, max_gain=1.0)
+    if family == "wood":
+        _shader(clad).inputs["Roughness"].default_value = 0.58
+        grain(clad, _shader(clad).inputs["Base Color"].default_value[:3],
+              contrast=0.22, scale=(1.0, 26.0, 3.0))
+    elif family == "mineral":
+        _shader(clad).inputs["Roughness"].default_value = 0.62
+        mottle(clad, _shader(clad).inputs["Base Color"].default_value[:3],
+               scale=16.0, strength=0.10)
+    else:
+        _shader(clad).inputs["Roughness"].default_value = 0.40
+
+    # LIGHT GLAZING WITH A HARD SHEEN. A window at this size is read by
+    # what it REFLECTS, not by what is behind it: the drawings put pale
+    # sky in every pane, so the glass is a light surface under a gloss
+    # coat rather than a dark transmissive one.
+    glaze_hex = SOURCE_GLAZING[family]
+    glazing = tier_material("source-%s-glazing" % family, glaze_hex,
+                            glaze_hex, max_gain=1.0)
+    _shader(glazing).inputs["Roughness"].default_value = 0.06
+    _shader(glazing).inputs["Metallic"].default_value = 0.20
+    polished(glazing, coat_roughness=0.03)
+
+    frame_hex = SOURCE_FRAME[family]
+    frame = tier_material("source-%s-frame" % family, frame_hex,
+                          frame_hex, max_gain=1.0)
+    _shader(frame).inputs["Roughness"].default_value = 0.42
+    plinth = tier_material("source-%s-terrace" % family, SOURCE_TERRACE,
+                           SOURCE_TERRACE, max_gain=1.0)
+    _shader(plinth).inputs["Roughness"].default_value = 0.66
+    return (_tone(clad, "clad"), _tone(glazing, "glazing"),
+            _tone(frame, "frame"), _tone(plinth, "terrace"))
+
+
+def _glazed_volume(width, depth, storeys, base_z, origin, clad, glazing,
+                   frames, clad_bay=True):
+    """One volume: a glazed box with a clad bay down one side.
+
+    Only the two faces the camera sees are detailed - -x is the front
+    right and +y the front left on this azimuth - so glazing on the
+    other two is geometry nobody looks at.
+    """
+    ox, oy = origin
+    # A SINGLE-STOREY TIER IS A TALL ONE. Measured, the drawn wood 1 has
+    # the same 1.10 aspect as the two-storey wood 2 - it is one generous
+    # room, not half a building - and at a plain storey height it came
+    # out at 1.39 and read as a bungalow.
+    storey_h = SOURCE_STOREY * (1.34 if storeys == 1 else 1.0)
+    for storey in range(storeys):
+        z0 = base_z + storey * storey_h
+        mid = z0 + storey_h / 2
+        clad.append(translate_to(cube(width, depth, storey_h, base=False),
+                                 (ox, oy, mid)))
+        # FULL-HEIGHT GLAZING, wrapping the corner the camera looks at.
+        pane_h = storey_h * (0.90 if not clad_bay else 0.78)
+        pane_w = 0.94 if not clad_bay else 0.60
+        shift = 0.0 if not clad_bay else 0.16
+        glazing.append(translate_to(
+            cube(width * pane_w, 0.016, pane_h, base=False),
+            (ox - width * shift, oy + depth / 2 + 0.004, mid)))
+        glazing.append(translate_to(
+            cube(0.016, depth * (pane_w + 0.06), pane_h, base=False),
+            (ox - width / 2 - 0.004, oy - depth * shift * 0.8, mid)))
+        # A CLAD BAY at one end, which is what stops the glazing being a
+        # continuous band and gives the drawn two-tone.
+        if clad_bay:
+            clad.append(translate_to(
+                cube(width * 0.42, 0.028, storey_h * 0.99, base=False),
+                (ox + width * 0.28, oy + depth / 2 + 0.008, mid)))
+            clad.append(translate_to(
+                cube(0.028, depth * 0.36, storey_h * 0.99, base=False),
+                (ox - width / 2 - 0.008, oy + depth * 0.31, mid)))
+        # The corner post, and a mullion every bay.
+        frames.append(translate_to(
+            cube(0.026, 0.026, storey_h, base=False),
+            (ox - width / 2, oy + depth / 2, mid)))
+        for k in range(2):
+            u = (k + 1) / 3 - 0.5
+            frames.append(translate_to(
+                cube(0.014, 0.024, pane_h, base=False),
+                (ox - width * shift + u * width * pane_w,
+                 oy + depth / 2 + 0.007, mid)))
+            frames.append(translate_to(
+                cube(0.024, 0.014, pane_h, base=False),
+                (ox - width / 2 - 0.007,
+                 oy - depth * shift * 0.8 + u * depth * (pane_w + 0.06),
+                 mid)))
+        # A THIN reveal at the floor line, not a pale band. The first
+        # pass banded every storey in near-white and the buildings read
+        # as layer cakes.
+        frames.append(translate_to(
+            cube(width * 1.005, depth * 1.005, storey_h * 0.035,
+                 base=False),
+            (ox, oy, z0 + storey_h * 0.017)))
+    return base_z + storeys * storey_h
+
+
+def build_source_building(family: str):
+    """One family's dispensers, tier by tier."""
+    plan = SOURCE_PLAN[family]
+    roofs = SOURCE_ROOF[family]
+    out = {}
+    for index, (width, depth, storeys, wing) in enumerate(plan):
+        tier = index + 1
+        clad_mat, glazing_mat, frame_mat, plinth_mat = _source_materials(
+            family, tier)
+        clad, glazing, frames, roof, plinth = [], [], [], [], []
+
+        # A TERRACE, not a pedestal. The drawn buildings sit on a thin
+        # pale slab that reaches out past them on one side; a thick
+        # plinth under every tier was reading as a shipping pallet.
+        plinth.append(translate_to(
+            cube(width * 1.30, depth * 1.22, SOURCE_PLINTH, base=False),
+            (width * 0.06, -depth * 0.04, SOURCE_PLINTH / 2)))
+
+        top = _glazed_volume(width, depth, storeys, SOURCE_PLINTH, (0.0, 0.0),
+                             clad, glazing, frames,
+                             clad_bay=family != "glass")
+        # THE ROOF IS A BLADE: thin, and overhanging well past the wall.
+        roof.append(translate_to(
+            cube(width * (1.02 if family == "glass" else 1.07),
+                 depth * (1.02 if family == "glass" else 1.07),
+                 0.018 if family == "glass" else 0.024, base=False),
+            (0.0, 0.0, top + 0.013)))
+
+        if wing:
+            w_w, w_d, w_s = wing
+            # Set behind and to one side, so the plan is an L rather
+            # than a bigger rectangle.
+            spot = (-(width + w_w) / 2 + 0.02, depth * 0.16)
+            w_top = _glazed_volume(w_w, w_d, w_s, SOURCE_PLINTH, spot,
+                                   clad, glazing, frames, clad_bay=False)
+            roof.append(translate_to(
+                cube(w_w * 1.09, w_d * 1.09, 0.024, base=False),
+                (spot[0], spot[1], w_top + 0.013)))
+
+        roof_mat = tier_material("source-%s-roof-%d" % (family, tier),
+                                 roofs[index], roofs[index], max_gain=1.0)
+        _shader(roof_mat).inputs["Roughness"].default_value = 0.52
+        _tone(roof_mat, "roof", SOURCE_ROOF_TONE[family])
+
+        parts = []
+        for name, group, material in (("clad", clad, clad_mat),
+                                      ("glazing", glazing, glazing_mat),
+                                      ("frame", frames, frame_mat),
+                                      ("roof", roof, roof_mat),
+                                      ("plinth", plinth, plinth_mat)):
+            if not group:
+                continue
+            solid = stack(group)
+            finish(solid, "source-%s-%d-%s" % (family, tier, name), material,
+                   bevel=0.004)
+            parts.append(solid)
+        out[tier] = stack(parts)
+    return out
+
+
 def build_water_source():
     """The Water dispenser: a well that gets built up tier by tier.
 
@@ -5119,6 +5407,9 @@ def main(only: str = ""):
     # item for comparison - so it takes the whole canvas at every tier
     # rather than a shared family scale.
     sources = [("water", build_water_source)]
+    for building in ("wood", "mineral", "glass"):
+        sources.append((building,
+                        (lambda f: lambda: build_source_building(f))(building)))
     for family, build in sources:
         # Addressed as "source-water", so `main("water")` still means the
         # twelve items and cannot quietly re-render the dispensers too.

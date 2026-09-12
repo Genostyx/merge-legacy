@@ -252,6 +252,7 @@ import {
   ROWS,
   RoomItemDef,
   SAVE_KEY,
+  SOURCE_FAMILIES,
   SOURCE_TEXTURE_PX,
   SPAWNER_PIECE_NAMES,
   ShopMode,
@@ -833,16 +834,16 @@ export class BoardScene extends Phaser.Scene {
     svgOnce('currency-coin', 'currency-coin.svg', markPx);
     svgOnce('currency-gem', 'currency-gem.svg', markPx);
     svgOnce('currency-energy', 'currency-energy.svg', markPx);
-    for (let tier = 1; tier <= 4; tier++) {
-      const textureKey = `source-wood-${tier}`;
-      if (!this.textures.exists(textureKey)) {
-        this.load.svg(textureKey, `wood-source0${tier}.svg`, { width: SOURCE_TEXTURE_PX, height: SOURCE_TEXTURE_PX });
-      }
-    }
-    for (let tier = 1; tier <= 4; tier++) {
-      const textureKey = `source-glass-${tier}`;
-      if (!this.textures.exists(textureKey)) {
-        this.load.svg(textureKey, `glass-source0${tier}.svg`, { width: SOURCE_TEXTURE_PX, height: SOURCE_TEXTURE_PX });
+    // EVERY SOURCE IS A RENDER NOW. Wood, stone and glass were the last
+    // painted SVGs on the board, so a player upgrading one went from the
+    // rendered pieces they merged to a drawing of the building they
+    // built. They load as PNGs carrying the art version, like the rest.
+    for (const [family, tiers] of Object.entries(SOURCE_FAMILIES)) {
+      for (let tier = 1; tier <= tiers; tier++) {
+        const textureKey = `source-${family}-${tier}`;
+        if (!this.textures.exists(textureKey)) {
+          this.load.image(textureKey, `assets/sources/${family}/${tier}.png?v=${ITEM_ART_VERSION}`);
+        }
       }
     }
     // WATER'S SOURCES ARE RENDERS, so they load as PNGs and carry the art
@@ -856,18 +857,7 @@ export class BoardScene extends Phaser.Scene {
     if (!this.textures.exists('legacy-gear')) {
       this.load.image('legacy-gear', `assets/machine/gear.png?v=${ITEM_ART_VERSION}`);
     }
-    for (let tier = 1; tier <= 5; tier++) {
-      const textureKey = `source-water-${tier}`;
-      if (!this.textures.exists(textureKey)) {
-        this.load.image(textureKey, `assets/sources/water/${tier}.png?v=${ITEM_ART_VERSION}`);
-      }
-    }
-    for (let tier = 1; tier <= 5; tier++) {
-      const textureKey = `source-mineral-${tier}`;
-      if (!this.textures.exists(textureKey)) {
-        this.load.svg(textureKey, `stone-source0${tier}.svg`, { width: SOURCE_TEXTURE_PX, height: SOURCE_TEXTURE_PX });
-      }
-    }
+
   }
 
   /**

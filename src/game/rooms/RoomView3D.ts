@@ -439,7 +439,11 @@ export class RoomView3D {
    * halfway between two.
    */
   orbitBy(dx: number, _dy: number): void {
-    this.azimuth -= dx * 0.008;
+    // HALF THE OLD RATE, and capped. At 0.008 rad a pixel a flick of the
+    // thumb crossed most of a turn, and one stray large delta could spin
+    // the room right round between frames.
+    const step = THREE.MathUtils.clamp(dx, -60, 60) * 0.0038;
+    this.azimuth -= step;
     this.render();
   }
 

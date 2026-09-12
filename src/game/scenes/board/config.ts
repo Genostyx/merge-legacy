@@ -379,6 +379,17 @@ export function potTextureSize(cssPixels: number): number {
 /** Sources draw at up to `cellSize` (96) CSS pixels. */
 export const SOURCE_TEXTURE_PX = potTextureSize(96);
 
+/**
+ * How many source tiers each building family has.
+ *
+ * Water is a well and is built elsewhere; these three are the modernist
+ * boxes, and they do not all grow the same number of times - stone has
+ * five, the other two four.
+ */
+export const SOURCE_FAMILIES: Readonly<Record<string, number>> = {
+  wood: 4, mineral: 5, glass: 4, water: 5
+};
+
 /** The small currency and producer marks. */
 export const ICON_TEXTURE_PX = potTextureSize(48);
 

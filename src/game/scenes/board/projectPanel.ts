@@ -448,15 +448,34 @@ export function openProject(scene: BoardScene): void {
   // object happened to sit under the button. A pick only counts when the
   // press started on this zone.
   let pressedHere = false;
-  orbitZone.on('pointerdown', () => { orbitMoved = 0; pressedHere = true; });
-  orbitZone.on('drag', (pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-    const dx = pointer.worldX - pointer.prevPosition.x;
-    const dy = pointer.worldY - pointer.prevPosition.y;
+  // THE DRAG DELTA IS TRACKED HERE, from the drag position Phaser hands
+  // over, rather than read off `pointer.prevPosition`.
+  //
+  // `prevPosition` is only refreshed when the pointer actually MOVES, so
+  // a finger held still on the screen kept replaying the last non-zero
+  // delta on every drag event and the room span on by itself. It is also
+  // in screen space while `worldX` is in world space, so the two were
+  // being subtracted across different coordinate systems.
+  let lastDragX = 0;
+  let lastDragY = 0;
+  orbitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    orbitMoved = 0;
+    pressedHere = true;
+    lastDragX = pointer.x;
+    lastDragY = pointer.y;
+  });
+  orbitZone.on('dragstart', (_p: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+    lastDragX = dragX;
+    lastDragY = dragY;
+  });
+  orbitZone.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+    const dx = dragX - lastDragX;
+    const dy = dragY - lastDragY;
+    lastDragX = dragX;
+    lastDragY = dragY;
+    if (dx === 0 && dy === 0) return;
     orbitMoved += Math.abs(dx) + Math.abs(dy);
     scene.roomView?.orbitBy(dx, dy);
-    // `drag` gives absolute positions we do not use; consuming them keeps
-    // Phaser from complaining about unused parameters.
-    void dragX; void dragY;
   });
   orbitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
     // A drag orbits; only a genuine tap selects, same rule as the board.
