@@ -9,6 +9,7 @@ import {
   LEGACY_MAX_RPH,
   legacyGearCount,
   legacyRotationsPerHour,
+  legacyIsRunning,
   LEGACY_BASE_GEARS,
   legacyTorqueCost,
   LEGACY_GEAR_RATIO,
@@ -139,6 +140,8 @@ export function openLegacyMachine(scene: BoardScene): void {
       delay: MIN_FRAME_MS,
       loop: true,
       callback: () => {
+        // STOPPED MEANS STOPPED. Nothing turns until the first upgrade.
+        if (!legacyIsRunning(scene.legacyMachine)) return;
         const delay = frameDelayMs(legacyRotationsPerHour(scene.legacyMachine.gearOneLevel));
         elapsed += MIN_FRAME_MS;
         if (elapsed < delay) return;
@@ -172,9 +175,11 @@ export function openLegacyMachine(scene: BoardScene): void {
     const rph = legacyRotationsPerHour(state.gearOneLevel);
     const tooFast = frameDelayMs(rph) <= MIN_FRAME_MS;
     subtitle.setText(
-      `GEAR 1  ·  ${rph.toLocaleString()} ROTATIONS / HOUR`
-      + (rph >= LEGACY_MAX_RPH ? '  ·  AT THE TEETH’S LIMIT'
-        : tooFast ? '  ·  FASTER THAN THE EYE' : '')
+      rph === 0
+        ? 'STOPPED  ·  NOTHING IS DRIVING IT'
+        : `GEAR 1  ·  ${rph.toLocaleString()} ROTATIONS / HOUR`
+          + (rph >= LEGACY_MAX_RPH ? '  ·  AT THE TEETH’S LIMIT'
+            : tooFast ? '  ·  FASTER THAN THE EYE' : '')
     );
     // EVERY GEAR'S COUNT ON ONE LINE, evenly spaced under the art. Eight
     // labels pinned to eight drawn gears collided the moment the barrel was
@@ -232,7 +237,9 @@ export function openLegacyMachine(scene: BoardScene): void {
     content.add(scene.add.text(
       w / 2, barY + 16 * s,
       next
-        ? `GEAR ${focus + 1} -> ${next.milestone} ROTATION${next.milestone === 1 ? '' : 'S'}  ·  ${turnsLabel(focus)}`
+        ? (rph === 0
+          ? 'START IT AND PROJECT STAGES WILL TURN GEAR 1'
+          : `GEAR ${focus + 1} -> ${next.milestone} ROTATION${next.milestone === 1 ? '' : 'S'}  ·  ${turnsLabel(focus)}`)
         : 'THE MACHINE IS COMPLETE',
       {
         resolution: textResolution, fontFamily: Theme.fontMono,
@@ -264,7 +271,8 @@ export function openLegacyMachine(scene: BoardScene): void {
     content.add(up);
     content.add(scene.add.text(
       w / 2, maxed ? upgradeY : upgradeY - 8 * s,
-      maxed ? `ADD GEAR ${legacyGearCount(state) + 1}` : 'UPGRADE GEAR 1',
+      maxed ? `ADD GEAR ${legacyGearCount(state) + 1}`
+        : state.gearOneLevel === 0 ? 'START THE MACHINE' : 'UPGRADE GEAR 1',
       {
         resolution: textResolution, fontFamily: Theme.fontHeading,
         fontSize: `${Math.round(13 * s)}px`, fontStyle: 'bold',

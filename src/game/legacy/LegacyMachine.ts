@@ -46,9 +46,17 @@ export const LEGACY_BASE_GEARS = 8;
 export const LEGACY_BASE_RPH = 250;
 export const LEGACY_MAX_RPH = 100_000;
 
-/** Each level is 19% faster, which reaches the cap in 35 of them. */
+/**
+ * Each level is 19% faster, which reaches the cap in 35 of them - and
+ * LEVEL ZERO IS STOPPED.
+ *
+ * An unlocked machine nobody has powered is standing still: no rotations,
+ * no turns accruing, nothing for the panel to animate. The first upgrade
+ * is what starts it, at the base rate, which makes that purchase the most
+ * legible one in the whole track.
+ */
 const LEGACY_SPEED_STEP = 1.19;
-export const LEGACY_MAX_LEVEL = 35;
+export const LEGACY_MAX_LEVEL = 36;
 
 /**
  * 3:1, not the reference's 10:1.
@@ -142,13 +150,23 @@ export function syncLegacyGears(state: LegacyMachineState): void {
 
 /** Gear one's actual rate, in rotations per hour. */
 export function legacyRotationsPerHour(level: number): number {
+  if (level <= 0) return 0;
   return Math.min(LEGACY_MAX_RPH,
-    Math.round(LEGACY_BASE_RPH * LEGACY_SPEED_STEP ** Math.max(0, level)));
+    Math.round(LEGACY_BASE_RPH * LEGACY_SPEED_STEP ** (level - 1)));
 }
 
-/** How much faster than a stock machine this one runs. */
+/**
+ * How much faster than a stock machine this one runs - and ZERO while it
+ * is stopped, so nothing turns and no turns are banked until it is
+ * started.
+ */
 export function legacySpeed(state: LegacyMachineState): number {
   return legacyRotationsPerHour(state.gearOneLevel) / LEGACY_BASE_RPH;
+}
+
+/** Whether the machine is running at all. */
+export function legacyIsRunning(state: LegacyMachineState): boolean {
+  return state.gearOneLevel > 0;
 }
 
 /**
