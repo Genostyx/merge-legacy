@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { loadedCrateSprite, loadedOpenCrateSprite } from './itemSprites';
-import { CRATE_EXTENT, drawCrate } from './TierIcons';
+import { CRATE_EXTENT, crateBoxFor, drawCrate } from './TierIcons';
 
 /**
  * A crate sitting on the board.
@@ -13,6 +13,10 @@ import { CRATE_EXTENT, drawCrate } from './TierIcons';
  * sway, which reads as "this is waiting for you" instead of "this is one of
  * the pieces".
  */
+/** How much of a cell a crate's art spans. Full width: a crate is a
+ *  big object and is allowed to reach its own edges. */
+const CRATE_ON_BOARD = 1.0;
+
 export class CrateView extends Phaser.GameObjects.Container {
   gridPos: GridPosition;
   /** Kept so BoardScene can treat every board view uniformly when dragging. */
@@ -106,8 +110,14 @@ export class CrateView extends Phaser.GameObjects.Container {
       // that opened it. Sharing the closed box keeps the body identical
       // and lets the lid have the extra room, which is the whole point
       // of the two renders being framed at one scale.
+      // SIZED BY DRAWN WIDTH, off the cell - not off `size`, which is
+      // inflated to 1.30 of a cell because `drawCrate` draws its box at
+      // about half the number it is handed. Feeding that to a render
+      // drew the container 1.13 cells wide, spilling into its
+      // neighbours.
       const shut = CRATE_EXTENT[this.crateTier] ?? CRATE_EXTENT.bronze;
-      const box = size * (shut.w / (this.lidOpen ? CRATE_EXTENT.open.w : shut.w));
+      const box = crateBoxFor(this.crateTier, this.cellSize * CRATE_ON_BOARD)
+        * (this.lidOpen ? shut.w / CRATE_EXTENT.open.w : 1);
       // ... and lifted by the difference in where each art's feet sit,
       // so the body stays on the same line.
       const feet = this.lidOpen ? CRATE_EXTENT.open.bottom : shut.bottom;
