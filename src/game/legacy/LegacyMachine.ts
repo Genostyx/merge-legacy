@@ -57,8 +57,16 @@ export function legacyUnlocked(projectStage: number, totalStages: number): boole
   return projectStage >= totalStages;
 }
 
-/** What the locked button says, so one string serves every caller. */
-export const LEGACY_UNLOCK_NOTE = 'FINISH THE LIVING ROOM';
+/**
+ * What the locked button says, on TWO LINES.
+ *
+ * The tile is the rightmost of three and only sixty wide; a single line
+ * ran off the edge of the card.
+ */
+export const LEGACY_UNLOCK_NOTE = 'FINISH FIRST\nHOME RENOVATION';
+
+/** The same thing on one line, for the action tray, which has the room. */
+export const LEGACY_UNLOCK_LINE = 'FINISH YOUR FIRST HOME RENOVATION';
 
 /** Gears the machine ships with. TORQUE adds more - see `legacyGearCount`. */
 export const LEGACY_BASE_GEARS = 8;

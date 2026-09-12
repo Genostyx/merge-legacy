@@ -18,6 +18,7 @@ import { floatingScore } from '../../fx/MergeFx';
 import { unclaimedDiscoveryCount } from '../../collection/Collection';
 import { PROJECT_STAGES } from './config';
 import {
+  LEGACY_UNLOCK_LINE,
   LEGACY_UNLOCK_NOTE,
   claimableLegacyMilestones,
   legacyUnlocked as legacyIsUnlocked
@@ -477,23 +478,35 @@ export function openPlayerInfo(scene: BoardScene): void {
   // Padlock over the greyed mark, and the requirement spelled out beside it.
   // Two lines: one would run under the collection button sitting at x = 0.
   const collectionLock = scene.add.graphics().setPosition(collectionX, collectionY - 3);
-  const collectionLockNote = scene.add.text(collectionX + 36, collectionY, 'UNLOCKS AT\nLEVEL 3', {
-    resolution: textResolution,
-    fontFamily: Theme.fontMono,
-    fontSize: '8px',
-    fontStyle: 'bold',
-    color: hex(Theme.textOnDarkMuted),
-    lineSpacing: 2
-  }).setOrigin(0, 0.5);
+  // UNDER the tile, matching the Legacy Machine's. Beside it, the note
+  // ran across the collection book sitting in the middle of the row.
+  const collectionLockNote = scene.add.text(
+    collectionX, collectionY + 25, 'UNLOCKS AT\nLEVEL 3',
+    {
+      resolution: textResolution,
+      fontFamily: Theme.fontMono,
+      fontSize: '7px',
+      fontStyle: 'bold',
+      color: hex(Theme.textOnDarkMuted),
+      align: 'center',
+      lineSpacing: 1
+    }
+  ).setOrigin(0.5, 0);
   if (projectUnlocked) {
     collectionLockNote.setVisible(false);
   } else {
-    // Body, then the shackle as a stroked half-circle above it.
-    collectionLock.fillStyle(Theme.textOnDark, 0.9);
-    collectionLock.fillRoundedRect(-7, -1, 14, 11, 2);
-    collectionLock.lineStyle(2.5, Theme.textOnDark, 0.9);
+    // A CORNER BADGE, the same as the Legacy Machine's - centred over
+    // the mark it hid the art it was describing.
+    collectionLock.setPosition(collectionX + 18, collectionY + 8);
+    collectionLock.fillStyle(Theme.bg, 0.9);
+    collectionLock.fillCircle(0, 0, 9);
+    collectionLock.lineStyle(1, Theme.borderOnDark, 0.9);
+    collectionLock.strokeCircle(0, 0, 9);
+    collectionLock.fillStyle(Theme.textOnDark, 0.92);
+    collectionLock.fillRoundedRect(-4, 0, 8, 6, 1.2);
+    collectionLock.lineStyle(1.6, Theme.textOnDark, 0.92);
     collectionLock.beginPath();
-    collectionLock.arc(0, -1, 4.5, Math.PI, 0);
+    collectionLock.arc(0, 0, 2.6, Math.PI, 0);
     collectionLock.strokePath();
     collectionLock.fillStyle(Theme.bg, 0.9);
     collectionLock.fillCircle(0, 4, 1.6);
@@ -606,7 +619,8 @@ export function openPlayerInfo(scene: BoardScene): void {
       fontSize: '7px',
       fontStyle: 'bold',
       color: hex(Theme.textOnDarkMuted),
-      align: 'center'
+      align: 'center',
+      lineSpacing: 1
     }
   ).setOrigin(0.5, 0);
   if (legacyUnlocked) {
@@ -678,7 +692,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   legacyZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
     dismiss();
     if (legacyUnlocked) scene.openLegacyMachine();
-    else scene.refreshActionTray(`LEGACY MACHINE  ·  ${LEGACY_UNLOCK_NOTE}`);
+    else scene.refreshActionTray(`LEGACY MACHINE  ·  ${LEGACY_UNLOCK_LINE}`);
   }));
   dailyClaimZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
       if (rewardClaimPending) return;
