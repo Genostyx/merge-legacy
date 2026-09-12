@@ -10,7 +10,8 @@ import { FacilityView } from '../objects/FacilityView';
 import { EventTokenView } from '../objects/EventTokenView';
 import {
   EVENT_TOKENS_PER_TAP,
-  activeEventFor, addEventProgress, createDefaultTimedEventState
+  activeEventFor, addEventProgress, createDefaultTimedEventState,
+  eventsStartedFor, visibleEventFor
 } from '../events/TimedEvents';
 import type { EventMilestone } from '../events/TimedEvents';
 import { openEventPanel as openEventPanelExt } from './board/eventPanel';
@@ -433,7 +434,7 @@ import {
   pieceSpritePath
 } from '../objects/itemSprites';
 import {
-  LEGACY_UNLOCK_LEVEL,
+  legacyUnlocked,
   advanceLegacyMachine,
   createDefaultLegacyMachine,
   type LegacyMachineState
@@ -3633,7 +3634,7 @@ TAP THE EVENT CARD TO SPEND IT`
    * the offline ones do.
    */
   tickLegacyMachine(): void {
-    if (playerLevel(this.orderState) < LEGACY_UNLOCK_LEVEL) return;
+    if (!legacyUnlocked(this.projectStage, PROJECT_STAGES.length)) return;
     const produced = advanceLegacyMachine(this.legacyMachine, Date.now());
     if (!produced.length) return;
     for (const entry of produced) {
@@ -3706,6 +3707,19 @@ TAP THE EVENT CARD TO SPEND IT`
    */
   currentEvent(): TimedEventDef | null {
     return activeEventFor(Date.now(), playerLevel(this.orderState));
+  }
+
+  /**
+   * The event to SHOW, which is not always the one that is running: below
+   * `EVENT_START_LEVEL` the player sees what is on and gets none of it.
+   */
+  previewEvent(): TimedEventDef | null {
+    return visibleEventFor(Date.now());
+  }
+
+  /** Whether events have started for this player at all. */
+  eventsStarted(): boolean {
+    return eventsStartedFor(playerLevel(this.orderState));
   }
   refreshEventChip(now = Date.now()): void { refreshEventChipExt(this, now); }
   openEventTrack(overPanel = false): void { openEventTrackExt(this, overPanel); }

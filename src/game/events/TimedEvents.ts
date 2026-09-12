@@ -166,19 +166,50 @@ export function activeEvent(
 }
 
 /**
- * The event this PLAYER can see: open by the clock, and unlocked by level.
+ * THE LEVEL AN EVENT ACTUALLY STARTS FOR A PLAYER.
  *
- * Everything on the scene side goes through here rather than `activeEvent`,
- * so the gate cannot be enforced in one place and forgotten in another - a
- * chip that appeared for a level-2 player, or tokens that dropped for one,
- * would each be their own bug.
+ * A weekly event that runs while the player is still learning the board
+ * is a week of the calendar they cannot get back - so below this they
+ * SEE what is on and when it ends, and it does not begin for them.
+ */
+export const EVENT_START_LEVEL = 10;
+
+/**
+ * The event this PLAYER is taking part in: open by the clock, and past
+ * the level an event starts at.
+ *
+ * Everything that GRANTS something goes through here rather than
+ * `activeEvent`, so the gate cannot be enforced in one place and
+ * forgotten in another - tokens dropping for a level-2 player would be
+ * its own bug.
  */
 export function activeEventFor(
   now: number, level: number, events: readonly TimedEventDef[] = EVENTS
 ): TimedEventDef | null {
   const event = activeEvent(now, events);
   if (!event) return null;
+  if (level < EVENT_START_LEVEL) return null;
   return level >= (event.minLevel ?? 1) ? event : null;
+}
+
+/**
+ * The event this player can SEE, running or not.
+ *
+ * Distinct from `activeEventFor` on purpose: a player below the start
+ * level gets the chip, the name and the countdown - "this is what an
+ * event is, here is when the next one is yours" - and no progress, no
+ * tokens and no rewards. Hiding it entirely meant a player met the whole
+ * feature for the first time on the day it became theirs.
+ */
+export function visibleEventFor(
+  now: number, events: readonly TimedEventDef[] = EVENTS
+): TimedEventDef | null {
+  return activeEvent(now, events);
+}
+
+/** Whether the player is old enough for an event to run for them. */
+export function eventsStartedFor(level: number): boolean {
+  return level >= EVENT_START_LEVEL;
 }
 
 /** Milliseconds until the event closes. 0 once it has. */

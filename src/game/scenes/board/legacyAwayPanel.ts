@@ -5,12 +5,12 @@ import { CRATE_LABELS } from '../../rewards/Rewards';
 import { drawCrate } from '../../objects/TierIcons';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import {
-  LEGACY_UNLOCK_LEVEL,
   advanceLegacyMachine,
   legacyRotationsPerHour,
+  legacyUnlocked,
   type LegacyReward
 } from '../../legacy/LegacyMachine';
-import { playerLevel } from '../../levels/Orders';
+import { PROJECT_STAGES } from './config';
 
 /** Under this there is nothing worth interrupting the player for. */
 const MIN_AWAY_MS = 60_000;
@@ -53,7 +53,7 @@ export function showLegacyAway(scene: BoardScene): void {
   // Never before the machine exists for this player, and never before it
   // has been started - a box reporting nothing is a lie about a feature
   // they have not met.
-  if (playerLevel(scene.orderState) < LEGACY_UNLOCK_LEVEL) return;
+  if (!legacyUnlocked(scene.projectStage, PROJECT_STAGES.length)) return;
   if (state.gearOneLevel <= 0) return;
 
   const now = Date.now();

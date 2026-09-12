@@ -16,7 +16,12 @@ import { playerLevel, playerXpProgress } from '../../levels/Orders';
 import { addCoins } from '../../economy/Economy';
 import { floatingScore } from '../../fx/MergeFx';
 import { unclaimedDiscoveryCount } from '../../collection/Collection';
-import { LEGACY_UNLOCK_LEVEL, claimableLegacyMilestones } from '../../legacy/LegacyMachine';
+import { PROJECT_STAGES } from './config';
+import {
+  LEGACY_UNLOCK_NOTE,
+  claimableLegacyMilestones,
+  legacyUnlocked as legacyIsUnlocked
+} from '../../legacy/LegacyMachine';
 
 /**
  * playerInfoPanel, lifted out of BoardScene whole.
@@ -532,7 +537,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   // Its OWN gate, not the project's. They shared `projectUnlocked` at
   // level 3, which put a system paced in days in front of a player still
   // learning the board.
-  const legacyUnlocked = xp.level >= LEGACY_UNLOCK_LEVEL;
+  const legacyUnlocked = legacyIsUnlocked(scene.projectStage, PROJECT_STAGES.length);
   const legacyReady = legacyUnlocked
     && claimableLegacyMilestones(scene.legacyMachine).length > 0;
   const legacyPanel = scene.add.graphics();
@@ -594,7 +599,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   // right because the collection is the leftmost tile; this one is the
   // rightmost, so a note beside it ran back across the book.
   const legacyLockNote = scene.add.text(
-    legacyX, legacyY + 25, `UNLOCKS AT LEVEL ${LEGACY_UNLOCK_LEVEL}`,
+    legacyX, legacyY + 25, LEGACY_UNLOCK_NOTE,
     {
       resolution: textResolution,
       fontFamily: Theme.fontMono,
@@ -673,7 +678,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   legacyZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
     dismiss();
     if (legacyUnlocked) scene.openLegacyMachine();
-    else scene.refreshActionTray(`LEGACY MACHINE UNLOCKS AT LEVEL ${LEGACY_UNLOCK_LEVEL}`);
+    else scene.refreshActionTray(`LEGACY MACHINE  ·  ${LEGACY_UNLOCK_NOTE}`);
   }));
   dailyClaimZone.on('pointerdown', () => scene.time.delayedCall(0, () => {
       if (rewardClaimPending) return;

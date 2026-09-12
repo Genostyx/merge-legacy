@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EVENT_START_LEVEL,
+  eventsStartedFor,
+  visibleEventFor,
   EVENTS,
   activeEvent,
   activeEventFor,
@@ -66,18 +69,34 @@ describe('timed events', () => {
     expect(eventMsRemaining(e, 1000 + HOUR + 5)).toBe(0);
   });
 
-  it('stays shut until the player is high enough level', () => {
+  it('does not start for a player below the start level', () => {
     // The early game hands out energy generously, so a brand-new player would
     // clear an event faster than a settled one - which inverts the point of a
-    // reward track.
+    // reward track. A weekly event running while they are still learning the
+    // board is also a week of the calendar they cannot get back.
     const e = evt({ minLevel: 5 });
     const list = [e];
     expect(activeEventFor(2000, 4, list)).toBeNull();
-    expect(activeEventFor(2000, 5, list)).toBe(e);
+    // Past the event's OWN gate but not the global one.
+    expect(activeEventFor(2000, 5, list)).toBeNull();
+    expect(activeEventFor(2000, EVENT_START_LEVEL, list)).toBe(e);
     // The clock still has the final say.
     expect(activeEventFor(999, 99, list)).toBeNull();
-    // An event without a gate opens for everyone.
-    expect(activeEventFor(2000, 1, [evt()])).not.toBeNull();
+    // An event with no gate of its own still waits for the start level.
+    expect(activeEventFor(2000, 1, [evt()])).toBeNull();
+    expect(activeEventFor(2000, EVENT_START_LEVEL, [evt()])).not.toBeNull();
+  });
+
+  it('is visible before it starts, so the player meets it first', () => {
+    // Seeing what is on and when it ends is the whole point of the gate
+    // being a start level rather than a hidden feature: a player should
+    // not meet events for the first time on the day they become theirs.
+    const e = evt({ minLevel: 5 });
+    expect(visibleEventFor(2000, [e])).toBe(e);
+    expect(eventsStartedFor(EVENT_START_LEVEL - 1)).toBe(false);
+    expect(eventsStartedFor(EVENT_START_LEVEL)).toBe(true);
+    // The clock still governs what is visible.
+    expect(visibleEventFor(999, [e])).toBeNull();
   });
 
   it('refuses progress outside the window', () => {

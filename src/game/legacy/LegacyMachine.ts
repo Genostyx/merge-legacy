@@ -45,14 +45,20 @@ export type LegacyReward =
   | { kind: 'producer'; producerId: ResourceProducerId };
 
 /**
- * The level the machine appears at.
+ * The machine is earned, not reached.
  *
- * Later than the project's level 3, and deliberately: this is a long-haul
- * side system measured in days and weeks, and handing it to a player who
- * is still learning the board gives them a second economy to think about
- * before the first one has settled.
+ * A level gate says "keep playing"; finishing the living room says "you
+ * built something, here is the thing that outlives it", which is what
+ * this machine is for. It is also later than any level number would
+ * safely be, and it lands after the player has met the project - the
+ * system the machine's fiction sits next to.
  */
-export const LEGACY_UNLOCK_LEVEL = 10;
+export function legacyUnlocked(projectStage: number, totalStages: number): boolean {
+  return projectStage >= totalStages;
+}
+
+/** What the locked button says, so one string serves every caller. */
+export const LEGACY_UNLOCK_NOTE = 'FINISH THE LIVING ROOM';
 
 /** Gears the machine ships with. TORQUE adds more - see `legacyGearCount`. */
 export const LEGACY_BASE_GEARS = 8;

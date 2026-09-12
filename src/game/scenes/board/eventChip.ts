@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
+import { EVENT_START_LEVEL } from '../../events/TimedEvents';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { EVENT_TOKEN_COLOR, eventTokenMark } from '../../objects/EventTokenView';
@@ -105,16 +106,22 @@ export function buildEventChip(scene: BoardScene): void {
 export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
   const chip = scene.eventChip;
   if (!chip) return;
-  const event = scene.currentEvent();
+  // SHOWN whether or not it has started for this player. Below the start
+  // level the chip is a window onto the feature - what is on, and how
+  // long it runs - and nothing accrues behind it.
+  const event = scene.previewEvent();
   chip.setVisible(!!event);
   if (!event) return;
+  const started = scene.eventsStarted();
 
-  const points = eventProgress(scene.timedEvents, event);
-  scene.eventChipCount?.setText(`${points}/${event.goal}`);
-  scene.eventChipEnergy?.setText(String(scene.eventBoard.energy));
+  const points = started ? eventProgress(scene.timedEvents, event) : 0;
+  scene.eventChipCount?.setText(started
+    ? `${points}/${event.goal}`
+    : `LVL ${EVENT_START_LEVEL}`);
+  scene.eventChipEnergy?.setText(started ? String(scene.eventBoard.energy) : '-');
   scene.eventChipClock?.setText(formatEventCountdown(eventMsRemaining(event, now)));
 
-  const owed = unclaimedMilestones(scene.timedEvents, event).length;
+  const owed = started ? unclaimedMilestones(scene.timedEvents, event).length : 0;
   drawChipMeter(scene, event, points, owed);
   const bg = scene.eventChipBg;
   if (!bg) return;

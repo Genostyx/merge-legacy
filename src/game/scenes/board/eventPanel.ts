@@ -20,6 +20,7 @@ import {
   submitEventOrder, visibleEventOrders
 } from '../../events/EventOrders';
 import {
+  EVENT_START_LEVEL,
   addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
   formatEventCountdown, isMilestoneClaimed
 } from '../../events/TimedEvents';
@@ -72,6 +73,19 @@ const keyOf = (pos: GridPosition): string => `${pos.col},${pos.row}`;
 
 export function openEventPanel(scene: BoardScene): void {
   if (scene.modalOpen || scene.inputLocked) return;
+  // TAPPABLE BEFORE IT STARTS, but it does not open the board: a player
+  // below the start level is told what an event is and when theirs
+  // begins, rather than finding a chip that does nothing.
+  const preview = scene.previewEvent();
+  if (preview && !scene.eventsStarted()) {
+    scene.refreshActionTray(
+      `${preview.title.toUpperCase()}  ·  ENDS IN `
+      + `${formatEventCountdown(eventMsRemaining(preview, Date.now()))}
+`
+      + `EVENTS START FOR YOU AT LEVEL ${EVENT_START_LEVEL}`
+    );
+    return;
+  }
   const event = scene.currentEvent();
   if (!event) return;
   scene.modalOpen = true;
