@@ -546,15 +546,38 @@ export function openPlayerInfo(scene: BoardScene): void {
   legacyPanel.lineBetween(legacyX - 25, legacyY - 17.5, legacyX + 25, legacyY - 17.5);
   legacyPanel.lineStyle(1, 0x000000, 0.35);
   legacyPanel.lineBetween(legacyX - 25, legacyY + 17.5, legacyX + 25, legacyY + 17.5);
+  // THE RENDERED GEAR, tinted the machine's own green.
+  //
+  // The project and collection tiles carry real art and this one was a
+  // drawn ring of squares, which read as a placeholder beside them. The
+  // green is not decoration either: the Legacy Machine's whole screen is
+  // in it, so the tile and the thing it opens agree.
+  const legacyArt: Phaser.GameObjects.GameObject[] = [];
+  // ON THE TILE'S OWN CENTRE. The face is drawn from legacyY - 18.5 over
+  // 37, so its middle is legacyY exactly; the -2 was carried over from
+  // the drawn ring and sat the gear high.
+  const legacyGear = scene.textures.exists('legacy-gear')
+    ? scene.add.image(legacyX, legacyY, 'legacy-gear')
+      .setDisplaySize(34, 34)
+      .setTint(Theme.currencyXp)
+      .setAlpha(legacyUnlocked ? 1 : 0.42)
+    : null;
   const legacyIcon = scene.add.graphics().setPosition(legacyX, legacyY - 2);
-  legacyIcon.fillStyle(Theme.currencyXp, legacyUnlocked ? 0.95 : 0.38);
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    legacyIcon.fillRect(Math.cos(a) * 13 - 2, Math.sin(a) * 13 - 2, 4, 4);
+  if (legacyGear) {
+    legacyArt.push(legacyGear);
+  } else {
+    // The drawn fallback, for a boot where the render has not loaded.
+    legacyIcon.fillStyle(Theme.currencyXp, legacyUnlocked ? 0.95 : 0.38);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      legacyIcon.fillRect(Math.cos(a) * 13 - 2, Math.sin(a) * 13 - 2, 4, 4);
+    }
+    legacyIcon.fillCircle(0, 0, 12);
+    legacyIcon.fillStyle(Theme.bg, legacyUnlocked ? 0.9 : 0.38);
+    legacyIcon.fillCircle(0, 0, 5);
   }
-  legacyIcon.fillCircle(0, 0, 12);
-  legacyIcon.fillStyle(Theme.bg, legacyUnlocked ? 0.9 : 0.38);
-  legacyIcon.fillCircle(0, 0, 5);
+  legacyArt.push(legacyIcon);
+
   const legacyBadge = scene.add.text(legacyX + 23, legacyY - 14, legacyReady ? '!' : '', {
     resolution: textResolution,
     fontFamily: Theme.fontNumeric,
@@ -567,26 +590,35 @@ export function openPlayerInfo(scene: BoardScene): void {
   // Padlock and the requirement spelled out, the same treatment the
   // collection gets - a greyed icon alone does not say WHEN.
   const legacyLock = scene.add.graphics().setPosition(legacyX, legacyY - 3);
+  // UNDER the tile, not beside it. The collection's note can sit to its
+  // right because the collection is the leftmost tile; this one is the
+  // rightmost, so a note beside it ran back across the book.
   const legacyLockNote = scene.add.text(
-    legacyX - 36, legacyY, `UNLOCKS AT
-LEVEL ${LEGACY_UNLOCK_LEVEL}`,
+    legacyX, legacyY + 25, `UNLOCKS AT LEVEL ${LEGACY_UNLOCK_LEVEL}`,
     {
       resolution: textResolution,
       fontFamily: Theme.fontMono,
-      fontSize: '8px',
+      fontSize: '7px',
       fontStyle: 'bold',
       color: hex(Theme.textOnDarkMuted),
-      align: 'right'
+      align: 'center'
     }
-  ).setOrigin(1, 0.5);
+  ).setOrigin(0.5, 0);
   if (legacyUnlocked) {
     legacyLockNote.setVisible(false);
   } else {
-    legacyLock.fillStyle(Theme.textOnDark, 0.9);
-    legacyLock.fillRoundedRect(-7, -1, 14, 11, 2);
-    legacyLock.lineStyle(2.5, Theme.textOnDark, 0.9);
+    // IN THE CORNER, like a badge. Centred - even at half size - it sat
+    // over the gear and hid the thing it was telling the player about.
+    legacyLock.setPosition(legacyX + 18, legacyY + 8);
+    legacyLock.fillStyle(Theme.bg, 0.9);
+    legacyLock.fillCircle(0, 0, 9);
+    legacyLock.lineStyle(1, Theme.borderOnDark, 0.9);
+    legacyLock.strokeCircle(0, 0, 9);
+    legacyLock.fillStyle(Theme.textOnDark, 0.92);
+    legacyLock.fillRoundedRect(-4, 0, 8, 6, 1.2);
+    legacyLock.lineStyle(1.6, Theme.textOnDark, 0.92);
     legacyLock.beginPath();
-    legacyLock.arc(0, -1, 4.5, Math.PI, 0);
+    legacyLock.arc(0, 0, 2.6, Math.PI, 0);
     legacyLock.strokePath();
   }
   const legacyZone = scene.add.zone(legacyX, legacyY, 60, 44)
@@ -605,7 +637,7 @@ LEVEL ${LEGACY_UNLOCK_LEVEL}`,
     dailyStrip, ...dailyIcons, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
     collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
     bookPanel, bookIcon, bookBadge, bookZone,
-    legacyPanel, legacyIcon, legacyLock, legacyLockNote, legacyBadge, legacyZone,
+    legacyPanel, ...legacyArt, legacyLock, legacyLockNote, legacyBadge, legacyZone,
     closeBtn
   ]);
 
