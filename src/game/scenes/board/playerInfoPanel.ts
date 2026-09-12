@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
-import { currencyIcon } from '../../ui/CurrencyGlyph';
+import { currencyBoxFor, currencyIcon } from '../../ui/CurrencyGlyph';
 import { buildCurrencyCluster } from '../../ui/CurrencyCluster';
 import { CRATE_DRAWN, CRATE_RENDER_BOX, drawCrate } from '../../objects/TierIcons';
 import type { CrateTier } from '../../rewards/Rewards';
@@ -229,6 +229,8 @@ export function openPlayerInfo(scene: BoardScene): void {
   // wide for a tab that has had to shrink, which is the other half of "the
   // days don't fit".
   const dailyFit = Phaser.Math.Clamp(dailyTabW / 62, 0.72, 1);
+  /** How much ART each day's reward draws, coin and crate alike. */
+  const DAILY_ART = 36;
   const dailyLabelPx = Math.round(Phaser.Math.Clamp(10 * dailyFit, 8, 10));
   const dailyValuePx = Math.round(Phaser.Math.Clamp(9 * dailyFit, 7, 9));
   const dailyStrip = scene.add.graphics();
@@ -240,7 +242,15 @@ export function openPlayerInfo(scene: BoardScene): void {
   // Day 1 is the single Credit, which is an SVG mark and so an Image; day 2
   // is the Credit Stack, a drawn silhouette on the same graphics the crate
   // days use.
-  const dailyCoin = currencyIcon(scene, 'credit', 30 * dailyFit).setVisible(false);
+  // SIZED TO THE CRATES IT SITS BESIDE, in drawn art rather than in box.
+  // `currencyIcon` shrinks a rendered mark to draw the same amount as the
+  // old SVG did, so a raw 30 came out as ~19 of actual coin against the
+  // 36 of actual crate on the days either side of it - the coin looked
+  // half the size of everything else on the strip. `currencyBoxFor` is
+  // the conversion: give it the mark height you want drawn.
+  const dailyCoin = currencyIcon(
+    scene, 'credit', currencyBoxFor('credit', DAILY_ART * dailyFit)
+  ).setVisible(false);
   // Day 2's pair, built once and repositioned as the strip redraws. Each
   // mark keeps its layout offset in data, since reading it back off `x`
   // after a reposition would compound.
@@ -386,8 +396,9 @@ export function openPlayerInfo(scene: BoardScene): void {
       // `drawCrate` draws to about 0.67 of it, so the chests came out at
       // ~17px beside a 26px coin. 40 puts the crate's rendered width on the
       // coin's, which is what "the same size" actually means here.
-      // Sized by drawn width, as everywhere else.
-      const STRIP_CRATE = (36 * dailyFit) / CRATE_DRAWN.width;
+      // Sized by drawn width, as everywhere else - off the same number
+      // the coin uses, so the two cannot drift apart again.
+      const STRIP_CRATE = (DAILY_ART * dailyFit) / CRATE_DRAWN.width;
       if (index === 0) {
         dailyCoin.setVisible(reward.kind === 'credits')
           .setPosition(centerX, iconY)
