@@ -17,6 +17,7 @@ import { addCoins } from '../../economy/Economy';
 import { floatingScore } from '../../fx/MergeFx';
 import { unclaimedDiscoveryCount } from '../../collection/Collection';
 import { PROJECT_STAGES } from './config';
+import { loadedCrateSprite } from '../../objects/itemSprites';
 import {
   LEGACY_UNLOCK_LINE,
   LEGACY_UNLOCK_NOTE,
@@ -177,8 +178,21 @@ export function openPlayerInfo(scene: BoardScene): void {
   const rewardCrateX = barX + barW;
   const rewardCrateY = barY + barH / 2;
   const rewardCrate = scene.add.graphics().setPosition(rewardCrateX, rewardCrateY);
+  // A SIBLING IMAGE for the render. This icon is redrawn whenever the
+  // next milestone changes, so the render cannot replace the Graphics -
+  // it rides alongside and whichever applies is left visible.
+  const rewardCrateSprite = scene.add.image(rewardCrateX, rewardCrateY, 'crate-bronze')
+    .setVisible(false);
   const drawLevelReward = (tier: CrateTier): void => {
     rewardCrate.clear().setAlpha(0.78);
+    const key = loadedCrateSprite(scene, tier);
+    if (key) {
+      const drawn = 36 * CRATE_DRAWN.width * 1.5;
+      rewardCrateSprite.setTexture(key).setDisplaySize(drawn, drawn)
+        .setAlpha(0.78).setVisible(true);
+      return;
+    }
+    rewardCrateSprite.setVisible(false);
     drawCrate(rewardCrate, 36, tier);
   };
   drawLevelReward(nextMilestoneTier as CrateTier);
@@ -219,6 +233,8 @@ export function openPlayerInfo(scene: BoardScene): void {
   const dailyValuePx = Math.round(Phaser.Math.Clamp(9 * dailyFit, 7, 9));
   const dailyStrip = scene.add.graphics();
   const dailyIcons = Array.from({ length: 5 }, () => scene.add.graphics());
+  const dailyCrates = Array.from({ length: 5 }, () =>
+    scene.add.image(0, 0, 'crate-bronze').setVisible(false));
   // Coins are the SVG mark now, so they are Images rather than something
   // the strip draws. One of the two is shown per day.
   // Day 1 is the single Credit, which is an SVG mark and so an Image; day 2
@@ -364,6 +380,7 @@ export function openPlayerInfo(scene: BoardScene): void {
       dailyDayLabels[index].setPosition(centerX, dailyStripY + 10)
         .setColor(hex(isActive ? accent : Theme.textOnDarkMuted));
       dailyIcons[index].clear().setScale(1).setAlpha(isClaimed ? 0.5 : 1);
+      dailyCrates[index].setVisible(false);
       // 26 and 25 looked like matching numbers but were not matching SIZES:
       // `drawCurrencyGlyph` fills its full `size` (a 26px coin), while
       // `drawCrate` draws to about 0.67 of it, so the chests came out at
@@ -386,7 +403,15 @@ export function openPlayerInfo(scene: BoardScene): void {
       }
       if (reward.kind !== 'credits') {
         dailyIcons[index].setPosition(centerX, iconY);
-        drawCrate(dailyIcons[index], STRIP_CRATE, reward.tier);
+        const stripKey = loadedCrateSprite(scene, reward.tier);
+        if (stripKey) {
+          const drawn = STRIP_CRATE * CRATE_DRAWN.width * 1.5;
+          dailyCrates[index].setTexture(stripKey).setPosition(centerX, iconY)
+            .setDisplaySize(drawn, drawn).setAlpha(isClaimed ? 0.5 : 1)
+            .setVisible(true);
+        } else {
+          drawCrate(dailyIcons[index], STRIP_CRATE, reward.tier);
+        }
       }
       // A day that has not opened yet shows '?' rather than a number. Its
       // Credit value is only fixed when the day rolls over and is priced at
@@ -639,6 +664,9 @@ export function openPlayerInfo(scene: BoardScene): void {
     legacyLock.beginPath();
     legacyLock.arc(0, 0, 2.6, Math.PI, 0);
     legacyLock.strokePath();
+    // The keyhole, which the renovations lock has and this one did not.
+    legacyLock.fillStyle(Theme.bg, 0.9);
+    legacyLock.fillCircle(0, 4, 1.6);
   }
   const legacyZone = scene.add.zone(legacyX, legacyY, 60, 44)
     .setInteractive({ useHandCursor: true });
@@ -652,8 +680,8 @@ export function openPlayerInfo(scene: BoardScene): void {
 
   card.add([
     cardBg, titleRule, title, profileBand, levelDisc, levelText, levelLabel, xpBar,
-    rewardCrate, divider, guidance,
-    dailyStrip, ...dailyIcons, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
+    rewardCrate, rewardCrateSprite, divider, guidance,
+    dailyStrip, ...dailyIcons, ...dailyCrates, dailyCoin, ...dailyPair, ...dailyDayLabels, ...dailyRewardLabels, ...dailyStateLabels, dailyClaimZone,
     collectionPanel, collectionIcon, collectionLock, collectionLockNote, collectionBadge, collectionZone,
     bookPanel, bookIcon, bookBadge, bookZone,
     legacyPanel, ...legacyArt, legacyLock, legacyLockNote, legacyBadge, legacyZone,

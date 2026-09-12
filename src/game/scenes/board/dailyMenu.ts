@@ -3,7 +3,7 @@ import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { buildCurrencyCluster } from '../../ui/CurrencyCluster';
-import { CRATE_DRAWN, drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate } from '../../objects/TierIcons';
 import { claimDaily, dailyAvailable, dailyRewardFor } from '../../rewards/Rewards';
 import { addCoins } from '../../economy/Economy';
 import { floatingScore } from '../../fx/MergeFx';
@@ -250,10 +250,9 @@ export function openDailyMenu(scene: BoardScene): void {
         }
       }
     } else {
-      const crate = scene.add.graphics()
+      const crate = crateArt(scene, reward.tier, CRATE_ART * CRATE_DRAWN.width)
         .setPosition(iconX, iconY)
         .setAlpha(isClaimed ? 0.45 : 1);
-      drawCrate(crate, CRATE_ART, reward.tier);
       tab.add(crate);
     }
 

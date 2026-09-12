@@ -541,6 +541,8 @@ export class BoardScene extends Phaser.Scene {
   crateMeterBar!: Phaser.GameObjects.Graphics;
   crateMeterProgress!: Phaser.GameObjects.Graphics;
   crateMeterIcon!: Phaser.GameObjects.Graphics;
+  /** The rendered crate on the meter, shown instead of the drawing. */
+  crateMeterSprite!: Phaser.GameObjects.Image;
   crateMeterContainer!: Phaser.GameObjects.Container;
   crateMeterZone!: Phaser.GameObjects.Zone;
   crateMeterRuns: Phaser.GameObjects.Text[] = [];

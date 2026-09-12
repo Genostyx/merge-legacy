@@ -4,7 +4,7 @@ import { EVENT_START_LEVEL } from '../../events/TimedEvents';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { EVENT_TOKEN_COLOR, eventTokenMark } from '../../objects/EventTokenView';
-import { drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate } from '../../objects/TierIcons';
 import { ORDER_CARD_H } from './config';
 import {
   claimMilestone, eventMsRemaining, eventProgress,
@@ -290,9 +290,8 @@ export function openEventTrack(scene: BoardScene, overPanel = false): void {
     const prizeX = left + panelW - 52;
     let prize: Phaser.GameObjects.GameObject & { setAlpha(v: number): unknown };
     if (milestone.kind === 'crate') {
-      const art = scene.add.graphics().setPosition(prizeX + 12, cy);
-      drawCrate(art, 34, milestone.tier);
-      prize = art;
+      prize = crateArt(scene, milestone.tier, 34 * CRATE_DRAWN.width)
+        .setPosition(prizeX + 12, cy);
     } else {
       prize = currencyIcon(scene, 'gem', 30).setPosition(prizeX, cy);
       overlay.add(scene.add.text(prizeX + 20, cy, `${milestone.amount}`, {

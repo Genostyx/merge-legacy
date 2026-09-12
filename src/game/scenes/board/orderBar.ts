@@ -21,7 +21,7 @@ import {
 } from './config';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyLabel, type CurrencyKind } from '../../ui/CurrencyGlyph';
-import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { drawFacilityIcon } from '../../objects/FacilityView';
 import { SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { TileView } from '../../objects/TileView';
@@ -539,8 +539,7 @@ export function refreshOrderBar(scene: BoardScene): void {
       // top-left. Both are anchored to the same visual row explicitly.
       const built = token.art === 'shipping'
         ? (() => {
-            const icon = scene.add.graphics().setX(15);
-            drawCrate(icon, 30, 'shipping');
+            const icon = crateArt(scene, 'shipping', 30 * CRATE_DRAWN.width).setX(15);
             return scene.add.container(0, rowY, [icon]).setSize(30, 30);
           })()
         : token.art === 'shredder' || token.art === 'crucible'
@@ -1088,8 +1087,7 @@ export function showOrderDetails(scene: BoardScene, order: OrderDef, current: nu
 
     const chip = 'art' in reward
       ? (() => {
-          const icon = scene.add.graphics().setX(15);
-          drawCrate(icon, 30, 'shipping');
+          const icon = crateArt(scene, 'shipping', 30 * CRATE_DRAWN.width).setX(15);
           return scene.add.container(0, 0, [icon]).setSize(30, 30);
         })()
       : 'kind' in reward

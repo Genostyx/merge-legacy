@@ -6,7 +6,7 @@ import type { CratePayloadEntry } from '../../Grid';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyPill, currencyTexture } from '../../ui/CurrencyGlyph';
 import type { CurrencyKind } from '../../ui/CurrencyGlyph';
-import { drawBriefcase, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawBriefcase, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon, SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon, SplitterView } from '../../objects/SplitterView';
 import { TileView } from '../../objects/TileView';
@@ -30,6 +30,7 @@ import {
   storeItem,
   type StoredItem
 } from '../../inventory/Inventory';
+import { loadedPieceSprite } from '../../objects/itemSprites';
 import { loadedItemSprite } from '../../objects/itemSprites';
 
 /**
@@ -433,8 +434,10 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
       let visual: Phaser.GameObjects.Graphics | Phaser.GameObjects.Image | Phaser.GameObjects.Container = icon;
       const size = CELL - 26;
       if (item.kind === 'crate') {
-        drawCrate(icon, size, item.tier);
-        icon.setPosition(cx, cy);
+        const art = crateArt(scene, item.tier, size * CRATE_DRAWN.width)
+          .setPosition(cx, cy);
+        visual = art;
+        content.add(art);
       } else if (item.kind === 'resource-producer') {
         const image = scene.add.image(cx, cy, RESOURCE_PRODUCERS[item.producerId].textureKey).setDisplaySize(size, size);
         visual = image;
@@ -449,7 +452,14 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         drawSplitterIcon(icon, size * 0.9);
         icon.setPosition(cx, cy);
       } else if (item.kind === 'spawner-piece') {
-        drawSpawnerPieceIcon(icon, item.typeId, item.tier, size);
+        const pieceKey = loadedPieceSprite(scene, item.typeId, item.tier);
+        if (pieceKey) {
+          const art = scene.add.image(cx, cy, pieceKey).setDisplaySize(size, size);
+          visual = art;
+          content.add(art);
+        } else {
+          drawSpawnerPieceIcon(icon, item.typeId, item.tier, size);
+        }
         icon.setPosition(cx, cy - 2);
       } else if (loadedItemSprite(scene, item.typeId, item.tier)) {
         const image = scene.add.image(cx, cy, loadedItemSprite(scene, item.typeId, item.tier)!)

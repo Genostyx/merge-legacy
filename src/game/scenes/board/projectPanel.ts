@@ -16,7 +16,7 @@ import {
   currencyPill,
   type CurrencyKind
 } from '../../ui/CurrencyGlyph';
-import { CRATE_DRAWN, drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { drawSplitterIcon } from '../../objects/SplitterView';
 import { getTierDef } from '../../data/chains';
 import { playerLevel } from '../../levels/Orders';
@@ -657,9 +657,7 @@ export function openProject(scene: BoardScene): void {
     // Mirrors `grantFurnishReward` - this list is the FURNITURE, so it
     // shows what finishing the furniture pays, not what the hand-in pays.
     if (scene.projectStage >= 4) {
-      const finish = scene.add.graphics().setPosition(w / 2 + 16, lineY);
-      drawCrate(finish, 26 / CRATE_DRAWN.width, 'gold');
-      footer.add(finish);
+      footer.add(crateArt(scene, 'gold', 26).setPosition(w / 2 + 16, lineY));
     } else {
       footer.add(currencyPill(scene, scene.projectStage === 3 ? '40' : '25', 'energy', {
         ...currencyChipOptions('energy'), fontSize: 11, iconSize: 16, height: 22
@@ -772,13 +770,14 @@ export function openProject(scene: BoardScene): void {
       // Mirrors `grantUnlockReward`, keyed to the stage this hand-in OPENS:
       // a crate, a splitter, an inventory slot, then the vault.
       const opening = scene.projectStage + 1;
-      const rewardIcon = scene.add.graphics().setPosition(w / 2 + 16, rewardY);
       if (opening === 2) {
+        const rewardIcon = scene.add.graphics().setPosition(w / 2 + 16, rewardY);
         drawSplitterIcon(rewardIcon, 26);
+        footer.add(rewardIcon);
       } else {
-        drawCrate(rewardIcon, 26 / CRATE_DRAWN.width, opening >= 4 ? 'silver' : 'bronze');
+        footer.add(crateArt(scene, opening >= 4 ? 'silver' : 'bronze', 26)
+          .setPosition(w / 2 + 16, rewardY));
       }
-      footer.add(rewardIcon);
     }
 
     const buttonBg = scene.add.graphics();
@@ -969,9 +968,7 @@ scene: BoardScene,
 
   let art: Phaser.GameObjects.GameObject & { setPosition: (x: number, y: number) => unknown };
   if (reward.kind === 'crate') {
-    const g = scene.add.graphics();
-    drawCrate(g, ART / CRATE_DRAWN.width, reward.tier);
-    art = g;
+    art = crateArt(scene, reward.tier, ART);
   } else if (reward.kind === 'splitter') {
     const g = scene.add.graphics();
     drawSplitterIcon(g, ART);

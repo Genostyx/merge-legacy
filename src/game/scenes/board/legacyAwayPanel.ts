@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { CRATE_LABELS } from '../../rewards/Rewards';
-import { drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt } from '../../objects/TierIcons';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import {
   advanceLegacyMachine,
@@ -147,9 +147,8 @@ export function showLegacyAway(scene: BoardScene): void {
 
     const art = cell * 0.62;
     if (entry.reward.kind === 'crate') {
-      const icon = scene.add.graphics().setPosition(cx, cy);
-      drawCrate(icon, art, entry.reward.tier);
-      overlay.add(icon);
+      overlay.add(crateArt(scene, entry.reward.tier, art * CRATE_DRAWN.width)
+        .setPosition(cx, cy));
     } else {
       const key = `producer-${entry.reward.producerId}`;
       if (scene.textures.exists(key)) {

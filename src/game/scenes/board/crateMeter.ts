@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
+import { loadedCrateSprite } from '../../objects/itemSprites';
 import { CHROME_BASE_CELL, CRATE_RING_LANE, CRATE_RING_R, CRATE_RING_W } from './config';
 import { Theme, hex, textResolution } from '../../ui/Theme';
-import { drawCrate } from '../../objects/TierIcons';
+import { CRATE_DRAWN, drawCrate } from '../../objects/TierIcons';
 import { formatCountdown } from '../../economy/Economy';
 import { playerLevel } from '../../levels/Orders';
 import {
@@ -44,6 +45,11 @@ export function buildCrateMeter(scene: BoardScene): void {
   scene.crateMeterBar = scene.add.graphics();
   scene.crateMeterProgress = scene.add.graphics();
   scene.crateMeterIcon = scene.add.graphics();
+  // A SIBLING IMAGE for the rendered crate. The meter keeps one icon
+  // object for the life of the scene and clears it on every refresh, so
+  // the render cannot replace it - it rides alongside and whichever one
+  // applies is the one left visible.
+  scene.crateMeterSprite = scene.add.image(0, 0, 'crate-bronze').setVisible(false);
   const { cx, cy } = crateRingCentre(scene);
   scene.crateMeterZone = scene.add.zone(cx, cy, crateRingR(scene) * 2 + 8, crateRingR(scene) * 2 + 8)
     .setInteractive({ useHandCursor: true });
@@ -140,8 +146,19 @@ export function refreshCrateMeter(scene: BoardScene, now = Date.now()): void {
   // built its art off to one side of the origin and every caller corrected
   // for it by hand; the art centres itself now, so the correction was the
   // only thing left pushing it off.
-  scene.crateMeterIcon.clear().setPosition(cx, cy).setAlpha(cooling ? 0.3 : earned ? 1 : 0.55);
-  drawCrate(scene.crateMeterIcon, (CRATE_RING_R * 1.25 + 14) * crateRingScale(scene), showTier);
+  const meterAlpha = cooling ? 0.3 : earned ? 1 : 0.55;
+  const meterScale = (CRATE_RING_R * 1.25 + 14) * crateRingScale(scene);
+  scene.crateMeterIcon.clear().setPosition(cx, cy).setAlpha(meterAlpha);
+  const meterKey = loadedCrateSprite(scene, showTier);
+  if (meterKey) {
+    const drawn = meterScale * CRATE_DRAWN.width * 1.5;
+    scene.crateMeterSprite
+      .setTexture(meterKey).setPosition(cx, cy)
+      .setDisplaySize(drawn, drawn).setAlpha(meterAlpha).setVisible(true);
+  } else {
+    scene.crateMeterSprite.setVisible(false);
+    drawCrate(scene.crateMeterIcon, meterScale, showTier);
+  }
   if (cooling) {
     const timer = scene.add.text(cx, boxY + boxH - 6, formatCountdown(cooldownRemaining), {
       resolution: textResolution,

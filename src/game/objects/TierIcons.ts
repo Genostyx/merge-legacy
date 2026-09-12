@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { loadedCrateSprite } from './itemSprites';
 import { EVENT_CHAIN } from '../events/EventChain';
 import { Theme, materialLighting, toneAt, toneForNormal } from '../ui/Theme';
 import { fillPoly, makeIso, type IsoFn } from './Isometric';
@@ -550,7 +551,8 @@ function drawWaterTier(g: Phaser.GameObjects.Graphics, tier: number, s: number, 
     g.fillEllipse(s * 0.018, cy + s * 0.07, s * 0.13, s * 0.075);
     g.fillStyle(p.highlight, 0.72);
     g.fillEllipse(-s * 0.18, cy - s * 0.075, s * 0.16, s * 0.035);
-  } else {
+
+  } else {
     if(t!==11){
       body(oval(0,0,0.32,0.32),[-0.12,-0.12]);
       path(oval(-0.015,-0.025,0.265,0.27).slice(2,17),p.highlight,0.027,0.95);
@@ -809,6 +811,34 @@ export const CRATE_DRAWN = {
   width: CRATE_FACE.w + CRATE_FACE.depth,
   height: CRATE_FACE.h + CRATE_FACE.depth
 };
+
+/**
+ * A crate as a GAME OBJECT: the render when one is loaded, the drawing
+ * when it is not.
+ *
+ * Every panel used to call `drawCrate` into its own Graphics, so wiring
+ * the renders into the board left sixteen places still drawing vectors -
+ * the same crate looking like two different objects depending on which
+ * screen you were on. One helper means the next art change reaches all
+ * of them.
+ *
+ * `drawnWidth` is the width the CRATE should occupy in pixels. The
+ * vector path takes a scale rather than a size, which is why callers
+ * were passing `26 / CRATE_DRAWN.width`; that conversion lives here now.
+ */
+export function crateArt(
+  scene: Phaser.Scene, tier: string, drawnWidth: number
+): Phaser.GameObjects.Image | Phaser.GameObjects.Graphics {
+  const key = loadedCrateSprite(scene, tier);
+  if (key) {
+    // The render is a square canvas with the crate centred in it, so it
+    // is sized by the box rather than by the drawn face.
+    return scene.add.image(0, 0, key).setDisplaySize(drawnWidth * 1.5, drawnWidth * 1.5);
+  }
+  const g = scene.add.graphics();
+  drawCrate(g, drawnWidth / CRATE_DRAWN.width, tier);
+  return g;
+}
 
 export function drawCrate(g: Phaser.GameObjects.Graphics, s: number, tier: string): void {
   if (tier === 'shipping') {

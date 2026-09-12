@@ -18,7 +18,7 @@ import {
   currencyTexture,
   type CurrencyKind
 } from '../../ui/CurrencyGlyph';
-import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon } from '../../objects/SplitterView';
 import { getTierDef } from '../../data/chains';
@@ -46,6 +46,7 @@ import {
   supplyCratePrice,
   supplyCrateReady
 } from '../../shop/SupplyCrates';
+import { loadedPieceSprite } from '../../objects/itemSprites';
 import { loadedItemSprite } from '../../objects/itemSprites';
 
 /**
@@ -481,9 +482,7 @@ export function openShop(scene: BoardScene, mode: ShopMode = scene.shopMode): vo
       shelfCard(
         cx, w, Theme.currencyCredit,
         (x, y) => {
-          const art = scene.add.graphics();
-          drawCrate(art, 52, offer.tier);
-          return art.setPosition(x, y);
+          return crateArt(scene, offer.tier, 52 * CRATE_DRAWN.width).setPosition(x, y);
         },
         `${offer.tier.toUpperCase()} CRATE`,
         // The card carries its own countdown while it is restocking, so a
@@ -812,8 +811,14 @@ export function buildOfferSlot(scene: BoardScene, container: Phaser.GameObjects.
     drawSplitterIcon(icon, ICON_SIZE * 0.9);
     icon.setPosition(x, y + 64);
   } else if (offer.kind === 'spawner-piece') {
-    drawSpawnerPieceIcon(icon, offer.typeId, offer.tier, ICON_SIZE * 0.92);
-    icon.setPosition(x, y + 64);
+    const pieceKey = loadedPieceSprite(scene, offer.typeId, offer.tier);
+    if (pieceKey) {
+      container.add(scene.add.image(x, y + 64, pieceKey)
+        .setDisplaySize(ICON_SIZE * 0.92, ICON_SIZE * 0.92));
+    } else {
+      drawSpawnerPieceIcon(icon, offer.typeId, offer.tier, ICON_SIZE * 0.92);
+      icon.setPosition(x, y + 64);
+    }
   } else if (loadedItemSprite(scene, offer.typeId, offer.tier)) {
     container.add(scene.add.image(x, y + 64, loadedItemSprite(scene, offer.typeId, offer.tier)!)
       .setDisplaySize(ICON_SIZE, ICON_SIZE));

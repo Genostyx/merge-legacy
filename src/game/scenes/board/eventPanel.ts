@@ -6,7 +6,7 @@ import { ORDER_REORDER_MS } from './config';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { TileView } from '../../objects/TileView';
 import { SpawnerView } from '../../objects/SpawnerView';
-import { drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate, drawTierIcon, iconPresentation } from '../../objects/TierIcons';
 import { burstParticles, shakeForTier } from '../../fx/MergeFx';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
 import { EVENT_TOKEN_COLOR, eventTokenMark } from '../../objects/EventTokenView';
@@ -587,9 +587,7 @@ function buildTrack(
       Phaser.Math.Clamp(x, left + 16, left + width - 16), trackY + 22
     );
     if (milestone.kind === 'crate') {
-      const art = scene.add.graphics();
-      drawCrate(art, 40, milestone.tier);
-      holder.add(art);
+      holder.add(crateArt(scene, milestone.tier, 40 * CRATE_DRAWN.width));
     } else {
       holder.add(currencyIcon(scene, 'gem', 32).setPosition(-7, 0));
       // BESIDE the gem, not under it. Underneath put the figure on the rail,
