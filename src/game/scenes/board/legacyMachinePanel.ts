@@ -9,6 +9,7 @@ import {
   LEGACY_MAX_RPH,
   legacyGearCount,
   legacyRotationsPerHour,
+  LEGACY_BASE_GEARS,
   legacyTorqueCost,
   LEGACY_GEAR_RATIO,
   LEGACY_MAX_LEVEL,
@@ -23,8 +24,28 @@ import {
 } from '../../legacy/LegacyMachine';
 
 const MACHINE_TEXTURE = 'legacy-machine-0';
-/** Frames in the rendered loop. One tooth pitch of gear 1, so it wraps. */
+/** Frames in the rendered loop. Nine teeth of gear 1, so it wraps. */
 const MACHINE_FRAMES = 18;
+/** Teeth of gear 1 the loop covers, and the gear's tooth count. */
+const MACHINE_LOOP_TEETH = 9;
+const MACHINE_GEAR_TEETH = 30;
+/** Below this the browser cannot show another frame anyway. */
+const MIN_FRAME_MS = 33;
+
+/**
+ * How long one rendered frame should be held, for a given real rate.
+ *
+ * The loop is nine teeth of a thirty-tooth gear - three tenths of a
+ * revolution - so at R rotations per hour it represents 1080/R seconds of
+ * the machine running. Driving the playback from that rather than from a
+ * fixed delay is what makes an upgrade VISIBLE: the barrel actually speeds
+ * up when gear one does.
+ */
+function frameDelayMs(rotationsPerHour: number): number {
+  const loopSeconds = (MACHINE_LOOP_TEETH / MACHINE_GEAR_TEETH)
+    * 3600 / Math.max(1, rotationsPerHour);
+  return Math.max(MIN_FRAME_MS, (loopSeconds * 1000) / MACHINE_FRAMES);
+}
 
 function rewardLabel(reward: LegacyReward): string {
   if (reward.kind === 'credits') return reward.amount.toLocaleString();
@@ -95,18 +116,33 @@ export function openLegacyMachine(scene: BoardScene): void {
   // image cover-crops to any shape of screen without a seam.
   const art = scene.add.container(0, 0);
   let spin: Phaser.Time.TimerEvent | null = null;
+  let elapsed = 0;
   if (scene.textures.exists(MACHINE_TEXTURE)) {
     const machine = scene.add.image(w / 2, h * 0.42, MACHINE_TEXTURE);
-    machine.setScale(Math.max(w / machine.width, (h * 0.86) / machine.height));
+    // THE BARREL GETS LONGER AS TORQUE ADDS GEARS. The render holds far
+    // more plates than the game ever uses, so growth is a matter of
+    // pulling the camera back and letting more of the stack into frame -
+    // no second render, and the machine on screen is always the machine
+    // the player has bought.
+    const grown = Math.min(0.32, (legacyGearCount(scene.legacyMachine)
+      - LEGACY_BASE_GEARS) * 0.012);
+    machine.setScale(
+      Math.max(w / machine.width, (h * 0.86) / machine.height) * (1 - grown));
     art.add(machine);
     // THE GEARS TURN. Gear one advances a whole tooth over the loop, gear
     // two a third of that, and so on down the barrel - so what the player
     // watches is the near end working and the far end sitting still.
     let frame = 0;
+    // RE-READ EVERY TICK, so buying a speed upgrade is visible the moment
+    // the panel redraws rather than on the next time the screen is opened.
     spin = scene.time.addEvent({
-      delay: 70,
+      delay: MIN_FRAME_MS,
       loop: true,
       callback: () => {
+        const delay = frameDelayMs(legacyRotationsPerHour(scene.legacyMachine.gearOneLevel));
+        elapsed += MIN_FRAME_MS;
+        if (elapsed < delay) return;
+        elapsed = 0;
         frame = (frame + 1) % MACHINE_FRAMES;
         machine.setTexture(`legacy-machine-${frame}`);
       }
@@ -134,9 +170,11 @@ export function openLegacyMachine(scene: BoardScene): void {
     content.removeAll(true);
     const state = scene.legacyMachine;
     const rph = legacyRotationsPerHour(state.gearOneLevel);
+    const tooFast = frameDelayMs(rph) <= MIN_FRAME_MS;
     subtitle.setText(
       `GEAR 1  ·  ${rph.toLocaleString()} ROTATIONS / HOUR`
-      + (rph >= LEGACY_MAX_RPH ? '  ·  AT THE TEETH’S LIMIT' : '')
+      + (rph >= LEGACY_MAX_RPH ? '  ·  AT THE TEETH’S LIMIT'
+        : tooFast ? '  ·  FASTER THAN THE EYE' : '')
     );
     // EVERY GEAR'S COUNT ON ONE LINE, evenly spaced under the art. Eight
     // labels pinned to eight drawn gears collided the moment the barrel was
