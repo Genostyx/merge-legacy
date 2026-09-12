@@ -3,7 +3,7 @@ import type { BoardScene } from '../BoardScene';
 import { ROWS, type BoardView, type ForcedSpawn } from './config';
 import type { GridPosition } from '../../types';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
-import { drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
+import { CRATE_DRAWN, crateArt, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon } from '../../objects/SplitterView';
 import { drawFacilityIcon } from '../../objects/FacilityView';
@@ -11,6 +11,7 @@ import { EVENT_TOKEN_COLOR, drawEventToken } from '../../objects/EventTokenView'
 import { getTierDef } from '../../data/chains';
 import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import { boxForDrawnArt } from '../../objects/ArtFill';
+import { loadedItemSprite, loadedPieceSprite } from '../../objects/itemSprites';
 
 /**
  * boardVault, lifted out of BoardScene whole.
@@ -133,6 +134,28 @@ export function makeForcedSpawnIcon(
     const box = boxForDrawnArt(key, size);
     container.add(scene.add.image(0, 0, key).setDisplaySize(box, box));
     return container;
+  }
+  // THE RENDERS FIRST. The vault's preview is the one place a player
+  // sees what is queued, and it was still drawing vectors for objects
+  // the board itself now renders - the same crate looking like two
+  // different things a few centimetres apart.
+  if (spawn.kind === 'crate') {
+    container.add(crateArt(scene, spawn.tier, size * CRATE_DRAWN.width));
+    return container;
+  }
+  if (spawn.kind === 'spawner-piece') {
+    const key = loadedPieceSprite(scene, spawn.typeId, spawn.tier);
+    if (key) {
+      container.add(scene.add.image(0, 0, key).setDisplaySize(size, size));
+      return container;
+    }
+  }
+  if (spawn.kind === 'item') {
+    const key = loadedItemSprite(scene, spawn.typeId, spawn.tier);
+    if (key) {
+      container.add(scene.add.image(0, 0, key).setDisplaySize(size, size));
+      return container;
+    }
   }
   const g = scene.add.graphics();
   drawForcedSpawnIcon(scene, g, spawn, size);

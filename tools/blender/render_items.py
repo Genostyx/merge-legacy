@@ -3843,7 +3843,10 @@ CRATE_METAL = {
     # polished hardware returns the lamps, not its own colour.
     "silver": 0x7f868e,
     "gold": 0xe0ad3a,
-    "vault": 0x8f969e,
+    # PURPLE. The game's own crate palette in TierIcons.ts has had the
+    # vault at 0x8f5ad6 all along; the render was steel, so the one crate
+    # with a colour of its own lost it.
+    "vault": 0x9f6ce0,
     "shipping": 0x9aa3ab,
 }
 # How polished each tier's hardware is. Silver is the only one that has
@@ -3859,7 +3862,7 @@ CRATE_TIMBER = {
     # the one thing that does not look like a packing case.
     "silver": 0x4f4a44,
     "gold": 0x7a5f33,
-    "vault": 0x3d4248,
+    "vault": 0x3a2a52,
     # The container's painted body, not timber at all.
     "shipping": 0x3f5a6d,
 }
