@@ -3,9 +3,10 @@ import type { BoardScene } from '../BoardScene';
 import { FAMILY_NAMES, SPAWNER_PIECE_NAMES } from './config';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyIcon } from '../../ui/CurrencyGlyph';
-import { drawTierIcon, iconPresentation } from '../../objects/TierIcons';
+import { drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon } from '../../objects/SpawnerPieceView';
 import { getChain } from '../../data/chains';
+import { MAX_DISPENSER_TIER } from '../../dispensers/Dispensers';
 import { addGems } from '../../economy/Economy';
 import { claimDiscovery, claimedInFamily, isClaimed, isDiscovered } from '../../collection/Collection';
 import { loadedItemSprite, loadedPieceSprite } from '../../objects/itemSprites';
@@ -35,7 +36,7 @@ import { loadedItemSprite, loadedPieceSprite } from '../../objects/itemSprites';
  * towards the book. A ladder of source pieces is reference, not
  * collection - no gems, no book, nothing to claim.
  */
-export type LadderKind = 'items' | 'pieces';
+export type LadderKind = 'items' | 'pieces' | 'sources';
 
 interface LadderEntry {
   tier: number;
@@ -66,6 +67,23 @@ function ladderFor(scene: BoardScene, kind: LadderKind, typeId: string): Ladder 
         // what `drawSpawnerPieceIcon` has always used.
         color: chain.tiers[Math.min(index + 1, chain.tiers.length - 1)].color,
         sprite: loadedPieceSprite(scene, typeId, index + 1)
+      }))
+    };
+  }
+  if (kind === 'sources') {
+    // FIVE TIERS for every family, which is what a dispenser can be
+    // merged up to. Reference, like the pieces: a source is not a
+    // Collection entry, and its ladder answers "what does upgrading
+    // this get me" rather than "what have I found".
+    return {
+      title: `${FAMILY_NAMES[typeId] ?? typeId.toUpperCase()} SOURCES`,
+      collectable: false,
+      entries: Array.from({ length: MAX_DISPENSER_TIER }, (_, index) => ({
+        tier: index + 1,
+        label: `Source ${String(index + 1).padStart(2, '0')}`,
+        color: chain.tiers[Math.min(index, chain.tiers.length - 1)].color,
+        sprite: scene.textures.exists(`source-${typeId}-${index + 1}`)
+          ? `source-${typeId}-${index + 1}` : null
       }))
     };
   }
@@ -147,7 +165,8 @@ export function openFamilyPanel(
     scene.viewW / 2, top + 44,
     ladder.collectable
       ? `${claimedInFamily(scene.collection, typeId)}/${ladder.entries.length}`
-      : `${ladder.entries.length} PIECES`,
+      : kind === 'sources' ? `${ladder.entries.length} TIERS`
+        : `${ladder.entries.length} PIECES`,
     {
       resolution: textResolution,
       fontFamily: Theme.fontNumeric, fontSize: '11px', color: hex(Theme.textOnDarkMuted)
@@ -245,8 +264,12 @@ export function openFamilyPanel(
       : ladder.collectable
         ? drawTierIcon(icon as Phaser.GameObjects.Graphics, typeId, def.tier,
                        iconSize, materialLighting(def.color, def.tier))
-        : (drawSpawnerPieceIcon(icon as Phaser.GameObjects.Graphics, typeId,
-                                def.tier, iconSize), { materialAlpha: 1 });
+        : kind === 'sources'
+          ? (drawSourceBuilding(icon as Phaser.GameObjects.Graphics, typeId,
+                                def.tier, iconSize * 0.4, sourcePalette(typeId), true),
+             { materialAlpha: 1 })
+          : (drawSpawnerPieceIcon(icon as Phaser.GameObjects.Graphics, typeId,
+                                  def.tier, iconSize), { materialAlpha: 1 });
     icon.setAlpha(render.materialAlpha * (claimed ? 1 : 0.35));
     if (!useSprite) {
       const present = iconPresentation(typeId, def.tier, iconSize);

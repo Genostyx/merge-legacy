@@ -2373,9 +2373,15 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     if (selected instanceof SpawnerPieceView) {
       return { typeId: selected.typeId, kind: 'pieces' };
     }
-    if (selected instanceof SpawnerView) return { typeId: selected.spawner.typeId, kind: 'items' };
+    // A SOURCE ASKS ABOUT SOURCES - what upgrading it gets - rather than
+    // about the items it happens to produce.
+    if (selected instanceof SpawnerView) {
+      return { typeId: selected.spawner.typeId, kind: 'sources' };
+    }
     const rushed = this.rushTargetKey ? this.views.get(this.rushTargetKey) : null;
-    if (rushed instanceof SpawnerView) return { typeId: rushed.spawner.typeId, kind: 'items' };
+    if (rushed instanceof SpawnerView) {
+      return { typeId: rushed.spawner.typeId, kind: 'sources' };
+    }
     return null;
   }
 
