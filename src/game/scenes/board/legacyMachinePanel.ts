@@ -24,7 +24,7 @@ import {
 
 const MACHINE_TEXTURE = 'legacy-machine-0';
 /** Frames in the rendered loop. One tooth pitch of gear 1, so it wraps. */
-const MACHINE_FRAMES = 16;
+const MACHINE_FRAMES = 18;
 
 function rewardLabel(reward: LegacyReward): string {
   if (reward.kind === 'credits') return reward.amount.toLocaleString();
