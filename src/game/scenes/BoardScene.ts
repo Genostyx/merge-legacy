@@ -421,7 +421,12 @@ import {
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
 import { ITEM_ART_VERSION, SPRITE_FAMILIES, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
-import { createDefaultLegacyMachine, type LegacyMachineState } from '../legacy/LegacyMachine';
+import {
+  advanceLegacyMachine,
+  createDefaultLegacyMachine,
+  type LegacyMachineState
+} from '../legacy/LegacyMachine';
+import { showLegacyAway } from './board/legacyAwayPanel';
 
 export class BoardScene extends Phaser.Scene {
   grid = new Grid(COLS, ROWS);
@@ -986,9 +991,20 @@ export class BoardScene extends Phaser.Scene {
     this.checkDeadlock();
     this.updateCurrencyText();
 
+    this.time.addEvent({
+      delay: 15_000,
+      loop: true,
+      callback: () => this.tickLegacyMachine()
+    });
+
     this.input.on('pointerdown', this.onPointerDown, this);
     this.input.on('pointermove', this.onPointerMove, this);
     this.input.on('pointerup', this.onPointerUp, this);
+
+    // WHAT THE MACHINE DID WHILE THE GAME WAS SHUT. After the board is
+    // loaded, so its crates have somewhere to land, and before the tray
+    // is written, so its own message is not overwritten.
+    showLegacyAway(this);
 
     const autoLevelRewards = this.autoDeliverLevelRewards();
     const readyRewards = dailyAvailable(this.rewards, Date.now()) ? 1 : 0;
@@ -3580,6 +3596,30 @@ TAP THE EVENT CARD TO SPEND IT`
   // Forwards to board/saveGame.ts, so the scene's own call sites
   // still read as methods.
   loadOrSeed(): void { loadOrSeedExt(this); }
+
+  /**
+   * Winds the Legacy Machine while the game is open.
+   *
+   * Every fifteen seconds rather than every frame: gear one turns a few
+   * hundred times an hour, so nothing can be missed at this resolution,
+   * and the rewards it produces go straight to the board the same way
+   * the offline ones do.
+   */
+  tickLegacyMachine(): void {
+    const produced = advanceLegacyMachine(this.legacyMachine, Date.now());
+    if (!produced.length) return;
+    for (const entry of produced) {
+      if (entry.reward.kind === 'crate') this.awardCrate(entry.reward.tier, 'LEGACY MACHINE');
+      else {
+        this.enqueueForcedSpawn({
+          kind: 'resource-producer',
+          producerId: entry.reward.producerId,
+          remaining: RESOURCE_PRODUCERS[entry.reward.producerId].capacity
+        });
+      }
+    }
+    this.saveState();
+  }
   saveState(): void { saveStateExt(this); }
   seedLockedBoard(preserveEmpty: number): void { seedLockedBoardExt(this, preserveEmpty); }
   migrateLockedItemsToWiderBoard(savedCells: (GridCellData | null)[][]): void { migrateLockedItemsToWiderBoardExt(this, savedCells); }

@@ -15,17 +15,34 @@
  * feel of the reference survives (you watch gear one race while gear eight
  * has visibly not moved) without the promise being a lie.
  */
+import type { CrateTier } from '../rewards/Rewards';
+import type { ResourceProducerId } from '../rewards/ResourceRewards';
+
 export interface LegacyMachineState {
   gearOneLevel: number;
   torqueLevel: number;
   turns: number[];
   claimed: number[][];
+  /** When the machine was last wound forward. 0 until it is started. */
+  lastTickAt: number;
 }
 
+/**
+ * WHAT THE MACHINE PAYS: things that land ON THE BOARD.
+ *
+ * It used to hand over credits, gems and energy directly, which is the
+ * one thing a merge game's side system must not do - it skips the board
+ * entirely, so the reward costs the player no space, no merging and no
+ * energy to realise. The Hydro Core already does this properly: its
+ * payout arrives as items you have to make room for.
+ *
+ * So the machine delivers crates and producers. Their contents are
+ * already balanced by the crate tables, the board-space cost is real,
+ * and a full board sends them to the vault rather than evaporating.
+ */
 export type LegacyReward =
-  | { kind: 'credits'; amount: number }
-  | { kind: 'gems'; amount: number }
-  | { kind: 'energy'; amount: number };
+  | { kind: 'crate'; tier: CrateTier }
+  | { kind: 'producer'; producerId: ResourceProducerId };
 
 /** Gears the machine ships with. TORQUE adds more - see `legacyGearCount`. */
 export const LEGACY_BASE_GEARS = 8;
@@ -43,8 +60,14 @@ export const LEGACY_BASE_GEARS = 8;
  * So the speed track runs from a quarter of his machine's rate to a hundred
  * times it, and then stops - at which point torque takes over.
  */
-export const LEGACY_BASE_RPH = 250;
-export const LEGACY_MAX_RPH = 100_000;
+export const LEGACY_BASE_RPH = 20;
+/**
+ * The speed the player can actually reach. A hundred thousand an hour is
+ * what the teeth could survive - see above - but driving gear one that
+ * hard finishes the whole machine in minutes: at 354 an hour, six hours
+ * away crossed 22 of the 23 milestones in the base machine.
+ */
+export const LEGACY_MAX_RPH = 200;
 
 /**
  * Each level is 19% faster, which reaches the cap in 35 of them - and
@@ -56,18 +79,22 @@ export const LEGACY_MAX_RPH = 100_000;
  * legible one in the whole track.
  */
 const LEGACY_SPEED_STEP = 1.19;
-export const LEGACY_MAX_LEVEL = 36;
+export const LEGACY_MAX_LEVEL = 14;
 
 /**
- * 3:1, not the reference's 10:1.
+ * 4:1, not the reference's 10:1 and not the 3:1 this shipped with.
  *
- * The ratio is the entire pacing control, and it compounds: at 10:1 the
+ * The ratio is the entire pacing control, and it compounds. At 10:1 the
  * eighth gear needs ten million turns of the first and the machine is
- * decoration. At 3:1 it needs 2,187. Each step is still a visible slowdown -
- * three to one reads as "much slower" at a glance - and the chain as a whole
- * lands somewhere a player can actually finish.
+ * decoration. At 3:1 it needed 2,187 - six hours - and the whole thing
+ * emptied in a single session away.
+ *
+ * At 4:1 the eighth gear needs 16,384: about a month at the starting
+ * speed, three and a half days if the player buys every upgrade. The
+ * torque gears past it then run to years on their own, which is the
+ * long tail the machine is for.
  */
-export const LEGACY_GEAR_RATIO = 3;
+export const LEGACY_GEAR_RATIO = 4;
 
 /**
  * Rotation milestones, PER GEAR, thinning as the chain deepens.
@@ -97,7 +124,8 @@ export function createDefaultLegacyMachine(): LegacyMachineState {
     gearOneLevel: 0,
     torqueLevel: 0,
     turns: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
-    claimed: Array.from({ length: LEGACY_BASE_GEARS }, () => [])
+    claimed: Array.from({ length: LEGACY_BASE_GEARS }, () => []),
+    lastTickAt: 0
   };
 }
 
@@ -107,6 +135,9 @@ export function normalizeLegacyMachine(raw: unknown): LegacyMachineState {
   if (!candidate || typeof candidate !== 'object') return state;
   state.gearOneLevel = Number.isFinite(candidate.gearOneLevel)
     ? Math.max(0, Math.min(LEGACY_MAX_LEVEL, Math.floor(candidate.gearOneLevel!)))
+    : 0;
+  state.lastTickAt = Number.isFinite(candidate.lastTickAt)
+    ? Math.max(0, Math.floor(candidate.lastTickAt!))
     : 0;
   state.torqueLevel = Number.isFinite(candidate.torqueLevel)
     ? Math.max(0, Math.floor(candidate.torqueLevel!))
@@ -206,13 +237,44 @@ export function legacyTorqueCost(level: number): { credits: number; gems: number
   };
 }
 
-export function addLegacyMomentum(state: LegacyMachineState, baseTurns: number): void {
-  state.turns[0] += baseTurns * legacySpeed(state);
+/**
+ * WINDS THE MACHINE FORWARD TO `now`, AND SAYS WHAT IT PRODUCED.
+ *
+ * Turns come from REAL TIME, offline included, which is the only model
+ * that makes "250 rotations an hour" mean anything. It used to be turns
+ * per project stage multiplied by the speed factor - and since speed ran
+ * to 400x, a single stage late on emptied the entire machine and every
+ * reward landed at once.
+ *
+ * Every milestone crossed is marked claimed here and returned, so the
+ * caller can deliver it; nothing is left sitting in a list waiting to be
+ * pressed. A machine that has not been started does nothing at all.
+ */
+export function advanceLegacyMachine(
+  state: LegacyMachineState, now: number
+): Array<{ gear: number; milestone: number; reward: LegacyReward }> {
+  if (state.gearOneLevel <= 0) {
+    state.lastTickAt = now;
+    return [];
+  }
+  if (!state.lastTickAt) {
+    state.lastTickAt = now;
+    return [];
+  }
+  const hours = Math.max(0, now - state.lastTickAt) / 3_600_000;
+  state.lastTickAt = now;
+  if (hours <= 0) return [];
+  state.turns[0] += legacyRotationsPerHour(state.gearOneLevel) * hours;
   syncLegacyGears(state);
+
+  const produced = claimableLegacyMilestones(state);
+  for (const entry of produced) markLegacyClaimed(state, entry.gear, entry.milestone);
+  return produced;
 }
 
-export function projectStageLegacyMomentum(stage: number): number {
-  return [4, 7, 12, 20, 32][Math.max(0, Math.min(4, stage - 1))] ?? 4;
+/** Rotations gear one will complete over a span, for the panel's copy. */
+export function legacyTurnsOver(state: LegacyMachineState, hours: number): number {
+  return legacyRotationsPerHour(state.gearOneLevel) * hours;
 }
 
 /**
@@ -226,24 +288,82 @@ export function gearOneTurnsFor(gear: number, rotations: number): number {
 }
 
 /**
- * Rewards scale with DEPTH, because depth is the only cost.
+ * WHAT EACH MILESTONE PAYS, written out rather than computed.
  *
- * A rotation of gear six is 243 rotations of gear one, so it has to pay like
- * one - otherwise the deep end of the machine is worse value than the
- * shallow end and the whole chain collapses to "keep claiming gear one".
+ * The formula version multiplied by depth and came to 393,750 credits,
+ * 476 gems and 1,408 energy over the whole machine. Against the shop's
+ * own anchors - 100 gems is the $0.99 pack, and gems buy coins at 50 to
+ * 70 each - that is about five dollars of premium currency and several
+ * thousand gems' worth of credits from one feature.
+ *
+ * A table is the honest tool here. Depth still pays more, but the total
+ * is chosen rather than whatever an exponent happened to produce, and it
+ * can be read off at a glance.
+ *
+ * The machine is a LONG-HAUL bonus, not an income source: finishing the
+ * whole thing is worth roughly one gem pack and a couple of Hydro Cores.
  */
+const LEGACY_REWARDS: readonly (readonly LegacyReward[])[] = [
+  // Gear 1 - pouches and baskets. Small, frequent, and they still have to
+  // be tapped out one item at a time.
+  [
+    { kind: 'producer', producerId: 'coin-pouch' },
+    { kind: 'producer', producerId: 'energy-basket' },
+    { kind: 'producer', producerId: 'coin-basket' },
+    { kind: 'crate', tier: 'bronze' },
+    { kind: 'crate', tier: 'bronze' }
+  ],
+  [
+    { kind: 'producer', producerId: 'energy-basket' },
+    { kind: 'producer', producerId: 'coin-basket' },
+    { kind: 'crate', tier: 'bronze' },
+    { kind: 'crate', tier: 'silver' }
+  ],
+  [
+    { kind: 'crate', tier: 'bronze' },
+    { kind: 'crate', tier: 'silver' },
+    { kind: 'producer', producerId: 'gem-basket' }
+  ],
+  [
+    { kind: 'producer', producerId: 'gem-basket' },
+    { kind: 'crate', tier: 'silver' },
+    { kind: 'crate', tier: 'gold' }
+  ],
+  [
+    { kind: 'crate', tier: 'silver' },
+    { kind: 'crate', tier: 'gold' },
+    { kind: 'crate', tier: 'gold' }
+  ],
+  [
+    { kind: 'crate', tier: 'gold' },
+    { kind: 'crate', tier: 'vault' }
+  ],
+  [
+    { kind: 'crate', tier: 'vault' },
+    { kind: 'crate', tier: 'vault' }
+  ],
+  // THE LAST BUILT-IN GEAR: the shipping container, which is the biggest
+  // thing the board ever receives.
+  [{ kind: 'crate', tier: 'shipping' }]
+];
+
+/**
+ * A gear past the built-in eight, added by torque.
+ *
+ * Each is three times slower than the last and takes weeks to years, so
+ * each pays the top crate. There is nothing above a shipping container to
+ * escalate to, and inventing one would only restart the inflation the
+ * currency rewards caused.
+ */
+function deepGearReward(): LegacyReward {
+  return { kind: 'crate', tier: 'shipping' };
+}
+
 export function legacyReward(gear: number, milestone: number): LegacyReward {
-  const depth = LEGACY_GEAR_RATIO ** gear;
-  if (gear === 0) return { kind: 'credits', amount: 150 * milestone };
-  if (gear === 1) return { kind: 'energy', amount: Math.round(8 * milestone) };
-  if (gear === 2) return { kind: 'credits', amount: Math.round(220 * depth * milestone) };
-  if (gear === 3) return { kind: 'gems', amount: Math.round(6 * milestone) };
-  if (gear === 4) return { kind: 'credits', amount: Math.round(260 * depth * milestone) };
-  if (gear === 5) return { kind: 'gems', amount: Math.round(25 * milestone) };
-  if (gear === 6) return { kind: 'energy', amount: Math.round(120 * milestone) };
-  // THE LAST GEAR. One rotation, once, and it pays like the end of a
-  // machine rather than like another row on a list.
-  return { kind: 'gems', amount: 250 };
+  const row = LEGACY_REWARDS[gear];
+  if (!row) return deepGearReward();
+  const index = legacyMilestones(gear).indexOf(milestone);
+  return row[index] ?? row[row.length - 1];
 }
 
 export function claimableLegacyMilestones(state: LegacyMachineState): Array<{ gear: number; milestone: number; reward: LegacyReward }> {

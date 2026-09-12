@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
-import { addCoins, addGems, spendCoinsGeneric, spendGems } from '../../economy/Economy';
-import { addEnergy, spendEnergy } from '../../economy/Energy';
-import { floatingScore } from '../../fx/MergeFx';
+import { spendCoinsGeneric, spendGems } from '../../economy/Economy';
+import { spendEnergy } from '../../economy/Energy';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
-import { currencyIcon, currencyPill, currencyChipOptions } from '../../ui/CurrencyGlyph';
+import { currencyPill, currencyChipOptions } from '../../ui/CurrencyGlyph';
+import { CRATE_LABELS } from '../../rewards/Rewards';
+import { RESOURCE_PRODUCERS } from '../../rewards/ResourceRewards';
 import {
   LEGACY_MAX_RPH,
   legacyGearCount,
@@ -41,13 +42,11 @@ import {
  */
 const GEAR_TEXTURE = 'legacy-gear';
 
+/** What the row calls the thing that is about to land on the board. */
 function rewardLabel(reward: LegacyReward): string {
-  if (reward.kind === 'credits') return reward.amount.toLocaleString();
-  return String(reward.amount);
-}
-
-function rewardKind(reward: LegacyReward): 'credit' | 'gem' | 'energy' {
-  return reward.kind === 'credits' ? 'credit' : reward.kind === 'gems' ? 'gem' : 'energy';
+  return reward.kind === 'crate'
+    ? CRATE_LABELS[reward.tier]
+    : RESOURCE_PRODUCERS[reward.producerId].label.toUpperCase();
 }
 
 /**
@@ -381,62 +380,11 @@ export function openLegacyMachine(scene: BoardScene): void {
       content.add(zone);
     }
 
-    // ---- the reward ----
-    //
-    // ONE AT A TIME. A list of twenty-one claims is a chore and it buried
-    // the machine under rows of its own bookkeeping; the next one, taken
-    // and replaced by the one behind it, is the whole interaction.
-    const claims = claimableLegacyMilestones(scene.legacyMachine);
-    const claim = claims[0];
-    const rowW = Math.min(340 * s, w - 28 * s);
-    const yRow = listBottom - 14 * s;
-    if (claim) {
-      content.add(scene.add.text(
-        w / 2, yRow - 30 * s,
-        claims.length > 1 ? `REWARD READY  ·  ${claims.length - 1} BEHIND IT` : 'REWARD READY',
-        {
-          resolution: textResolution, fontFamily: Theme.fontMono,
-          fontSize: `${Math.round(10 * s)}px`, fontStyle: 'bold',
-          color: hex(Theme.currencyXp)
-        }
-      ).setOrigin(0.5));
-      const row = scene.add.graphics();
-      row.fillStyle(Theme.bgElevated, 0.95)
-        .fillRoundedRect(w / 2 - rowW / 2, yRow - 14 * s, rowW, 28 * s, Theme.radiusChip);
-      row.lineStyle(1.5, Theme.currencyXp, 0.85)
-        .strokeRoundedRect(w / 2 - rowW / 2, yRow - 14 * s, rowW, 28 * s, Theme.radiusChip);
-      content.add(row);
-      content.add(scene.add.text(
-        w / 2 - rowW / 2 + 12 * s, yRow,
-        `GEAR ${claim.gear + 1} REACHED ${claim.milestone} `
-        + `ROTATION${claim.milestone === 1 ? '' : 'S'}`,
-        {
-          resolution: textResolution, fontFamily: Theme.fontMono,
-          fontSize: `${Math.round(10 * s)}px`, fontStyle: 'bold', color: hex(Theme.textOnDark)
-        }
-      ).setOrigin(0, 0.5));
-      const value = scene.add.text(w / 2 + rowW / 2 - 12 * s, yRow, rewardLabel(claim.reward), {
-        resolution: textResolution, fontFamily: Theme.fontNumeric,
-        fontSize: `${Math.round(12 * s)}px`, fontStyle: 'bold', color: hex(Theme.currencyXp)
-      }).setOrigin(1, 0.5);
-      content.add(value);
-      content.add(currencyIcon(scene, rewardKind(claim.reward), 15 * s)
-        .setPosition(w / 2 + rowW / 2 - 18 * s - value.width, yRow));
-      const zone = scene.add.zone(w / 2, yRow, rowW, 28 * s).setInteractive({ useHandCursor: true });
-      zone.on('pointerdown', () => {
-        if (claim.reward.kind === 'credits') addCoins(scene.economy, claim.reward.amount);
-        else if (claim.reward.kind === 'gems') addGems(scene.economy, claim.reward.amount);
-        else addEnergy(scene.energy, claim.reward.amount);
-        markLegacyClaimed(scene.legacyMachine, claim.gear, claim.milestone);
-        scene.updateCurrencyText();
-        scene.updateEnergyText();
-        floatingScore(scene, w / 2, yRow, claim.reward.amount,
-          claim.reward.kind === 'credits' ? 'CR' : claim.reward.kind === 'gems' ? 'GEM' : 'EN');
-        scene.saveState();
-        redraw();
-      });
-      content.add(zone);
-    }
+    // NO CLAIM LIST. Rewards are delivered the moment a gear reaches a
+    // milestone - on a fifteen-second tick while the game is open, and
+    // in one go through the "while you were away" box when it is not -
+    // so there is nothing here to press. The machine pays without being
+    // asked, which is what an idle machine is for.
 
     content.add(scene.add.text(
       w / 2, h - 16 * s,
