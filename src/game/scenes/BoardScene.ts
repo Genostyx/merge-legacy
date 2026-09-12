@@ -420,7 +420,15 @@ import {
   drawShopCard as drawShopCardPanel,
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
-import { ITEM_ART_VERSION, SPRITE_FAMILIES, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
+import {
+  ITEM_ART_VERSION,
+  PIECE_FAMILIES,
+  SPRITE_FAMILIES,
+  itemSpriteKey,
+  itemSpritePath,
+  pieceSpriteKey,
+  pieceSpritePath
+} from '../objects/itemSprites';
 import {
   advanceLegacyMachine,
   createDefaultLegacyMachine,
@@ -769,6 +777,12 @@ export class BoardScene extends Phaser.Scene {
     for (const [family, tiers] of Object.entries(SPRITE_FAMILIES)) {
       for (let tier = 1; tier <= tiers; tier++) {
         imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
+      }
+    }
+    // The spawner pieces, rendered per family - see PIECE_FAMILIES.
+    for (const [family, tiers] of Object.entries(PIECE_FAMILIES)) {
+      for (let tier = 1; tier <= tiers; tier++) {
+        imageOnce(pieceSpriteKey(family, tier), pieceSpritePath(family, tier));
       }
     }
     svgOnce('energy-basket', 'energy-basket.svg', iconPx);

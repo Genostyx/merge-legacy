@@ -34,6 +34,38 @@ export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
   'gem-mark': 1
 };
 
+/**
+ * THE SPAWNER PIECES, rendered per family.
+ *
+ * Wood, stone and glass build the same four parts out of different
+ * material; water builds a well out of four; the Decagon takes five,
+ * because it is assembled rather than built.
+ */
+export const PIECE_FAMILIES: Readonly<Record<string, number>> = {
+  wood: 4,
+  mineral: 4,
+  glass: 4,
+  water: 4,
+  decagon: 5
+};
+
+/** The texture key for a spawner piece, loaded or not. */
+export function pieceSpriteKey(typeId: string, tier: number): string {
+  return `piece-${typeId}-${tier}`;
+}
+
+export function pieceSpritePath(typeId: string, tier: number): string {
+  return `assets/pieces/${typeId}/${tier}.png?v=${ITEM_ART_VERSION}`;
+}
+
+/** The rendered piece if it is loaded, or null to draw it procedurally. */
+export function loadedPieceSprite(
+  scene: Phaser.Scene, typeId: string, tier: number
+): string | null {
+  const key = pieceSpriteKey(typeId, tier);
+  return scene.textures.exists(key) ? key : null;
+}
+
 /** The texture key for a tier, whether or not it has actually been loaded. */
 export function itemSpriteKey(typeId: string, tier: number): string {
   return `item-${typeId}-${tier}`;

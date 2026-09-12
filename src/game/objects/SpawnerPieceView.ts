@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { getTierDef } from '../data/chains';
+import { loadedPieceSprite } from './itemSprites';
 import { Theme, materialLighting, toneForNormal } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
 
@@ -388,6 +389,9 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
     scene.add.existing(this);
   }
 
+  /** The rendered part, once its family has one. */
+  private sprite: Phaser.GameObjects.Image | null = null;
+
   private draw(): void {
     const size = this.cellSize * 0.88;
     this.shadow.clear();
@@ -397,6 +401,19 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
     }
 
     this.art.clear();
+    // THE RENDER WHEN IT IS LOADED, the drawing when it is not - the same
+    // rule every converted family follows, so a family part way through
+    // conversion still shows something.
+    const sprite = loadedPieceSprite(this.scene, this.typeId, this.tier);
+    if (sprite) {
+      if (!this.sprite) {
+        this.sprite = this.scene.add.image(0, 0, sprite);
+        this.addAt(this.sprite, this.getIndex(this.art));
+      }
+      this.sprite.setTexture(sprite).setDisplaySize(size, size).setVisible(true);
+      return;
+    }
+    this.sprite?.setVisible(false);
     drawSpawnerPieceIcon(this.art, this.typeId, this.tier, size);
   }
 

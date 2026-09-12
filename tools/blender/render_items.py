@@ -3536,6 +3536,299 @@ def render_legacy_gear(cam, out_dir: str):
         print("rendered legacy gear frame", index)
 
 
+# ---- spawner pieces --------------------------------------------------------
+
+# The four families that build a source out of parts. Water and the Decagon
+# have their own sets and are handled separately.
+FRAME_PIECE_FAMILIES = ("wood", "mineral", "glass")
+
+
+def piece_material(family: str):
+    """The surface a family's parts are cut from.
+
+    One material per FAMILY rather than per piece: these are components of
+    the same object, so a beam and the frame it joins have to be the same
+    timber. The item chains vary colour by tier because a tier is a
+    different THING; a piece is the same thing at a different stage.
+    """
+    if family == "wood":
+        material = tier_material("piece-wood", WOOD_HEX[4], WOOD_MEASURED[4],
+                                 max_gain=1.45)
+        _shader(material).inputs["Roughness"].default_value = WOOD_SURFACE[0]
+        _shader(material).inputs["IOR"].default_value = WOOD_SURFACE[1]
+        grain(material, _shader(material).inputs["Base Color"].default_value[:3])
+        return material
+    if family == "mineral":
+        material = tier_material("piece-mineral", MINERAL_HEX[2],
+                                 MINERAL_MEASURED[2], max_gain=1.45)
+        _shader(material).inputs["Roughness"].default_value = MINERAL_SURFACE[2][0]
+        _shader(material).inputs["IOR"].default_value = MINERAL_SURFACE[2][1]
+        mottle(material, _shader(material).inputs["Base Color"].default_value[:3],
+               scale=14.0, strength=0.20)
+        weathered(material, strength=0.28, scale=60.0)
+        return material
+    # GLASS. The one family whose parts are not opaque - and the reason the
+    # preset exists: these settings were written for soda-lime glass and are
+    # wrong on quartz, which is what they were first used on.
+    material = tier_material("piece-glass", 0x9fd3e6, 0x9fd3e6, max_gain=1.0)
+    shader = _shader(material)
+    shader.inputs["Transmission Weight"].default_value = 0.5
+    shader.inputs["Roughness"].default_value = GLASS_PRESET["roughness"]
+    shader.inputs["IOR"].default_value = GLASS_PRESET["ior"]
+    polished(material, coat_roughness=0.06)
+    return material
+
+
+def sawn_beam(length: float, width: float, height: float, turn: float = 0.0):
+    """One squared length of material, turned FLAT - about the vertical.
+
+    Not `lean`, which tips a piece about the screen horizontal: two beams
+    leaned at different angles came out as one bent plank sloping into the
+    ground rather than as two lengths lying across each other. Timber on a
+    workbench turns in plan; it does not tilt.
+    """
+    beam = cube(length, width, height, base=False)
+    if turn:
+        beam.rotation_euler = Euler((0.0, 0.0, math.radians(turn)))
+        bpy.ops.object.select_all(action='DESELECT')
+        beam.select_set(True)
+        bpy.context.view_layer.objects.active = beam
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    return beam
+
+
+def build_frame_pieces():
+    """Cut -> joined -> framed -> roofed, the four parts of a source.
+
+    COMPONENTS, NOT MINIATURES, which is the rule the drawn art set and the
+    one worth keeping: a piece is a thing waiting to be fitted, so the set
+    must not show the finished source three times before the player has
+    built it. Tier one is a single sawn length; tier two is two of them
+    lapped; tier three stands them up as a frame; tier four puts the roof
+    on, and only then does it start to resemble the building.
+    """
+    out = {}
+
+    # 1 - CUT TIMBER. One length, squared off, lying where it was dropped.
+    out[1] = translate_to(sawn_beam(0.86, 0.20, 0.17, turn=-8), (0.0, 0.0, 0.085))
+
+    # 2 - JOINED BEAMS. Two lengths lapped over each other, which is the
+    # first thing that reads as work having been done to them.
+    # LAPPED ACROSS EACH OTHER, with the upper one clearly on top: the
+    # join is the whole point of the tier, and two beams at similar angles
+    # read as one wide plank.
+    out[2] = stack([
+        translate_to(sawn_beam(0.84, 0.19, 0.15, turn=-10), (0.0, 0.0, 0.075)),
+        translate_to(sawn_beam(0.76, 0.19, 0.15, turn=62), (0.04, 0.02, 0.225)),
+    ])
+
+    # 3 - FRAME. Two posts and the head that ties them, standing on a sill.
+    out[3] = stack([
+        translate_to(cube(0.76, 0.17, 0.12, base=False), (0.0, 0.0, 0.06)),
+        translate_to(cube(0.15, 0.15, 0.56, base=False), (-0.28, 0.0, 0.40)),
+        translate_to(cube(0.15, 0.15, 0.56, base=False), (0.28, 0.0, 0.40)),
+        translate_to(cube(0.80, 0.16, 0.13, base=False), (0.0, 0.0, 0.74)),
+    ])
+
+    # 4 - ROOFED FRAME. The same frame with a pitch on it: two slopes and a
+    # ridge, which is the last part before the thing becomes a source.
+    roof = []
+    for side in (-1, 1):
+        slab = cube(0.54, 0.34, 0.06, base=False)
+        slab.rotation_euler = Euler((0.0, math.radians(side * 34), 0.0))
+        bpy.ops.object.select_all(action='DESELECT')
+        slab.select_set(True)
+        bpy.context.view_layer.objects.active = slab
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        roof.append(translate_to(slab, (side * 0.19, 0.0, 0.90)))
+    out[4] = stack([
+        translate_to(cube(0.76, 0.17, 0.12, base=False), (0.0, 0.0, 0.06)),
+        translate_to(cube(0.15, 0.15, 0.52, base=False), (-0.28, 0.0, 0.38)),
+        translate_to(cube(0.15, 0.15, 0.52, base=False), (0.28, 0.0, 0.38)),
+        translate_to(cube(0.80, 0.16, 0.13, base=False), (0.0, 0.0, 0.70)),
+        *roof,
+        translate_to(cube(0.09, 0.36, 0.07, base=False), (0.0, 0.0, 1.02)),
+    ])
+    return out
+
+
+def piece_family(family: str):
+    """Geometry then material, for whichever family's parts."""
+    built = build_frame_pieces()
+    material = piece_material(family)
+    for tier, ob in built.items():
+        # A sawn arris on timber and stone; glass keeps a tighter edge
+        # because a chamfer that wide on a transmissive part reads as a
+        # bevelled mirror rather than as a pane.
+        finish(ob, "%s-piece-%d" % (family, tier), material,
+               bevel=0.006 if family == "glass" else 0.014)
+    return built
+
+
+def build_water_pieces():
+    """The well, in four parts: ring section, support frame, roof, winch.
+
+    The set docs/TODO_DETAILS.md names, and the same rule the frame
+    families follow - each is one PART waiting to be fitted, not the well
+    at four stages of assembly. Drawn cumulatively they came out as four
+    small copies of the water source, which is itself a well, so the
+    pieces showed the player the thing they were building towards three
+    times before they had built it.
+    """
+    out = {}
+
+    # 1 - RING SECTION. An arc of the well's mouth, lying flat. An ARC and
+    # not a closed ring: closed, it is the finished mouth, which is the
+    # source's own silhouette.
+    blocks = []
+    for i in range(5):
+        angle = math.radians(-58 + i * 29)
+        block = cube(0.085, 0.215, 0.115, base=False)
+        block.rotation_euler = Euler((0.0, 0.0, angle))
+        bpy.ops.object.select_all(action='DESELECT')
+        block.select_set(True)
+        bpy.context.view_layer.objects.active = block
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        blocks.append(translate_to(block, (math.cos(angle) * 0.42,
+                                           math.sin(angle) * 0.42, 0.058)))
+    out[1] = stack(blocks)
+
+    # 2 - SUPPORT FRAME. Two posts, their crossbeam and a pair of braces,
+    # standing on their own with nothing to hold up yet.
+    braces = []
+    for side in (-1, 1):
+        brace = cube(0.30, 0.09, 0.075, base=False)
+        brace.rotation_euler = Euler((0.0, math.radians(side * 38), 0.0))
+        bpy.ops.object.select_all(action='DESELECT')
+        brace.select_set(True)
+        bpy.context.view_layer.objects.active = brace
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        braces.append(translate_to(brace, (side * 0.20, 0.0, 0.50)))
+    out[2] = stack([
+        translate_to(cube(0.13, 0.13, 0.66, base=False), (-0.30, 0.0, 0.33)),
+        translate_to(cube(0.13, 0.13, 0.66, base=False), (0.30, 0.0, 0.33)),
+        translate_to(cube(0.78, 0.12, 0.12, base=False), (0.0, 0.0, 0.70)),
+        *braces,
+    ])
+
+    # 3 - ROOF SECTION. The pitched cap alone, resting on the board rather
+    # than floating where a well would be.
+    # THE RIDGE RUNS ACROSS THE VIEW, not away from it. Laid along the
+    # camera's own axis the near slope covered the far one exactly and the
+    # piece read as a single flat flap with a stick on it.
+    slopes = []
+    for side in (-1, 1):
+        slab = cube(0.42, 0.58, 0.055, base=False)
+        slab.rotation_euler = Euler((0.0, math.radians(side * 42), 0.0))
+        bpy.ops.object.select_all(action='DESELECT')
+        slab.select_set(True)
+        bpy.context.view_layer.objects.active = slab
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        slopes.append(translate_to(slab, (side * 0.15, 0.0, 0.16)))
+    roof = stack([*slopes,
+                  translate_to(cube(0.075, 0.60, 0.065, base=False), (0.0, 0.0, 0.30))])
+    roof.rotation_euler = Euler((0.0, 0.0, math.radians(52)))
+    bpy.ops.object.select_all(action='DESELECT')
+    roof.select_set(True)
+    bpy.context.view_layer.objects.active = roof
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    out[3] = roof
+
+    # 4 - WINCH ASSEMBLY. A long body lying down with a wide drum standing
+    # on it - read from the outline alone, which the hand crank it
+    # replaced could not be at board size.
+    barrel = revolve([(0.0, 0.0), (0.20, 0.0), (0.20, 0.46), (0.0, 0.46)])
+    barrel.rotation_euler = Euler((0.0, math.radians(90), 0.0))
+    bpy.ops.object.select_all(action='DESELECT')
+    barrel.select_set(True)
+    bpy.context.view_layer.objects.active = barrel
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    out[4] = stack([
+        translate_to(cube(0.86, 0.30, 0.16, base=False), (0.0, 0.0, 0.08)),
+        translate_to(barrel, (-0.23, 0.0, 0.36)),
+        translate_to(cube(0.10, 0.10, 0.20, base=False), (0.40, 0.0, 0.26)),
+    ])
+    return out
+
+
+def build_decagon_pieces():
+    """Facet, pair, frame, core, housing - FIVE, not four.
+
+    The Decagon is assembled rather than built, which is why it has an
+    extra piece: a facet, two of them hinged, the frame they sit in, the
+    core that drives it, and the housing that closes it up.
+    """
+    out = {}
+
+    def facet(width: float, height: float, thickness: float):
+        return extrude_profile([
+            (-width / 2, -height / 2), (width / 2, -height / 2 + height * 0.14),
+            (width / 2, height / 2 - height * 0.14), (-width / 2, height / 2)
+        ], thickness)
+
+    out[1] = translate_to(facing_profile(facet(0.52, 0.40, 0.10)), (0.0, 0.0, 0.0))
+    out[2] = stack([
+        translate_to(facing_profile(facet(0.46, 0.36, 0.09)), beside(-0.16, 0.04)),
+        translate_to(facing_profile(facet(0.46, 0.36, 0.09)), beside(0.18, -0.06)),
+    ])
+
+    # 3 - THE FRAME: the full ten-sided outline, empty in the middle.
+    out[3] = revolve(
+        [(0.40, 0.0), (0.52, 0.0), (0.52, 0.13), (0.40, 0.13), (0.40, 0.0)],
+        segments=10, close_bottom=False, close_top=False)
+
+    # 4 - THE CORE: what drives it, and the only round thing in the set.
+    out[4] = stack([
+        ball(0.24),
+        translate_to(torus(0.34, 0.055, squash=0.6), (0.0, 0.0, 0.20)),
+    ])
+
+    # 5 - THE HOUSING: the closed ten-sided case, which is the last part
+    # before the machine itself.
+    out[5] = revolve(
+        [(0.0, 0.0), (0.48, 0.0), (0.48, 0.26), (0.30, 0.34), (0.0, 0.34)],
+        segments=10)
+    return out
+
+
+def water_piece_family():
+    """Well parts: stone ring, timber frame and roof, an iron winch."""
+    built = build_water_pieces()
+    stone = tier_material("piece-well-stone", MINERAL_HEX[3], MINERAL_MEASURED[3],
+                          max_gain=1.45)
+    _shader(stone).inputs["Roughness"].default_value = MINERAL_SURFACE[3][0]
+    mottle(stone, _shader(stone).inputs["Base Color"].default_value[:3],
+           scale=18.0, strength=0.18)
+    timber = tier_material("piece-well-timber", WOOD_HEX[3], WOOD_MEASURED[3],
+                           max_gain=1.45)
+    _shader(timber).inputs["Roughness"].default_value = WOOD_SURFACE[0]
+    grain(timber, _shader(timber).inputs["Base Color"].default_value[:3])
+    iron = tier_material("piece-well-iron", 0x7c828a, 0x7c828a, max_gain=1.0)
+    _shader(iron).inputs["Metallic"].default_value = 0.85
+    _shader(iron).inputs["Roughness"].default_value = 0.38
+    # The part decides the material: masonry ring, timber frame and roof,
+    # iron winch - the same split the source itself uses.
+    for tier, ob in built.items():
+        material = (stone if tier == 1 else iron if tier == 4 else timber)
+        finish(ob, "water-piece-%d" % tier, material, bevel=0.010)
+    return built
+
+
+def decagon_piece_family():
+    """The Decagon's parts, in its own violet."""
+    built = build_decagon_pieces()
+    # Straight from DECAGON_CHAIN in chains.ts, with a measurement off the
+    # first pass so the violet survives the studio.
+    material = tier_material("piece-decagon", 0xb0a0ea, 0x8d82b8, max_gain=2.0)
+    shader = _shader(material)
+    shader.inputs["Metallic"].default_value = 0.35
+    shader.inputs["Roughness"].default_value = 0.22
+    polished(material, coat_roughness=0.12)
+    for tier, ob in built.items():
+        finish(ob, "decagon-piece-%d" % tier, material, bevel=0.008)
+    return built
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -3867,6 +4160,30 @@ def main(only: str = ""):
         for tier, ob in tiers:
             render(ob, cam, os.path.join(family_dir, "%d.png" % tier), widest)
             print("rendered", family, "tier", tier)
+
+    # THE SPAWNER PIECES: the parts a player merges together into a
+    # source. Their own folder, and ONE SCALE across each family's four -
+    # they are a sequence watched growing, so tier one has to read as
+    # smaller than tier four.
+    piece_builders = [(fam, (lambda f: lambda: piece_family(f))(fam))
+                      for fam in FRAME_PIECE_FAMILIES]
+    piece_builders.append(("water", water_piece_family))
+    piece_builders.append(("decagon", decagon_piece_family))
+    for piece_fam, piece_build in piece_builders:
+        if only and only != "piece-" + piece_fam:
+            continue
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        piece_dir = os.path.join(root, "public", "assets", "pieces", piece_fam)
+        os.makedirs(piece_dir, exist_ok=True)
+        sc = bpy.context.scene
+        sc.render.resolution_x = sc.render.resolution_y = RESOLUTION
+        piece_tiers = sorted(piece_build().items())
+        piece_widest = max(frame(ob, cam)[1] for _, ob in piece_tiers)
+        for tier, ob in piece_tiers:
+            render(ob, cam, os.path.join(piece_dir, "%d.png" % tier), piece_widest)
+            print("rendered piece", piece_fam, tier)
 
     # THE SOURCES, written somewhere else and framed on their own. A
     # dispenser is not a member of an item ladder - it never sits beside an
