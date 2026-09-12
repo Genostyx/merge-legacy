@@ -33,6 +33,24 @@ export const ART_FILL_RATIO: Record<string, number> = {
   'source-mineral-4': 0.764,
   'source-mineral-5': 0.806,
 
+  // The WELL is a Blender render, not an SVG, and it takes ONE number for
+  // the whole family rather than a measurement per tier.
+  //
+  // The SVG sources each normalise to their own fill because they were
+  // drawn independently - each one fills its canvas differently and none of
+  // them is to scale against the others. The well is not like that: all
+  // five tiers were rendered through one shared frame, so tier one is
+  // ALREADY smaller than tier five by exactly the amount it should be.
+  // Dividing each tier by its own fill undoes that - it scales the low
+  // stone ring up until it draws the same size as the roofed well, and the
+  // upgrade stops being visible. The family's largest tier sets the number
+  // and the rest keep their rendered proportions.
+  'source-water-1': 0.809,
+  'source-water-2': 0.809,
+  'source-water-3': 0.809,
+  'source-water-4': 0.809,
+  'source-water-5': 0.809,
+
   'source-glass-1': 0.780,
   'source-glass-2': 0.912,
   'source-glass-3': 0.801,
@@ -74,6 +92,11 @@ export const ART_EXTENT: Record<string, { w: number; h: number }> = {
   'source-wood-2': { w: 0.664, h: 0.781 },
   'source-wood-3': { w: 0.656, h: 0.863 },
   'source-wood-4': { w: 0.695, h: 0.742 },
+  'source-water-1': { w: 0.551, h: 0.445 },
+  'source-water-2': { w: 0.562, h: 0.699 },
+  'source-water-3': { w: 0.566, h: 0.820 },
+  'source-water-4': { w: 0.707, h: 0.865 },
+  'source-water-5': { w: 0.758, h: 0.863 },
 };
 
 /** Ceilings on how far a source may spill out of its cell. Mirrors TierIcons. */

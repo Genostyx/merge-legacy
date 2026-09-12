@@ -420,7 +420,7 @@ import {
   drawShopCard as drawShopCardPanel,
   drawSectionBanner as drawSectionBannerPanel
 } from './board/shopPanel';
-import { SPRITE_FAMILIES, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
+import { ITEM_ART_VERSION, SPRITE_FAMILIES, itemSpriteKey, itemSpritePath } from '../objects/itemSprites';
 import { createDefaultLegacyMachine, type LegacyMachineState } from '../legacy/LegacyMachine';
 
 export class BoardScene extends Phaser.Scene {
@@ -801,6 +801,15 @@ export class BoardScene extends Phaser.Scene {
       const textureKey = `source-glass-${tier}`;
       if (!this.textures.exists(textureKey)) {
         this.load.svg(textureKey, `glass-source0${tier}.svg`, { width: SOURCE_TEXTURE_PX, height: SOURCE_TEXTURE_PX });
+      }
+    }
+    // WATER'S SOURCES ARE RENDERS, so they load as PNGs and carry the art
+    // version in their URL - the same cache-busting every rendered item
+    // needs, for the same reason.
+    for (let tier = 1; tier <= 5; tier++) {
+      const textureKey = `source-water-${tier}`;
+      if (!this.textures.exists(textureKey)) {
+        this.load.image(textureKey, `assets/sources/water/${tier}.png?v=${ITEM_ART_VERSION}`);
       }
     }
     for (let tier = 1; tier <= 5; tier++) {

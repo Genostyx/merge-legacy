@@ -2140,7 +2140,8 @@ def build_chip_gem():
 
 # ---- water -----------------------------------------------------------------
 
-def revolve(profile, segments: int = 40, close_bottom: bool = True):
+def revolve(profile, segments: int = 40, close_bottom: bool = True,
+            close_top: bool = True):
     """A solid of revolution from a (radius, z) profile, spun about Z.
 
     Water has no flat faces and no fractures, so none of the mineral
@@ -2178,7 +2179,7 @@ def revolve(profile, segments: int = 40, close_bottom: bool = True):
                 bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
     if close_bottom and rings[0] is not None:
         bm.faces.new(tuple(reversed(rings[0])))
-    if rings[-1] is not None:
+    if close_top and rings[-1] is not None:
         bm.faces.new(tuple(rings[-1]))
     bm.to_mesh(mesh)
     bm.free()
@@ -2686,6 +2687,218 @@ def build_water():
     return out
 
 
+# ---- the water source: a well ----------------------------------------------
+
+def _well_materials():
+    """The four surfaces the well is built from, made once per render.
+
+    A source is the first thing in the game built out of more than one
+    material, so the parts are finished in GROUPS - all the masonry, then all
+    the timber - and joined afterwards. `finish` clears an object's material
+    slots, so a part that is finished after the join loses its own surface.
+    """
+    stone = tier_material("well-stone", MINERAL_HEX[2], MINERAL_MEASURED[2],
+                          max_gain=1.45)
+    _shader(stone).inputs["Roughness"].default_value = MINERAL_SURFACE[2][0]
+    _shader(stone).inputs["IOR"].default_value = MINERAL_SURFACE[2][1]
+    mottle(stone, _shader(stone).inputs["Base Color"].default_value[:3],
+           scale=22.0, strength=0.22)
+    weathered(stone, strength=0.30, scale=80.0)
+
+    timber = tier_material("well-timber", WOOD_HEX[3], WOOD_MEASURED[3],
+                           max_gain=1.45)
+    _shader(timber).inputs["Roughness"].default_value = WOOD_SURFACE[0]
+    _shader(timber).inputs["IOR"].default_value = WOOD_SURFACE[1]
+    grain(timber, _shader(timber).inputs["Base Color"].default_value[:3])
+
+    # The well's water is the chain's own, at the shallow end of the ladder -
+    # what is down a shaft is dark, not the bright tidal blue of tier twelve.
+    water = tier_material("well-water", WATER_HEX[2], WATER_MEASURED[2],
+                          max_gain=2.2)
+    _shader(water).inputs["Transmission Weight"].default_value = 0.5
+    _shader(water).inputs["Roughness"].default_value = 0.06
+    _shader(water).inputs["IOR"].default_value = 1.33
+    polished(water, coat_roughness=0.18)
+    _shader(water).inputs["Coat Weight"].default_value = 0.35
+
+    # Iron, for the crank and the bands on the bucket. A real metal, so it
+    # tints its own reflection rather than carrying a diffuse grey.
+    iron = tier_material("well-iron", 0x6a6e73, 0x6a6e73, max_gain=1.0)
+    _shader(iron).inputs["Metallic"].default_value = 0.92
+    _shader(iron).inputs["Roughness"].default_value = 0.34
+    return stone, timber, water, iron
+
+
+def _course(radius: float, z: float, height: float, blocks: int, offset: float):
+    """One ring of masonry blocks, laid as a real course.
+
+    A revolved cylinder would be a pipe. What says MASONRY is the individual
+    stones and the joints between them, and that the joints of one course do
+    not line up with the next - so each course takes a half-block offset.
+    """
+    out = []
+    for i in range(blocks):
+        angle = 2 * math.pi * (i + offset) / blocks
+        # Each block is a shallow box, turned to face out of the circle.
+        # THE LONG AXIS IS TANGENTIAL, which is the whole difference between
+        # a wall and a cogwheel. `cube` lays its first extent along x, and x
+        # is the RADIAL direction once the block is turned to face out of the
+        # circle - so a block described long-side-first stuck out of the
+        # wall like a tooth. Depth 0.055 radially, 0.150 around the circle,
+        # which at eighteen blocks on a 0.40 radius overlaps its neighbour
+        # slightly rather than leaving a gap.
+        block = cube(0.055, 0.150, height, base=False)
+        block.rotation_euler = Euler((0.0, 0.0, angle))
+        bpy.ops.object.select_all(action='DESELECT')
+        block.select_set(True)
+        bpy.context.view_layer.objects.active = block
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        out.append(translate_to(block, (math.cos(angle) * radius,
+                                        math.sin(angle) * radius,
+                                        z + height / 2)))
+    return out
+
+
+def build_water_source():
+    """The Water dispenser: a well that gets built up tier by tier.
+
+    From docs/TODO_DETAILS.md, and it is a specification rather than a
+    suggestion: "begins with a masonry-only well at Source 01, adds timber
+    supports and a crank at Source 02, and adds the pitched roof at Source
+    03. Later source tiers continue improving the structure."
+
+    So the shape is CUMULATIVE. Every tier keeps everything the tier below
+    it had and adds one recognisable piece of architecture - which is the
+    same thing the item chains do with silhouette, and the reason an upgrade
+    reads as an upgrade without a number on it.
+    """
+    stone_mat, timber_mat, water_mat, iron_mat = _well_materials()
+    RADIUS = 0.40
+    out = {}
+
+    for tier in range(1, 6):
+        stone_parts, timber_parts, water_parts, iron_parts = [], [], [], []
+
+        # THE SHAFT, every tier. Three courses of masonry, each offset half a
+        # block against the one below.
+        for course, z in enumerate((0.0, 0.115, 0.230)):
+            stone_parts += _course(RADIUS, z, 0.115, 18, 0.5 * (course % 2))
+        # The coping the courses sit under - a flat ring capping the wall, so
+        # the top of it reads as finished stonework rather than as the last
+        # course happening to stop.
+        # A RING, not a lid. The profile has to come back down its inner
+        # face and close on itself: left open, `revolve` caps the last ring
+        # as a disc and the well ends up with a stone plate over the shaft -
+        # no hole, no water, and nothing for the bucket to go into.
+        cap = revolve([(RADIUS - 0.075, 0.0), (RADIUS + 0.055, 0.0),
+                       (RADIUS + 0.055, 0.045), (RADIUS - 0.075, 0.045),
+                       (RADIUS - 0.075, 0.0)],
+                      close_bottom=False, close_top=False)
+        stone_parts.append(translate_to(cap, (0.0, 0.0, 0.345)))
+        # The water down the shaft.
+        water_parts.append(translate_to(
+            blob(RADIUS - 0.085, 0.035, seed=91, wobble=0.03),
+            (0.0, 0.0, 0.115)))
+
+        if tier >= 2:
+            # TIMBER SUPPORTS AND A CRANK. Two posts across the shaft, a
+            # headstock between them, and the winding barrel the rope is on.
+            for side in (-1, 1):
+                post = cube(0.075, 0.075, 0.52, base=False)
+                timber_parts.append(translate_to(
+                    post, (side * (RADIUS - 0.03), 0.0, 0.39 + 0.26)))
+            barrel = revolve([(0.0, 0.0), (0.075, 0.0), (0.075, 0.60), (0.0, 0.60)])
+            barrel.rotation_euler = Euler((0.0, math.radians(90), 0.0))
+            bpy.ops.object.select_all(action='DESELECT')
+            barrel.select_set(True)
+            bpy.context.view_layer.objects.active = barrel
+            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+            timber_parts.append(translate_to(barrel, (-0.30, 0.0, 0.86)))
+            # The crank: a shaft out of one end, an elbow, and a grip.
+            iron_parts.append(translate_to(
+                arc_tube([(0.0, 0.0, 0.0), (0.13, 0.0, 0.0)], radius=0.020, sides=8),
+                (RADIUS + 0.02, 0.0, 0.86)))
+            iron_parts.append(translate_to(
+                arc_tube([(0.0, 0.0, 0.0), (0.0, 0.0, -0.13)], radius=0.020, sides=8),
+                (RADIUS + 0.15, 0.0, 0.86)))
+            iron_parts.append(translate_to(
+                arc_tube([(0.0, 0.0, 0.0), (0.10, 0.0, 0.0)], radius=0.018, sides=8),
+                (RADIUS + 0.15, 0.0, 0.73)))
+
+        if tier >= 3:
+            # THE PITCHED ROOF. Two slabs leaning against each other over a
+            # ridge, carried on the posts.
+            for side in (-1, 1):
+                slab = cube(0.62, 0.34, 0.035, base=False)
+                slab.rotation_euler = Euler((0.0, math.radians(side * 34), 0.0))
+                bpy.ops.object.select_all(action='DESELECT')
+                slab.select_set(True)
+                bpy.context.view_layer.objects.active = slab
+                bpy.ops.object.transform_apply(location=False, rotation=True,
+                                               scale=False)
+                timber_parts.append(translate_to(
+                    slab, (side * 0.22, 0.0, 1.06)))
+            ridge = cube(0.075, 0.36, 0.055, base=False)
+            timber_parts.append(translate_to(ridge, (0.0, 0.0, 1.20)))
+
+        if tier >= 4:
+            # THE BUCKET, on its rope, plus a stone apron round the foot so
+            # the well is standing on worked ground rather than in a field.
+            # HUNG, not stood. A bucket resting on the coping is a pot; a
+            # bucket on a rope under the barrel is a well.
+            timber_parts.append(translate_to(
+                revolve([(0.095, 0.0), (0.115, 0.155), (0.115, 0.165),
+                         (0.095, 0.165), (0.095, 0.0)],
+                        close_bottom=True, close_top=False),
+                (0.0, 0.0, 0.47)))
+            iron_parts.append(translate_to(torus(0.112, 0.012), (0.0, 0.0, 0.615)))
+            iron_parts.append(translate_to(
+                arc_tube([(0.0, 0.0, 0.0), (0.0, 0.0, 0.22)], radius=0.007, sides=6),
+                (0.0, 0.0, 0.635)))
+            apron = revolve([(RADIUS + 0.055, 0.0), (RADIUS + 0.185, 0.0),
+                             (RADIUS + 0.185, 0.050), (RADIUS + 0.055, 0.065)],
+                            close_bottom=False)
+            stone_parts.append(apron)
+
+        if tier >= 5:
+            # A SECOND COURSE ON THE ROOF and a spout into a trough - the
+            # tier where the well stops being a hole with a lid and becomes
+            # waterworks.
+            for side in (-1, 1):
+                slab = cube(0.70, 0.40, 0.030, base=False)
+                slab.rotation_euler = Euler((0.0, math.radians(side * 34), 0.0))
+                bpy.ops.object.select_all(action='DESELECT')
+                slab.select_set(True)
+                bpy.context.view_layer.objects.active = slab
+                bpy.ops.object.transform_apply(location=False, rotation=True,
+                                               scale=False)
+                timber_parts.append(translate_to(slab, (side * 0.25, 0.0, 0.98)))
+            trough = revolve([(0.0, 0.0), (0.20, 0.0), (0.20, 0.12),
+                              (0.165, 0.12), (0.165, 0.03), (0.0, 0.03)],
+                             close_bottom=True)
+            stone_parts.append(translate_to(trough, (0.0, -0.66, 0.0)))
+            water_parts.append(translate_to(
+                blob(0.155, 0.03, seed=92, wobble=0.03), (0.0, -0.66, 0.055)))
+            iron_parts.append(translate_to(
+                arc_tube([(0.0, 0.0, 0.0), (0.0, -0.16, 0.0), (0.0, -0.20, -0.06)],
+                         radius=0.026, sides=8),
+                (0.0, -RADIUS - 0.02, 0.30)))
+
+        groups = [(stone_parts, stone_mat, 0.010),
+                  (timber_parts, timber_mat, 0.008),
+                  (water_parts, water_mat, 0.0),
+                  (iron_parts, iron_mat, 0.004)]
+        finished = []
+        for index, (parts, material, bevel) in enumerate(groups):
+            if not parts:
+                continue
+            group = stack(parts)
+            finished.append(finish(group, "well%d-%d" % (tier, index), material,
+                                   bevel=bevel, smooth_angle=math.radians(50)))
+        out[tier] = stack(finished)
+    return out
+
+
 # ---- scene, framing, render ------------------------------------------------
 
 def camera_forward() -> Vector:
@@ -2994,6 +3207,29 @@ def main(only: str = ""):
         for tier, ob in tiers:
             render(ob, cam, os.path.join(family_dir, "%d.png" % tier), widest)
             print("rendered", family, "tier", tier)
+
+    # THE SOURCES, written somewhere else and framed on their own. A
+    # dispenser is not a member of an item ladder - it never sits beside an
+    # item for comparison - so it takes the whole canvas at every tier
+    # rather than a shared family scale.
+    sources = [("water", build_water_source)]
+    for family, build in sources:
+        # Addressed as "source-water", so `main("water")` still means the
+        # twelve items and cannot quietly re-render the dispensers too.
+        if only and only != "source-" + family:
+            continue
+        for ob in list(bpy.data.objects):
+            if ob.type == 'MESH':
+                bpy.data.objects.remove(ob, do_unlink=True)
+        source_dir = os.path.join(root, "public", "assets", "sources", family)
+        os.makedirs(source_dir, exist_ok=True)
+        sc = bpy.context.scene
+        sc.render.resolution_x = sc.render.resolution_y = 512
+        tiers = sorted(build().items())
+        widest = max(frame(ob, cam)[1] for _, ob in tiers)
+        for tier, ob in tiers:
+            render(ob, cam, os.path.join(source_dir, "%d.png" % tier), widest)
+            print("rendered source", family, "tier", tier)
 
     for ob in bpy.data.objects:
         if ob.type == 'MESH':
