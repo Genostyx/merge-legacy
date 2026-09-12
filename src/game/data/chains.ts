@@ -85,16 +85,14 @@ export const GLASS_CHAIN: ChainDef = {
     { tier: 3, key: 'cut-glass-block', label: 'Cut Glass Block', color: 0x9fb0ac },
     { tier: 4, key: 'crystal-block', label: 'Crystal Block', color: 0xafc4c2 },
     { tier: 5, key: 'beveled-crystal', label: 'Beveled Crystal', color: 0xbdd6d6 },
-    { tier: 6, key: 'crystal-obelisk', label: 'Crystal Obelisk', color: 0xcce4e6 },
+    { tier: 6, key: 'crystal-burr', label: 'Crystal Burr', color: 0xcce4e6 },
     { tier: 7, key: 'crystal-lattice', label: 'Crystal Lattice', color: 0xdcf0f2 },
     { tier: 8, key: 'prismatic-knot', label: 'Prismatic Knot', color: 0xeaf8fa },
-    // Masterwork capstone. Unlike Wood/Stone (which push further along
-    // their existing hue), this shifts hue toward pale lavender instead of
-    // staying on tier 8's pale-cyan lean - tier 8's near-white cyan left
-    // very little room to differentiate a 9th pale-cyan step, and a hue
-    // shift is a more honest "aurora" (iridescent, color-shifting) read
-    // than just another few RGB points of brightness.
-    { tier: 9, key: 'aurora-crystal', label: 'Aurora Crystal', color: 0xe8e6fb }
+    // Masterwork capstone: a cube inside a cube with its corners joined,
+    // all of it in the family's own glass. The pale lavender stays -
+    // tier 8's near-white cyan left no room for a ninth pale-cyan step,
+    // and the shift is what separates the capstone from the rung below.
+    { tier: 9, key: 'tesseract', label: 'Tesseract', color: 0xe8e6fb }
   ]
 };
 

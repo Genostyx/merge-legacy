@@ -434,6 +434,40 @@ def veins(mat, base_rgb, scale=(3.0, 3.0, 3.0)):
     return mat
 
 
+def granular(mat, base_rgb, scale=210.0, bump=0.55, contrast=0.34):
+    """A surface made of GRAINS, which noise cannot do.
+
+    Noise has no cells in it, so sand shaded with it comes out as a cloudy
+    smear - the same failure the rocks had before `mottle`. Voronoi does
+    have cells: each one is a grain, so the same texture drives both the
+    bump and the colour and the pile reads as a heap of pieces rather than
+    a dune-shaped solid.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    shader = _shader(mat)
+    cells = nodes.new("ShaderNodeTexVoronoi")
+    cells.feature = 'F1'
+    cells.inputs["Scale"].default_value = scale
+    links.new(_texture_coords(mat), cells.inputs["Vector"])
+
+    ramp = nodes.new("ShaderNodeValToRGB")
+    dark = [max(0.0, c * (1.0 - contrast)) for c in base_rgb]
+    light = [c + (1.0 - c) * contrast * 0.42 for c in base_rgb]
+    ramp.color_ramp.elements[0].position = 0.05
+    ramp.color_ramp.elements[0].color = (*light, 1.0)
+    ramp.color_ramp.elements[1].position = 0.55
+    ramp.color_ramp.elements[1].color = (*dark, 1.0)
+    links.new(cells.outputs["Distance"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], shader.inputs["Base Color"])
+
+    grains = nodes.new("ShaderNodeBump")
+    grains.inputs["Strength"].default_value = bump
+    grains.inputs["Distance"].default_value = 0.01
+    links.new(cells.outputs["Distance"], grains.inputs["Height"])
+    links.new(grains.outputs["Normal"], shader.inputs["Normal"])
+    return mat
+
+
 def mottle(mat, base_rgb, scale=9.0, strength=0.16):
     """Broad colour variation across a rock face.
 
@@ -2448,84 +2482,110 @@ def build_water():
     # assigns one, which would paint the rocks water-blue.
     along = Vector((-1.0, -1.0, 0.0)).normalized()
     across = Vector((1.0, -1.0, 0.0)).normalized()
-    steps = 56
+    steps = 84
     path, widths, heights = [], [], []
     for i in range(steps + 1):
         u = i / steps
-        bend = math.sin(u * math.pi * 2.1)
-        here = along * (-0.40 + 0.80 * u) + across * (bend * 0.105)
-        # THE FALLS. A single step down just past halfway, which is what the
-        # reference hangs its whole silhouette on - a stream that runs level
-        # the whole way is a canal.
-        drop = 0.0 if u < 0.46 else min(1.0, (u - 0.46) / 0.12) * 0.075
-        path.append((here.x, here.y, 0.105 - drop - 0.012 * u))
-        # A thread at the head, opening into the pool at the foot - but a
-        # WIDE one. At 0.02-0.145 the water was a line between two banks of
-        # stone and the rocks were the subject; the river has to be the
-        # subject, so the whole run is about half again as wide.
-        widths.append(0.032 + 0.185 * u ** 1.25)
-        heights.append(0.022 + 0.018 * u)
-    water = stack([
-        ribbon(path, widths, heights),
-        # The pool the falls run out into, wider than the stream that feeds it.
-        translate_to(blob(0.200, 0.055, seed=53, wobble=0.09),
-                     tuple(along * 0.37 + across * 0.015)),
-    ])
+        # TWO FULL BENDS, not one lazy S. A single half-wave reads as a
+        # bent tube; a river is recognised by the repeat, and the swing
+        # has to be wide enough to see at tile size.
+        bend = math.sin(u * math.pi * 3.2 - 0.5)
+        here = along * (-0.46 + 0.92 * u) + across * (bend * 0.155)
+        # A STEADY FALL the whole way rather than one step of falls. The
+        # step put a hinge in the silhouette and the pool below it made
+        # the far end balloon, which is what read as a fish.
+        # LOW. At 0.10 the ribbon floated above its own banks and the
+        # stones read as debris underneath it; the water has to sit DOWN
+        # in the channel with the stone standing higher than its surface.
+        path.append((here.x, here.y, 0.045 - 0.020 * u))
+        # CONSTANT WIDTH. Water does not get wider because it has gone
+        # further; the old run opened from 0.03 to 0.22 and the wide end
+        # became the subject of the whole piece.
+        widths.append(0.108 + 0.012 * math.sin(u * math.pi * 4.0))
+        heights.append(0.030)
+    water = ribbon(path, widths, heights, sides=18)
     water_material = tier_material("water-tier-5", WATER_HEX[5], WATER_MEASURED[5],
                                    max_gain=2.2)
     water_shader = _shader(water_material)
-    water_shader.inputs["Transmission Weight"].default_value = 0.5
-    water_shader.inputs["Roughness"].default_value = 0.06
+    # PROPERLY TRANSMISSIVE. At 0.5 it came back as an opaque pale tongue -
+    # the one thing water must never look like. Running water is nearly
+    # clear, and what makes it read as water is the light bending through
+    # it, not the colour on its surface.
+    water_shader.inputs["Transmission Weight"].default_value = 0.88
+    water_shader.inputs["Roughness"].default_value = 0.04
     water_shader.inputs["IOR"].default_value = 1.33
-    polished(water_material, coat_roughness=0.18)
-    water_shader.inputs["Coat Weight"].default_value = 0.35
+    # RIFFLE. A dead-flat surface returns one broad highlight and reads as
+    # glass; a stream is covered in small standing waves, and those broken
+    # highlights are the whole signal that it is MOVING.
+    riffle_nodes, riffle_links = water_material.node_tree.nodes, water_material.node_tree.links
+    riffle = riffle_nodes.new("ShaderNodeTexNoise")
+    riffle.inputs["Scale"].default_value = 46.0
+    riffle.inputs["Detail"].default_value = 5.0
+    riffle_links.new(_texture_coords(water_material), riffle.inputs["Vector"])
+    ripple_bump = riffle_nodes.new("ShaderNodeBump")
+    ripple_bump.inputs["Strength"].default_value = 0.28
+    ripple_bump.inputs["Distance"].default_value = 0.006
+    riffle_links.new(riffle.outputs["Fac"], ripple_bump.inputs["Height"])
+    riffle_links.new(ripple_bump.outputs["Normal"], water_shader.inputs["Normal"])
+    polished(water_material, coat_roughness=0.12)
+    water_shader.inputs["Coat Weight"].default_value = 0.30
     finish(water, "water5-water", water_material, bevel=0.0,
            smooth_angle=math.radians(88))
 
-    # The banks. Scattered along both sides in screen terms, because the
-    # stream runs on the screen's horizontal - placed in world axes they
-    # would pile up on one side of it.
-    # DARK, because the studio is not. A mid brown at 0.30 mottle came back
-    # pale grey - the light stop of that ramp blends toward white, and under
-    # these lamps a small rounded stone shows almost nothing but its lit
-    # side. The drawn reference is a deep warm brown, so the base starts
-    # well below it and the weathering is kept narrow.
-    # THE MINERAL CHAIN'S OWN STONE, colour and correction both. These banks
-    # are the same rock the Slate and Gravel items are made of, so they take
-    # that family's swatch rather than a brown of their own - one stone in
-    # the game, not two that nearly match.
-    stone = tier_material("water-bank", MINERAL_HEX[3], MINERAL_MEASURED[3],
-                          max_gain=1.45)
+    # The banks, in SCREEN axes because the stream runs on the screen's
+    # horizontal - placed in world axes they pile up on one side of it.
+    # THE MINERAL CHAIN'S OWN STONE, colour and correction both: these are
+    # the same rock the Slate and Gravel items are made of, so they take
+    # that family's swatch rather than a brown of their own.
+    # ITS OWN, DARKER SWATCH rather than the mineral chain's tier-3
+    # calibration. That correction was measured off rubble the size of a
+    # whole tile; these stones are a fifth of that, so nearly every face
+    # they show is a lit one and the same numbers came back as snow.
+    stone = tier_material("water-bank", 0x44505c, 0x44505c, max_gain=1.0)
     _shader(stone).inputs["Roughness"].default_value = MINERAL_SURFACE[3][0]
     _shader(stone).inputs["IOR"].default_value = MINERAL_SURFACE[3][1]
-    # The blotching broken stone gets everywhere else in the game, at the
-    # same numbers the mineral chain's rubble tiers use.
-    # FINER AND WEAKER than the mineral chain's own rubble, because these
-    # stones are a quarter the size of those. Noise scale is in world units,
-    # so a scale of 9 across a 0.15 pebble lands the whole stone inside one
-    # blotch - and with that ramp blending toward white, a bank of them came
-    # out chalk. A tighter scale puts several blotches on each stone, which
-    # is what reads as texture instead of as a paint job.
+    # Fine and weak: noise scale is in world units, so the mineral chain's
+    # own numbers land one blotch across a whole pebble this size and the
+    # bank comes out chalk.
+    # WEAKER than the rubble tiers use. The light stop of the ramp blends
+    # toward white, and on stones this small it took the whole bank to
+    # chalk - they came back reading as ice chips beside the water.
     mottle(stone, _shader(stone).inputs["Base Color"].default_value[:3],
-           scale=26.0, strength=0.20)
-    weathered(stone, strength=0.30, scale=90.0)
+           scale=26.0, strength=0.10)
+    weathered(stone, strength=0.22, scale=90.0)
     rng = random.Random(55)
     banks = []
-    for index in range(30):
-        u = rng.uniform(0.02, 0.98)
-        side = -1 if index % 2 else 1
-        bend = math.sin(u * math.pi * 2.1)
-        offset = (0.032 + 0.185 * u ** 1.25) + rng.uniform(0.050, 0.125)
-        here = (along * (-0.40 + 0.80 * u)
-                + across * (bend * 0.105 + side * offset))
-        # BIGGER AND ROUNDER. At 0.07-0.15 with nine hull points they came
-        # out as grey slivers beside the water rather than as a bank; river
-        # stones are worn, so they want more points and less jitter.
-        size = rng.uniform(0.130, 0.235)
-        banks.append(translate_to(
-            rock(size, size * rng.uniform(0.40, 0.58), seed=550 + index,
-                 points=13, jitter=0.16),
-            (here.x, here.y, 0.0)))
+    # A CONTINUOUS BANK, both sides, every step. Alternating sides down one
+    # loop scattered them into loose chunks floating beside the water; a
+    # river is cut INTO its bed, so the stone has to be unbroken along both
+    # edges and has to overlap the water rather than stand off it.
+    bank_steps = 20
+    for index in range(bank_steps + 1):
+        u = index / bank_steps
+        bend = math.sin(u * math.pi * 3.2 - 0.5)
+        centre = along * (-0.46 + 0.92 * u) + across * (bend * 0.155)
+        for side in (-1, 1):
+            # The outer row is SPARSE. Two full rows of stone made a wall
+            # down each side and the water became a slot in it.
+            for ring in ((0, 1) if index % 2 else (0,)):
+                size = rng.uniform(0.082, 0.132) * (1.0 if ring == 0 else 0.84)
+                # The inner ring sits ON the water's edge, so the channel
+                # looks cut rather than laid on top.
+                # CLEAR OF THE WATER. The ribbon is 0.108 to a side, so an
+                # inner ring at 0.098 sat ON it and a bank two deep buried
+                # the channel completely - the stream vanished under its
+                # own stones.
+                offset = (0.150 + ring * 0.082
+                          + rng.uniform(-0.010, 0.020))
+                here = centre + across * (side * offset)
+                # TALLER, and sitting on the bed rather than in it, so
+                # the tops stand above the water line and the channel
+                # reads as cut between them.
+                banks.append(translate_to(
+                    rock(size, size * rng.uniform(0.40, 0.56),
+                         seed=550 + index * 4 + ring * 2 + (side > 0),
+                         points=13, jitter=0.16),
+                    (here.x, here.y, rng.uniform(0.004, 0.030))))
     bank = stack(banks)
     finish(bank, "water5-bank", stone, bevel=0.012)
     out[5] = stack([water, bank])
@@ -3835,8 +3895,116 @@ def decagon_piece_family():
 CRATE_TIERS = ("bronze", "silver", "gold", "vault", "shipping")
 
 # The banding metal each crate is bound with, and the timber under it.
+def build_shipping_container():
+    """The container, built to match the DRAWN one.
+
+    Four of the five things that carry that drawing were missing: the
+    blue block over the far third, the door leaves with their locking
+    bars and placard, the ribbed roof, and the corner castings. The fifth
+    is proportion - the drawing is 2.1 : 1 length to height and the model
+    ran nearer 2.6, which reads as a trailer.
+
+    IT ALSO FACED THE WRONG WAY. World -y is the only horizontal axis
+    that recedes up-and-right on this camera, so the body has to run
+    along y for the corrugated side to land front-right and the doors
+    front-left, the way the drawing has them. Built along x it came out
+    mirrored.
+    """
+    length, width, height = 0.94, 0.40, 0.45
+    half = length / 2
+    # The blue takes the FAR third, and far on this camera is -y.
+    split = -half + length * 0.34
+
+    steel_mat = tier_material("crate-shipping-steel", 0x7c8b96, 0x7c8b96,
+                              max_gain=1.0)
+    _shader(steel_mat).inputs["Metallic"].default_value = 0.80
+    _shader(steel_mat).inputs["Roughness"].default_value = 0.38
+    blue_mat = tier_material("crate-shipping-blue", 0x3f7fd8, 0x3f7fd8,
+                             max_gain=1.0)
+    _shader(blue_mat).inputs["Metallic"].default_value = 0.66
+    _shader(blue_mat).inputs["Roughness"].default_value = 0.42
+    cast_mat = tier_material("crate-shipping-casting", 0x4a5a66, 0x4a5a66,
+                             max_gain=1.0)
+    _shader(cast_mat).inputs["Metallic"].default_value = 0.88
+    _shader(cast_mat).inputs["Roughness"].default_value = 0.50
+    placard_mat = tier_material("crate-shipping-placard", 0xf2c53d, 0xf2c53d,
+                                max_gain=1.0)
+    _shader(placard_mat).inputs["Roughness"].default_value = 0.44
+
+    blue_len = split + half
+    steel_len = length - blue_len
+    steel, blue, castings, placard = [], [], [], []
+
+    steel.append(translate_to(cube(width, steel_len, height, base=False),
+                              (0.0, split + steel_len / 2, 0.0)))
+    blue.append(translate_to(cube(width, blue_len, height, base=False),
+                             (0.0, -half + blue_len / 2, 0.0)))
+
+    # CORRUGATION: vertical flutes standing proud of both long sides. The
+    # density of them is what says container rather than skip.
+    flutes = 22
+    for index in range(flutes):
+        y = -half + length * (0.04 + (index + 0.5) / flutes * 0.92)
+        rib = translate_to(cube(width * 1.05, length * 0.013, height * 0.78,
+                                base=False), (0.0, y, 0.0))
+        (blue if y < split else steel).append(rib)
+        # The roof is ribbed too, across the width and repeating along the
+        # length - the drawing does this, and a blank slab on top is half
+        # the reason the render read as a plain box.
+        ridge = translate_to(cube(width * 0.82, length * 0.012, height * 0.05,
+                                  base=False), (0.0, y, height * 0.495))
+        (blue if y < split else steel).append(ridge)
+
+    # TOP AND BOTTOM RAILS: the smooth bands a corrugated side runs between.
+    for z in (-1, 1):
+        for y0, y1, bucket in ((split, half, steel), (-half, split, blue)):
+            bucket.append(translate_to(
+                cube(width * 1.06, y1 - y0, height * 0.11, base=False),
+                (0.0, (y0 + y1) / 2, z * height * 0.45)))
+
+    # THE DOOR END at +y, which is the face that lands front-left. Two
+    # leaves, four locking bars and the placard: the detail that says
+    # which end opens.
+    door_y = half + 0.006
+    for side in (-1, 1):
+        steel.append(translate_to(
+            cube(width * 0.42, 0.018, height * 0.82, base=False),
+            (side * width * 0.23, door_y, 0.0)))
+    for fraction in (-0.34, -0.14, 0.14, 0.34):
+        steel.append(translate_to(
+            cube(width * 0.038, 0.020, height * 0.76, base=False),
+            (fraction * width, door_y + 0.015, 0.0)))
+    placard.append(translate_to(
+        cube(width * 0.17, 0.012, height * 0.19, base=False),
+        (-width * 0.21, door_y + 0.022, height * 0.05)))
+
+    # CORNER CASTINGS, all eight - why a container reads as something
+    # craned and stacked rather than as a long crate.
+    for sy in (-1, 1):
+        for sx in (-1, 1):
+            for sz in (-1, 1):
+                castings.append(translate_to(
+                    cube(width * 0.22, length * 0.075, height * 0.18,
+                         base=False),
+                    (sx * width * 0.45, sy * (half - length * 0.032),
+                     sz * height * 0.42)))
+
+    parts = []
+    for name, group, material in (("steel", steel, steel_mat),
+                                  ("blue", blue, blue_mat),
+                                  ("casting", castings, cast_mat),
+                                  ("placard", placard, placard_mat)):
+        solid = stack(group)
+        finish(solid, "crate-shipping-%s" % name, material, bevel=0.005)
+        parts.append(solid)
+    return stack(parts)
+
+
 CRATE_METAL = {
-    "bronze": 0x9c6434,
+    # POLISHED COPPER, as the drawn crate has it. 0x9c6434 is a brown,
+    # and brown banding on brown timber is why the bronze crate read as
+    # one wooden object with darker planks on it.
+    "bronze": 0xbe7b41,
     # A METAL MIRRORS THE STUDIO. Silver at 0xb9c2ca and roughness 0.30
     # came back at 0xb5b5b5 against bronze's 0x785c49 - the same crate
     # reading as a white box, because nearly half of it is hardware and
@@ -3851,8 +4019,12 @@ CRATE_METAL = {
 }
 # How polished each tier's hardware is. Silver is the only one that has
 # to be held back; bronze and gold are dark enough to take a shine.
+# SHARPER. At 0.30 a flat strap returned a broad, even sheen that is
+# indistinguishable from painted wood; metal is recognised by a TIGHT
+# highlight with dark either side of it. Silver stays the blunt one -
+# polished, it mirrors the studio and the crate comes back a white box.
 CRATE_METAL_ROUGHNESS = {
-    "bronze": 0.30, "silver": 0.46, "gold": 0.30, "vault": 0.34,
+    "bronze": 0.20, "silver": 0.34, "gold": 0.19, "vault": 0.26,
     "shipping": 0.38,
 }
 CRATE_TIMBER = {
@@ -3883,8 +4055,15 @@ def crate_materials(tier: str):
           contrast=0.22, scale=(1.0, 18.0, 4.0))
     metal = tier_material("crate-%s-metal" % tier, CRATE_METAL[tier],
                           CRATE_METAL[tier], max_gain=1.0)
-    _shader(metal).inputs["Metallic"].default_value = 0.88
+    _shader(metal).inputs["Metallic"].default_value = 0.55
     _shader(metal).inputs["Roughness"].default_value = CRATE_METAL_ROUGHNESS[tier]
+    # A CLEAR COAT. The specular a metal gets from this studio is weak
+    # because the world is deliberately dim for the gems; a coat
+    # reflects the LAMPS, so the hardware gets a hard bright hit without
+    # the world having to be raised for everything else. It is also why
+    # Metallic sits at 0.55 rather than 1.0 - fully metallic, the straps
+    # reflect a dim world and go near-black.
+    polished(metal, coat_roughness=0.06)
     return timber, metal
 
 
@@ -3905,11 +4084,15 @@ def build_packing_case(width: float, depth: float, height: float,
     straps = []
     for index in range(bands):
         offset = (index + 1) / (bands + 1) - 0.5
+        # PROUD OF THE TIMBER. At 1.03 the bands sat all but flush, so
+        # they took the same normal as the face behind them and lit
+        # identically - a strap with no edge of its own cannot read as
+        # metal however polished it is.
         straps.append(translate_to(
-            cube(width * 0.055, depth * 1.03, height * 1.01, base=False),
+            cube(width * 0.055, depth * 1.06, height * 1.02, base=False),
             (width * offset * 1.6, 0.0, 0.0)))
         straps.append(translate_to(
-            cube(width * 1.03, depth * 0.055, height * 1.01, base=False),
+            cube(width * 1.06, depth * 0.055, height * 1.02, base=False),
             (0.0, depth * offset * 1.6, 0.0)))
     # Corner irons, which is most of what says CRATE rather than box -
     # but NARROW. At 0.14 of the width they met in the middle of each
@@ -3917,99 +4100,262 @@ def build_packing_case(width: float, depth: float, height: float,
     for sx in (-1, 1):
         for sy in (-1, 1):
             straps.append(translate_to(
-                cube(width * 0.07, depth * 0.07, height * 1.03, base=False),
-                (sx * width * 0.47, sy * depth * 0.47, 0.0)))
+                cube(width * 0.075, depth * 0.075, height * 1.05, base=False),
+                (sx * width * 0.48, sy * depth * 0.48, 0.0)))
     return body, straps
 
 
+# The tier's accent metal, straight from CRATE_COLORS in TierIcons.ts.
+CHEST_ACCENT = {
+    "bronze": 0xd07a4e,
+    "silver": 0xc4ccd6,
+    "gold": 0xdca92f,
+    "vault": 0x8f5ad6,
+}
+CHEST_ACCENT_ROUGHNESS = {
+    "bronze": 0.22, "silver": 0.34, "gold": 0.20, "vault": 0.26,
+}
+# A PALE SHELL under a coloured lid for the first three, and the dark one
+# kept for the vault. The pale case was an accident first time round - a
+# shared material name left the slot empty and Blender's default grey
+# rendered it - but it reads better than the charcoal did: the lid's
+# colour has something to sit against instead of disappearing into a dark
+# box on a dark board. The vault stays dark, which is most of what says
+# it is not another crate.
+CHEST_SHELL = {
+    "bronze": 0xd2d6d9, "silver": 0xd2d6d9, "gold": 0xd2d6d9,
+    "vault": 0x2f343a,
+}
+CHEST_CAP = {
+    "bronze": 0xb4bbc0, "silver": 0xb4bbc0, "gold": 0xb4bbc0,
+    "vault": 0x23272b,
+}
+
+
+def hinge_open(ob, pivot_x: float, pivot_z: float, degrees: float):
+    """Throws a lid back on a hinge running along the chest's length.
+
+    Positions are baked into the vertices, so this rotates the MESH
+    about a line - an object rotation would pivot on the world origin
+    and throw the lid off the board.
+    """
+    angle = math.radians(degrees)
+    cos, sin = math.cos(angle), math.sin(angle)
+    for vertex in ob.data.vertices:
+        dx, dz = vertex.co.x - pivot_x, vertex.co.z - pivot_z
+        vertex.co.x = pivot_x + dx * cos + dz * sin
+        vertex.co.z = pivot_z - dx * sin + dz * cos
+    return ob
+
+
+def slide_back(ob, distance: float, drop: float):
+    """Slides a lid part straight back, away from the viewer.
+
+    A SLIDE, not a hinge. Swinging the lid on either edge threw it out
+    of the silhouette - on a long edge it landed beside the box and read
+    as a loose panel, on a short edge it stood up like a headboard.
+    Sliding it along the view axis keeps it flat and on top of the
+    chest, so the shape stays a chest and the mouth simply appears.
+
+    Positions are baked into the vertices, so this moves the MESH.
+    """
+    step = LEAN_AXIS * distance
+    for vertex in ob.data.vertices:
+        vertex.co.x += step.x
+        vertex.co.y += step.y
+        vertex.co.z -= drop
+    return ob
+
+
+def build_loot_chest(tier: str, lid_open: bool = False):
+    """A LOW WIDE HARD CHEST, which is the object a loot crate actually is.
+
+    The wooden packing case was not one and the upright flight case read
+    as luggage. What says chest is the PROPORTION - long, low, and deep
+    enough to sit rather than stand - with a lid band across the top, a
+    heavy cap at each end, and one latch on the front.
+
+    Kept to the brief rather than to the reference photographs: blocky
+    mass and hard edges, the shell a single dark charcoal at every tier,
+    and the tier carried by the lid, the latch and one fine machined
+    line. No emblem, no decal - that is ornament, and the brief has none.
+    """
+    length, depth, height = 0.86, 0.48, 0.36
+    half = length / 2
+    # The lid takes the top 42%, so the seam sits low the way a chest's
+    # does - a lid at half the height is a box cut in two.
+    seam = height * 0.08
+
+    shell, caps, accent = [], [], []
+    # Everything that swings when the chest opens, kept apart from the
+    # body as it is built rather than fished out afterwards.
+    lid_parts = []
+
+    # A REAL CAVITY, not a solid with a dark plate on top. Once the lid
+    # slides back the player is looking INTO the thing, and a filled box
+    # with a painted lid reads as a block someone drew a hole on.
+    wall = depth * 0.11
+    body_h = height * 0.66
+    body_z = -height * 0.17
+    for side in (-1, 1):
+        shell.append(translate_to(
+            cube(wall, length, body_h, base=False),
+            (side * (depth - wall) / 2, 0.0, body_z)))
+        shell.append(translate_to(
+            cube(depth - wall * 2, wall, body_h, base=False),
+            (0.0, side * (length - wall) / 2, body_z)))
+    # The floor takes the dark, so the inside reads as depth rather than
+    # as the same pale panel seen from the other side.
+    caps.append(translate_to(
+        cube(depth - wall * 2, length - wall * 2, wall, base=False),
+        (0.0, 0.0, body_z - (body_h - wall) / 2)))
+    # THE LID, flat and in the tier's metal, overhanging the body it
+    # closes on. A barrel vault said "chest" more loudly but the flat
+    # one is what the rest of the set is: blocky mass and hard edges.
+    lid_top = body_z + body_h / 2
+    lid = translate_to(cube(depth * 1.04, length * 1.02, height * 0.30,
+                            base=False), (0.0, 0.0, lid_top + height * 0.15))
+    accent.append(lid)
+    lid_parts.append(lid)
+    lid_step = translate_to(cube(depth * 0.90, length * 0.97, height * 0.06,
+                                 base=False),
+                            (0.0, 0.0, lid_top + height * 0.32))
+    accent.append(lid_step)
+    lid_parts.append(lid_step)
+
+    # Two straps over the lid, in the shell's dark so they read against
+    # it.
+    for side in (-1, 1):
+        band = translate_to(
+            cube(depth * 1.06, length * 0.030, height * 0.32, base=False),
+            (0.0, side * length * 0.23, lid_top + height * 0.15))
+        caps.append(band)
+        lid_parts.append(band)
+
+    # HEAVY END CAPS wrapping both ends, which is what stops the
+    # silhouette being a plain rectangle and what says the thing gets
+    # dropped off the back of something.
+    for side in (-1, 1):
+        caps.append(translate_to(
+            cube(depth * 1.06, length * 0.062, body_h * 1.08, base=False),
+            (0.0, side * (half - length * 0.0425), body_z)))
+    # THE HINGES, on the back long edge - two barrel hinges, each a
+    # knuckle with a leaf on the body and a leaf on the lid. The lid
+    # pivots on them and stays attached, which is the thing a swapped
+    # sprite otherwise fails to say: without visible hardware an open
+    # lid reads as a lid that came off.
+    hinge_x = depth * 0.53
+    for side in (-1, 1):
+        y_at = side * length * 0.26
+        caps.append(translate_to(
+            arc_tube([(hinge_x, y_at - length * 0.045, lid_top),
+                      (hinge_x, y_at + length * 0.045, lid_top)],
+                     radius=height * 0.045, sides=10),
+            (0.0, 0.0, 0.0)))
+        # The body leaf stays put; the lid leaf swings with the lid.
+        caps.append(translate_to(
+            cube(wall * 0.7, length * 0.075, body_h * 0.30, base=False),
+            (hinge_x, y_at, lid_top - body_h * 0.17)))
+        lid_leaf = translate_to(
+            cube(wall * 0.7, length * 0.075, height * 0.10, base=False),
+            (hinge_x - wall * 0.15, y_at, lid_top + height * 0.055))
+        caps.append(lid_leaf)
+        lid_parts.append(lid_leaf)
+
+    # ONE LATCH, straddling the seam on the face the camera sees.
+    # ON THE FRONT FACE ONLY. Spanning the full depth was harmless
+    # while the body was solid; hollow, the middle of it hangs in the
+    # cavity and the open chest has a block floating inside it.
+    accent.append(translate_to(
+        cube(depth * 0.11, length * 0.115, height * 0.26, base=False),
+        (-depth * 0.52, 0.0, seam - height * 0.02)))
+
+    # FEET, so it sits on the board rather than floats over it.
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            caps.append(translate_to(
+                cube(depth * 0.13, length * 0.065, height * 0.08, base=False),
+                (sx * depth * 0.36, sy * length * 0.40, -height * 0.52)))
+
+    # THE TENTH. One fine machined line along the body - a precise
+    # indicator, not decoration, and the only ornament the brief allows.
+    accent.append(translate_to(
+        cube(depth * 0.05, length * 0.56, height * 0.016, base=False),
+        (-depth * 0.50, 0.0, -height * 0.34)))
+
+    # PER-TIER NAMES, always. `tier_material` deletes any material of the
+    # same name before rebuilding it, so one shared "chest-shell" meant
+    # building the silver chest removed the bronze one's material and
+    # left it with an empty slot - which Blender renders as default
+    # white. Exactly the bug the silver crate had once already.
+    shell_mat = tier_material("chest-%s-shell" % tier, CHEST_SHELL[tier],
+                              CHEST_SHELL[tier], max_gain=1.0)
+    # MATTE, and barely metallic. At 0.35/0.42 the dark shell mirrored
+    # the key light and came back white - a charcoal metal under these
+    # lamps is a mirror, and a mirror of a bright lamp is not dark.
+    _shader(shell_mat).inputs["Metallic"].default_value = 0.12
+    _shader(shell_mat).inputs["Roughness"].default_value = 0.52
+    cap_mat = tier_material("chest-%s-cap" % tier, CHEST_CAP[tier],
+                            CHEST_CAP[tier], max_gain=1.0)
+    _shader(cap_mat).inputs["Metallic"].default_value = 0.10
+    _shader(cap_mat).inputs["Roughness"].default_value = 0.58
+    accent_mat = tier_material("chest-%s-accent" % tier, CHEST_ACCENT[tier],
+                               CHEST_ACCENT[tier], max_gain=1.0)
+    # NOT FULLY METALLIC. A metal shows only what it reflects and this
+    # world is deliberately dim so the gems do not wash out; at 1.0 the
+    # lid goes near-black. The clear coat is what gives it the hard hit,
+    # because a coat reflects the LAMPS rather than the world.
+    _shader(accent_mat).inputs["Metallic"].default_value = 0.55
+    _shader(accent_mat).inputs["Roughness"].default_value = CHEST_ACCENT_ROUGHNESS[tier]
+    polished(accent_mat, coat_roughness=0.06)
+
+    # THE LID SWINGS BACK on the far long edge, which is the one the
+    # camera cannot see - so an open chest shows its mouth rather than
+    # the underside of a panel waving at the viewer.
+    if lid_open:
+        # HINGED AT THE BACK LONG EDGE, like a chest. POSITIVE lifts:
+        # the free edge rises and carries over the hinge, so the lid
+        # stands up leaning away. Negative drops it behind the chest,
+        # where it disappears and reads as a lid that fell off.
+        for part in lid_parts:
+            hinge_open(part, depth * 0.53, lid_top, 102.0)
+
+    parts = []
+    for name, group, material in (("shell", shell, shell_mat),
+                                  ("cap", caps, cap_mat),
+                                  ("accent", accent, accent_mat)):
+        solid = stack(group)
+        finish(solid, "chest-%s-%s" % (tier, name), material, bevel=0.010)
+        parts.append(solid)
+    return stack(parts)
+
+
 def build_crate(tier: str):
-    """One crate, at the tier's own hardware."""
-    # ITS OWN MATERIALS, ALWAYS. The shipping container used to borrow
-    # the silver crate's, and `tier_material` deletes any material of the
-    # same name before rebuilding it - so building the container removed
-    # the materials the silver crate was already using and left it with
-    # two empty slots, rendering in Blender's default grey. Every colour
-    # change made to it afterwards did nothing, which is exactly how it
-    # looked.
-    timber_mat, metal_mat = crate_materials(tier)
-
-    if tier == "vault":
-        # THE VAULT is not a crate at all: a strongbox with a dial, which
-        # is why it sits above gold in the set.
-        body, straps = build_packing_case(0.62, 0.50, 0.50, bands=1)
-        # BIGGER, and on a face the camera can see. At 0.11 behind the
-        # corner irons it was invisible, which left the vault reading as a
-        # dark crate rather than as a strongbox.
-        dial = revolve([(0.0, 0.0), (0.15, 0.0), (0.15, 0.04), (0.10, 0.06),
-                        (0.0, 0.06)])
-        dial.rotation_euler = Euler((math.radians(90), 0.0, 0.0))
-        bpy.ops.object.select_all(action='DESELECT')
-        dial.select_set(True)
-        bpy.context.view_layer.objects.active = dial
-        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-        # ON BOTH VISIBLE FACES. The board's camera shows two sides of a
-        # box and which two depends on the azimuth; a dial on one of them
-        # is a coin flip, and it lost - the vault rendered as a dark crate.
-        straps.append(translate_to(dial, (0.0, -0.27, 0.04)))
-        side_dial = revolve([(0.0, 0.0), (0.15, 0.0), (0.15, 0.04),
-                             (0.10, 0.06), (0.0, 0.06)])
-        side_dial.rotation_euler = Euler((0.0, math.radians(-90), 0.0))
-        bpy.ops.object.select_all(action='DESELECT')
-        side_dial.select_set(True)
-        bpy.context.view_layer.objects.active = side_dial
-        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-        straps.append(translate_to(side_dial, (-0.33, 0.0, 0.04)))
-        for angle in (0, 90):
-            spoke = cube(0.22 if angle else 0.035, 0.05,
-                         0.035 if angle else 0.22, base=False)
-            straps.append(translate_to(spoke, (0.0, -0.32, 0.04)))
-            spoke_side = cube(0.05, 0.22 if angle else 0.035,
-                              0.035 if angle else 0.22, base=False)
-            straps.append(translate_to(spoke_side, (-0.38, 0.0, 0.04)))
-    elif tier == "shipping":
-        # A CONTAINER: long, corrugated, doors on the near end. The flutes
-        # are the whole read - a smooth box this shape is a trailer.
-        length, width, height = 1.15, 0.46, 0.44
-        body = [cube(length, width, height, base=False)]
-        straps = []
-        flutes = 26
-        for index in range(flutes):
-            u = (index + 0.5) / flutes - 0.5
-            straps.append(translate_to(
-                cube(length * 0.018, width * 1.03, height * 0.92, base=False),
-                (u * length * 0.95, 0.0, 0.0)))
-        # Top and bottom rails, and the door furniture on the near end.
-        for z in (-1, 1):
-            straps.append(translate_to(
-                cube(length * 1.02, width * 1.05, height * 0.10, base=False),
-                (0.0, 0.0, z * height * 0.47)))
-        for x in (-1, 1):
-            straps.append(translate_to(
-                cube(length * 0.05, width * 1.06, height * 1.03, base=False),
-                (x * length * 0.49, 0.0, 0.0)))
-        for y in (-1, 1):
-            straps.append(translate_to(
-                cube(length * 0.02, width * 0.06, height * 0.86, base=False),
-                (-length * 0.50, y * width * 0.17, 0.0)))
-        # The locking bars on the doors, which is what the near end of a
-        # container actually looks like.
-        for y in (-0.32, -0.11, 0.11, 0.32):
-            straps.append(translate_to(
-                cube(length * 0.02, width * 0.035, height * 0.80, base=False),
-                (-length * 0.505, y * width, 0.0)))
-    else:
-        body, straps = build_packing_case(0.60, 0.48, 0.44,
-                                          bands=1 if tier == "bronze" else 2)
-
-    timber = stack(body)
-    finish(timber, "crate-%s-body" % tier, timber_mat, bevel=0.012)
-    metal = stack(straps)
-    finish(metal, "crate-%s-iron" % tier, metal_mat, bevel=0.006)
-    return stack([timber, metal])
+    """One reward: a hard chest, or the container at the top of the set."""
+    if tier == "shipping":
+        return build_shipping_container()
+    return build_loot_chest(tier)
 
 
 def build_crates():
     return {index + 1: build_crate(tier) for index, tier in enumerate(CRATE_TIERS)}
+
+
+# Remembered across runs so the open set can be rendered on its own and
+# still match the closed one - `main` is called per set during art work.
+_CRATE_WIDEST = 0.0
+
+
+def build_open_crates():
+    """The same chests with the lid swung back.
+
+    A second render rather than an animation: the board draws sprites, so
+    "it stays open" is a texture swap, and a swap needs a texture to swap
+    TO. The container has none - it is the one reward that is not a
+    chest, and it has doors rather than a lid.
+    """
+    return {index + 1: build_loot_chest(tier, lid_open=True)
+            for index, tier in enumerate(CRATE_TIERS) if tier != "shipping"}
 
 
 # ---- the producers ---------------------------------------------------------
@@ -4147,6 +4493,237 @@ def producer_family():
             finish(contents, "producer-fill-%d" % tier, material, bevel=0.004)
             parts.append(contents)
         out[tier] = stack(parts)
+    return out
+
+
+# ---- glass -----------------------------------------------------------------
+
+# Straight from GLASS_CHAIN in src/game/data/chains.ts.
+GLASS_HEX = {
+    1: 0x9c8f6f, 2: 0x8f9a8a, 3: 0x9fb0ac, 4: 0xafc4c2, 5: 0xbdd6d6,
+    6: 0xcce4e6, 7: 0xdcf0f2, 8: 0xeaf8fa, 9: 0xe8e6fb,
+}
+# Identity until the first pass is measured, the way every family starts.
+GLASS_MEASURED = dict(GLASS_HEX)
+
+GLASS_RGB = {
+    tier: tuple(((c >> shift) & 255) / 255.0 for shift in (16, 8, 0))
+    for tier, c in GLASS_HEX.items()
+}
+
+
+def build_glass():
+    """Sand -> worked glass -> grown crystal, which is the chain's story.
+
+    The names are the specification and they are not mine to change: raw
+    sand, a shard, a cut block, a crystal block, a bevelled crystal, an
+    obelisk, a lattice, a prismatic knot, and the aurora capstone. Tier
+    one is the only OPAQUE thing here - sand is not glass yet, which is
+    the whole point of tier two existing.
+    """
+    out = {}
+
+    # 1 - RAW SAND: a poured heap, and the only opaque thing in the chain.
+    #
+    # A CONE, NOT A DOME. Dry sand stands at its angle of repose - about
+    # 34 degrees - and that straight flank running to a soft apex is the
+    # entire silhouette of a poured pile. A rounded mound is a hill.
+    #
+    # The grains are not modelled. Five million spheres is not a render,
+    # it is a hang; what the eye actually reads is a lumpy outline and a
+    # cellular surface, so the cone is jittered and the grain lives in
+    # the material.
+    # Sized to the FAMILY, not to the reference photograph. A pile wide
+    # enough to look like the photo sets the shared scale for all nine
+    # and draws every crystal above it at a third of its tile.
+    heap = revolve([
+        (0.44, 0.0), (0.43, 0.008), (0.375, 0.062), (0.315, 0.128),
+        (0.245, 0.194), (0.172, 0.253), (0.100, 0.298), (0.042, 0.322),
+        (0.0, 0.332),
+    ], segments=64)
+
+    # LUMP THE CONE WITH LOBES, not with per-vertex noise. Jittering each
+    # vertex of a lathe independently is what turned the first pass into
+    # an umbrella: the rings stay rings, so the randomness lands as
+    # creases running straight down the flank. A couple of low-frequency
+    # waves around the axis slump the pile instead, the way a poured heap
+    # actually sits.
+    rng = random.Random(9101)
+    phase = [rng.uniform(0.0, math.tau) for _ in range(3)]
+    for vertex in heap.data.vertices:
+        x, y, z = vertex.co
+        radius = math.hypot(x, y)
+        if radius < 1e-4:
+            continue
+        angle = math.atan2(y, x)
+        low = 1.0 - min(1.0, z / 0.332)
+        lobes = (0.055 * math.sin(3 * angle + phase[0])
+                 + 0.032 * math.sin(5 * angle + phase[1])
+                 + 0.018 * math.sin(8 * angle + phase[2]))
+        push = 1.0 + lobes * (0.45 + 0.75 * low)
+        vertex.co.x, vertex.co.y = x * push, y * push
+        vertex.co.z = max(0.0, z * (1.0 + lobes * 0.30))
+
+    # THE TOE. A poured pile does not end at a clean circle: it throws a
+    # scatter of loose grains out past the skirt, and that feathered edge
+    # is most of what says the stuff is granular.
+    spill = [heap]
+    for index in range(64):
+        angle = rng.uniform(0.0, math.tau)
+        out_by = rng.uniform(0.62, 0.96) ** 0.5
+        size = rng.uniform(0.018, 0.040) * (1.2 - out_by * 0.6)
+        spill.append(translate_to(
+            rock(size, size * 0.6, seed=9200 + index, points=6),
+            (math.cos(angle) * out_by * 0.58, math.sin(angle) * out_by * 0.58,
+             size * 0.28)))
+    out[1] = stack(spill)
+
+    # 2 - THE OBELISK. First worked glass: one piece pulled out of the
+    # sand and drawn to a point, which is the merge that has to feel like
+    # something happened.
+    out[2] = crystal(radius=0.26, height=0.62, tip=0.26, sides=6, taper=0.72)
+
+    # 3 - CUT GLASS BLOCK. Squared off by hand: the first worked piece.
+    out[3] = cube(0.46, 0.40, 0.34)
+
+    # 4 - CRYSTAL BLOCK. Bigger, cleaner, and TALLER - a block that has
+    # been grown rather than cut, so it stands rather than sits.
+    out[4] = cube(0.40, 0.36, 0.56)
+
+    # 5 - BEVELLED CRYSTAL. A real cut: a rectangular girdle with a
+    # chamfered crown and a shallow pavilion.
+    out[5] = cut_stone(
+        rect_ring(0.52, 0.44),
+        crown=[(0.86, 0.08), (0.66, 0.17)],
+        pavilion=[(0.82, -0.10), (0.50, -0.22), (0.0, -0.30)],
+    )
+
+    # 6 - THE BURR, the same shape wood six is: three bars crossed
+    # through each other and tipped onto their body diagonal so the piece
+    # rests on three arms. The families share a shape grammar, and this
+    # is the rung where it shows.
+    out[6] = merge([
+        cube(0.76, 0.24, 0.24, base=False),
+        cube(0.24, 0.76, 0.24, base=False),
+        cube(0.24, 0.24, 0.76, base=False),
+    ])
+    out[6].rotation_euler = (
+        Vector((1, 1, 1)).normalized().rotation_difference(Vector((0, 0, 1))).to_euler()
+    )
+
+    # 7 - CRYSTAL LATTICE, as a CLUSTER of spires: three prisms of
+    # different heights off one base.
+    spires = []
+    for right, back, height in ((-0.13, 0.05, 0.50), (0.10, -0.06, 0.70),
+                                (0.02, 0.14, 0.38)):
+        spires.append(translate_to(
+            crystal(radius=0.15, height=height, tip=0.18, sides=6, taper=0.76),
+            beside(right, back)))
+    out[7] = stack(spires)
+
+    # 8 - PRISMATIC KNOT. The chain's interlocking form, in glass.
+    #
+    # SCALED TO THE FAMILY. `torus_knot`'s curve is r = cos(qt) + 2, so
+    # it spans about six units whatever tube radius it is given - which
+    # is why wood and mineral are excluded from the shared camera. Glass
+    # shares one scale across its nine, so the knot is sized to them
+    # instead of the other eight being shrunk to specks around it.
+    out[8] = scale_to_width(
+        torus_knot(p=2, q=3, samples=110, sides=8, radius=0.55, z_amp=2.6), 0.62)
+
+    # 9 - AURORA CRYSTAL, as a TESSERACT: a cube inside a cube with the
+    # eight struts joining their corresponding corners, and a node at
+    # every vertex.
+    #
+    # The right capstone for a family whose whole ladder is about light
+    # passing through things - it is the only silhouette here that is
+    # mostly air, and the one shape that could not exist as a solid.
+    outer, inner = 0.32, 0.155
+    corners = [(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+    bars, nodes = [], []
+
+    def strut(a, b, thickness):
+        return arc_tube([a, b], radius=thickness, sides=7)
+
+    for scale, thickness in ((outer, 0.024), (inner, 0.014)):
+        for a in corners:
+            for axis in range(3):
+                if a[axis] > 0:
+                    continue          # one bar per edge, not two
+                b = list(a)
+                b[axis] = 1
+                bars.append(strut(
+                    tuple(v * scale for v in a),
+                    tuple(v * scale for v in b), thickness))
+        for a in corners:
+            nodes.append(translate_to(
+                ball(0.030 if scale == outer else 0.019),
+                tuple(v * scale for v in a)))
+    # The eight struts from the outer cube to the inner one, which are
+    # what make it a tesseract rather than two cubes.
+    for a in corners:
+        bars.append(strut(tuple(v * outer for v in a),
+                          tuple(v * inner for v in a), 0.017))
+
+    frame = stack(bars)
+    glass_mat = tier_material("glass-tier-9", GLASS_HEX[9], GLASS_MEASURED[9],
+                              max_gain=1.45)
+    # THE FAMILY'S OWN GLASS, unchanged: the same preset every other
+    # tier uses, with no thin-film tint of its own.
+    gemstone(glass_mat, **GLASS_PRESET)
+    polished(glass_mat, coat_roughness=0.05)
+    finish(frame, "glass9-frame", glass_mat, bevel=0.0)
+
+    # THE JOINTS IN THE SAME GLASS. They were gold, after the reference,
+    # but a metal node on a glass family makes the capstone read as a
+    # different material entirely - the beads are sixteen little solid
+    # spheres, so they catch and bend the light on their own without
+    # needing another surface to do it.
+    joints = stack(nodes)
+    finish(joints, "glass9-nodes", glass_mat, bevel=0.0)
+    out[9] = stack([frame, joints])
+
+    # SAND IS NOT GLASS, which is the whole reason tier two exists. It
+    # gets an opaque, rough, granular surface rather than the family
+    # preset - giving the heap transmission would make the first merge
+    # mean nothing.
+    sand = tier_material("glass-tier-1", GLASS_HEX[1], GLASS_MEASURED[1],
+                         max_gain=1.45)
+    _shader(sand).inputs["Roughness"].default_value = 0.88
+    # COARSE CELLS ON PURPOSE. A tile is a couple of hundred pixels; a
+    # grain-accurate texture averages to a flat fill at that size, so the
+    # cells are sized to be seen rather than to be correct.
+    granular(sand, _shader(sand).inputs["Base Color"].default_value[:3],
+             scale=62.0, bump=1.0, contrast=0.40)
+    finish(out[1], "glass1", sand, bevel=0.0)
+    prefinished = {1, 9}
+
+    for tier, ob in out.items():
+        if tier in prefinished:
+            continue
+        material = tier_material("glass-tier-%d" % tier,
+                                 GLASS_HEX[tier], GLASS_MEASURED[tier],
+                                 max_gain=1.45)
+        shader = _shader(material)
+        # THE GLASS PRESET, APPLIED AS ONE. It was written for soda-lime
+        # glass and kept for this family precisely so the recipe would
+        # not be re-derived by hand here - `gemstone` sets the lifted
+        # base, full transmission, the IOR and the roughness together,
+        # and hand-setting three of the four is how they drift apart.
+        gemstone(material, **GLASS_PRESET)
+        polished(material, coat_roughness=0.05)
+        if tier == 9:
+            # THE AURORA, as thin-film interference rather than as a
+            # tint: the chain note calls for an iridescent, colour-
+            # shifting read, and a lavender base is just another pale
+            # stone. Skipped silently where the build has no such input.
+            for name in ("Thin Film Thickness", "Thin Film IOR"):
+                if name in shader.inputs:
+                    shader.inputs[name].default_value = 420.0 if "Thickness" in name else 1.9
+        # A CRISP ARRIS. A wide bevel on cut glass rounds off the only
+        # thing that says it was cut.
+        finish(ob, "glass%d" % tier, material,
+               bevel=0.0 if tier in (2, 5, 7) else 0.006)
     return out
 
 
@@ -4418,7 +4995,7 @@ def archive(path: str = ""):
     configure_render()
 
     builders = [("wood", build_wood), ("mineral", build_mineral),
-                ("water", build_water),
+                ("water", build_water), ("glass", build_glass),
                 ("event-token", build_event_token),
                 ("credit-mark", build_chip_coin),
                 ("gem-mark", build_chip_gem)]
@@ -4447,7 +5024,7 @@ def main(only: str = ""):
     configure_render()
 
     families = [("wood", build_wood), ("mineral", build_mineral),
-                ("water", build_water),
+                ("water", build_water), ("glass", build_glass),
                 ("event-token", build_event_token),
                 ("credit-mark", build_chip_coin),
                 ("gem-mark", build_chip_gem)]
@@ -4485,7 +5062,9 @@ def main(only: str = ""):
     # THE REWARD ART: crates and producers, in the same folder shape the
     # pieces use. Each set shares one scale - a bronze crate has to read
     # as smaller than a shipping container.
-    reward_sets = [("crates", build_crates), ("producers", producer_family)]
+    reward_sets = [("crates", build_crates), ("crates-open", build_open_crates),
+                   ("producers", producer_family)]
+
     for reward_name, reward_build in reward_sets:
         if only and only != "reward-" + reward_name:
             continue
@@ -4498,6 +5077,15 @@ def main(only: str = ""):
         sc.render.resolution_x = sc.render.resolution_y = RESOLUTION
         reward_tiers = sorted(reward_build().items())
         reward_widest = max(frame(ob, cam)[1] for _, ob in reward_tiers)
+        # THE OPEN CHESTS SHARE THE CLOSED SET'S SCALE. Fitted to their
+        # own frame the body would be drawn smaller than the body of the
+        # crate they replace, so the chest would visibly shrink the
+        # moment it opened - which is the one thing a swap must not do.
+        global _CRATE_WIDEST
+        if reward_name == "crates-open" and _CRATE_WIDEST:
+            reward_widest = _CRATE_WIDEST
+        if reward_name == "crates":
+            _CRATE_WIDEST = reward_widest
         for tier, ob in reward_tiers:
             render(ob, cam, os.path.join(reward_dir, "%d.png" % tier), reward_widest)
             print("rendered reward", reward_name, tier)

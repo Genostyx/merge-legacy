@@ -423,6 +423,9 @@ import {
 } from './board/shopPanel';
 import {
   CRATE_SPRITE_INDEX,
+  OPENABLE_CRATE_TIERS,
+  crateOpenSpriteKey,
+  crateOpenSpritePath,
   ITEM_ART_VERSION,
   PIECE_FAMILIES,
   crateSpriteKey,
@@ -786,9 +789,13 @@ export class BoardScene extends Phaser.Scene {
         imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
       }
     }
-    // The rendered crates, one per tier.
+    // The rendered crates, one per tier - and the open chest for the
+    // four that have a lid.
     for (const tier of Object.keys(CRATE_SPRITE_INDEX)) {
       imageOnce(crateSpriteKey(tier), crateSpritePath(tier));
+    }
+    for (const tier of OPENABLE_CRATE_TIERS) {
+      imageOnce(crateOpenSpriteKey(tier), crateOpenSpritePath(tier));
     }
     // The spawner pieces, rendered per family - see PIECE_FAMILIES.
     for (const [family, tiers] of Object.entries(PIECE_FAMILIES)) {
@@ -1949,6 +1956,12 @@ export class BoardScene extends Phaser.Scene {
       return;
     }
 
+    // THE LID GOES UP ON THE FIRST TAP and stays up. Everything below
+    // this point hands something over, so by here the crate has
+    // definitely been opened - and a chest that shut itself between
+    // taps would say the player had not opened it yet.
+    view.openLid();
+
     const world = this.cellToWorld(view.gridPos);
     if (entry.kind === 'item' || entry.kind === 'spawner-piece' || entry.kind === 'resource-producer') {
       // The item needs somewhere to go; the crate's own cell is not free yet.
@@ -2178,7 +2191,12 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     // the device together, instead of the box resizing around fixed contents.
     const ts = this.trayScale;
     const cs = this.trayControlScale;
-    const railW = Math.round(48 * ts);
+    // THE RAIL IS A FIXED WIDTH, so the reserve for it has to be too. The
+    // inventory chip is drawn from boardOriginX over 48 and the vault's
+    // tap zone reaches boardOriginX + 47, neither of which scales; at the
+    // 0.82 floor a 48*ts reserve came out at 39 and the box's left edge
+    // sat on top of both of them.
+    const railW = Math.max(48, Math.round(48 * ts));
     const x = this.boardOriginX + railW;
     const y = this.boardOriginY + ROWS * this.cellSize + this.boardToTrayGap;
     const w = COLS * this.cellSize - railW;

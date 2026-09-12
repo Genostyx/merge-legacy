@@ -556,7 +556,9 @@ export function openPlayerInfo(scene: BoardScene): void {
   // The book draws centred on its origin at 0.68 of its size tall, so
   // standing it on the chip's bottom edge with the same overhang means its
   // centre sits 5px above the chip's.
-  const bookIcon = scene.add.graphics().setPosition(bookX, bookY - 5);
+  // ON THE TILE'S OWN CENTRE. The face runs from bookY - 18.5 over 37, so
+  // its middle is bookY exactly; the -5 sat the book high in its tile.
+  const bookIcon = scene.add.graphics().setPosition(bookX, bookY);
   scene.drawCollectionBook(bookIcon, 40, collectionReady > 0 ? Theme.currencyGem : Theme.textOnDarkMuted);
   const bookBadge = scene.add.text(bookX + 23, bookY - 14,
     collectionReady > 0 ? String(collectionReady > 9 ? '9+' : collectionReady) : '', {
@@ -599,15 +601,34 @@ export function openPlayerInfo(scene: BoardScene): void {
   // ON THE TILE'S OWN CENTRE. The face is drawn from legacyY - 18.5 over
   // 37, so its middle is legacyY exactly; the -2 was carried over from
   // the drawn ring and sat the gear high.
+  // THE MACHINE'S OWN GREEN, which is the readout colour inside the panel
+  // this tile opens - the same Theme.currencyXp the rotations line is set
+  // in. The tile and the screen behind it agree, which is the whole point
+  // of colouring it at all.
+  const LEGACY_GEAR_TINT = Theme.currencyXp;
   const legacyGear = scene.textures.exists('legacy-gear')
     ? scene.add.image(legacyX, legacyY, 'legacy-gear')
       .setDisplaySize(34, 34)
-      .setTint(Theme.currencyXp)
+      .setTint(LEGACY_GEAR_TINT)
       .setAlpha(legacyUnlocked ? 1 : 0.42)
+    : null;
+  // BRIGHTER ONCE IT IS OPEN, and a lighter tint cannot do it: a tint
+  // MULTIPLIES, and the gear render is a near-black body with light grey
+  // teeth, so no tint can lift the body above the black it already is -
+  // which is why an unlocked tile still read as dimmed. A second copy
+  // blended ADDITIVELY on top puts light INTO the dark, in the machine's
+  // own green.
+  const legacyGlow = legacyGear && legacyUnlocked
+    ? scene.add.image(legacyX, legacyY, 'legacy-gear')
+      .setDisplaySize(34, 34)
+      .setTint(LEGACY_GEAR_TINT)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.75)
     : null;
   const legacyIcon = scene.add.graphics().setPosition(legacyX, legacyY - 2);
   if (legacyGear) {
     legacyArt.push(legacyGear);
+    if (legacyGlow) legacyArt.push(legacyGlow);
   } else {
     // The drawn fallback, for a boot where the render has not loaded.
     legacyIcon.fillStyle(Theme.currencyXp, legacyUnlocked ? 0.95 : 0.38);

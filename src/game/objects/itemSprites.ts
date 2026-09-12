@@ -16,6 +16,7 @@ import Phaser from 'phaser';
 export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
   wood: 9,
   mineral: 9,
+  glass: 9,
   // The longest chain in the game, and the only one whose shapes had to come
   // from the drawn art rather than a shape grammar - see build_water.
   water: 12,
@@ -73,6 +74,33 @@ export function loadedCrateSprite(scene: Phaser.Scene, tier: string): string | n
   return scene.textures.exists(key) ? key : null;
 }
 
+/**
+ * The same chest with its lid swung back.
+ *
+ * A second render rather than an animation: the board draws sprites, so
+ * "it stays open" is a texture swap and a swap needs something to swap
+ * TO. The shipping container has no open art - it is the one reward that
+ * is not a chest - so this returns null for it and the caller keeps the
+ * closed one.
+ */
+export function crateOpenSpriteKey(tier: string): string {
+  return `crate-open-${tier}`;
+}
+
+export function crateOpenSpritePath(tier: string): string {
+  return `assets/rewards/crates-open/${CRATE_SPRITE_INDEX[tier]}.png?v=${ITEM_ART_VERSION}`;
+}
+
+export function loadedOpenCrateSprite(
+  scene: Phaser.Scene, tier: string
+): string | null {
+  const key = crateOpenSpriteKey(tier);
+  return scene.textures.exists(key) ? key : null;
+}
+
+/** The tiers that have an open render. The container is a door, not a lid. */
+export const OPENABLE_CRATE_TIERS = ['bronze', 'silver', 'gold', 'vault'] as const;
+
 /** The texture key for a spawner piece, loaded or not. */
 export function pieceSpriteKey(typeId: string, tier: number): string {
   return `piece-${typeId}-${tier}`;
@@ -107,7 +135,7 @@ export function itemSpriteKey(typeId: string, tier: number): string {
  * A version in the query string makes the URL new, so every client refetches
  * once and then caches again normally.
  */
-export const ITEM_ART_VERSION = 33;
+export const ITEM_ART_VERSION = 41;
 
 /** Where the renderer writes it, relative to `public/`. */
 export function itemSpritePath(typeId: string, tier: number): string {

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
-import { loadedCrateSprite } from './itemSprites';
+import { loadedCrateSprite, loadedOpenCrateSprite } from './itemSprites';
 import { drawCrate } from './TierIcons';
 
 /**
@@ -53,6 +53,16 @@ export class CrateView extends Phaser.GameObjects.Container {
 
   /** The rendered crate, once one exists for this tier. */
   private sprite: Phaser.GameObjects.Image | null = null;
+  /**
+   * Whether the lid is up. Set the first time the crate gives something
+   * up and never unset - a chest that shuts itself between taps would
+   * say the player had not opened it.
+   *
+   * Deliberately view state and NOT saved: reloading shows the chest
+   * shut again until the next tap, which costs nothing, where storing
+   * it would change the save format for a piece of decoration.
+   */
+  private lidOpen = false;
 
   private draw(): void {
     // 1.30, not 0.9: `drawCrate` draws its box at 0.5 of the size it is given,
@@ -79,8 +89,11 @@ export class CrateView extends Phaser.GameObjects.Container {
     // on the origin, projection included. This used to shift left by half the
     // isometric depth, and every other caller had to remember to do the same.
     this.art.clear().setPosition(0, 0);
-    // The render when it is loaded, the drawing when it is not.
-    const sprite = loadedCrateSprite(this.scene, this.crateTier);
+    // The render when it is loaded, the drawing when it is not - and
+    // the open chest once this one has been tapped.
+    const sprite = (this.lidOpen
+      ? loadedOpenCrateSprite(this.scene, this.crateTier)
+      : null) ?? loadedCrateSprite(this.scene, this.crateTier);
     if (sprite) {
       if (!this.sprite) {
         this.sprite = this.scene.add.image(0, 0, sprite);
@@ -141,12 +154,39 @@ export class CrateView extends Phaser.GameObjects.Container {
     return this;
   }
 
+  /**
+   * Throws the lid open, once.
+   *
+   * The swing is faked on the sprite rather than tweened on the lid -
+   * the board draws one image per crate, so what sells it is the
+   * squash: the chest dips as the catch gives and springs back with
+   * the open art already in place.
+   */
+  openLid(): void {
+    if (this.lidOpen) return;
+    this.lidOpen = true;
+    this.draw();
+    if (!this.sprite?.visible) return;
+    this.scene.tweens.add({
+      targets: this.sprite,
+      scaleX: { from: this.sprite.scaleX * 1.06, to: this.sprite.scaleX },
+      scaleY: { from: this.sprite.scaleY * 0.82, to: this.sprite.scaleY },
+      duration: 260,
+      ease: 'Back.Out'
+    });
+  }
+
   /** A short pop when the crate gives something up, so each tap lands. */
   playDispensePulse(): void {
+    // RELATIVE TO WHATEVER IT IS ON. The Graphics sits at scale 1, but
+    // the sprite is scaled by `setDisplaySize`, so squashing it from a
+    // hard 1 would resize the chest to a fraction of a cell.
+    const target = this.sprite?.visible ? this.sprite : this.art;
+    const { scaleX, scaleY } = target;
     this.scene.tweens.add({
-      targets: this.art,
-      scaleX: { from: 1, to: 1.16 },
-      scaleY: { from: 1, to: 0.86 },
+      targets: target,
+      scaleX: { from: scaleX, to: scaleX * 1.16 },
+      scaleY: { from: scaleY, to: scaleY * 0.86 },
       duration: 90,
       yoyo: true,
       ease: 'Quad.Out'

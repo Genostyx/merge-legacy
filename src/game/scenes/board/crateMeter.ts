@@ -54,10 +54,15 @@ export function buildCrateMeter(scene: BoardScene): void {
   scene.crateMeterZone = scene.add.zone(cx, cy, crateRingR(scene) * 2 + 8, crateRingR(scene) * 2 + 8)
     .setInteractive({ useHandCursor: true });
   scene.crateMeterZone.on('pointerdown', () => claimMeterCrateReward(scene));
+  // THE SPRITE GOES IN THE CONTAINER TOO. Left outside it, the image sat
+  // on the scene's default depth while the meter's own backing box drew
+  // at depth 2 on top of it - so the crate was there, correctly sized and
+  // positioned, and completely hidden behind its own panel.
   scene.crateMeterContainer.add([
     scene.crateMeterBar,
     scene.crateMeterProgress,
     scene.crateMeterIcon,
+    scene.crateMeterSprite,
     scene.crateMeterZone
   ]);
   refreshCrateMeter(scene);
