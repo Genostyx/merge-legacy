@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { loadedCrateSprite, loadedOpenCrateSprite } from './itemSprites';
-import { drawCrate } from './TierIcons';
+import { CRATE_EXTENT, drawCrate } from './TierIcons';
 
 /**
  * A crate sitting on the board.
@@ -99,7 +99,22 @@ export class CrateView extends Phaser.GameObjects.Container {
         this.sprite = this.scene.add.image(0, 0, sprite);
         this.addAt(this.sprite, this.getIndex(this.art));
       }
-      this.sprite.setTexture(sprite).setDisplaySize(size, size).setVisible(true);
+      // ONE BOX FOR BOTH STATES, from the CLOSED art. The open render
+      // fills its canvas - lid up - where the closed one covers 0.85 by
+      // 0.66, so renormalising on opening would shrink the body by a
+      // third and drop it: the chest would jump and sink on the tap
+      // that opened it. Sharing the closed box keeps the body identical
+      // and lets the lid have the extra room, which is the whole point
+      // of the two renders being framed at one scale.
+      const shut = CRATE_EXTENT[this.crateTier] ?? CRATE_EXTENT.bronze;
+      const box = size * (shut.w / (this.lidOpen ? CRATE_EXTENT.open.w : shut.w));
+      // ... and lifted by the difference in where each art's feet sit,
+      // so the body stays on the same line.
+      const feet = this.lidOpen ? CRATE_EXTENT.open.bottom : shut.bottom;
+      this.sprite.setTexture(sprite)
+        .setDisplaySize(box, box)
+        .setY((shut.bottom - feet) * box)
+        .setVisible(true);
       return;
     }
     this.sprite?.setVisible(false);

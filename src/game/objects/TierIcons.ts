@@ -813,17 +813,40 @@ export const CRATE_DRAWN = {
 };
 
 /**
- * Display box needed to draw a rendered crate at a given drawn width.
+ * How much of its square each crate render's art covers, and how far
+ * down the square its lowest pixel sits.
+ *
+ * Measured off the PNGs. They are NOT all the same: the container is
+ * longer and taller in its frame than the chests, and an open chest
+ * with its lid up fills the canvas outright. One shared number drew
+ * the container 13% taller than the chests beside it and made a chest
+ * jump and sink the moment it opened.
+ */
+export const CRATE_EXTENT: Record<string, { w: number; h: number; bottom: number }> = {
+  bronze: { w: 0.852, h: 0.656, bottom: 0.828 },
+  silver: { w: 0.852, h: 0.656, bottom: 0.828 },
+  gold: { w: 0.852, h: 0.656, bottom: 0.828 },
+  vault: { w: 0.852, h: 0.656, bottom: 0.828 },
+  shipping: { w: 0.867, h: 0.742, bottom: 0.871 },
+  open: { w: 0.977, h: 1.000, bottom: 1.000 }
+};
+
+/**
+ * Display box needed to draw a crate at a given drawn width.
  *
  * The renders are square canvases with the crate centred in them, so a
- * box the width of the art draws it too small - it has to be divided by
- * how much of the canvas the art actually covers. MEASURED at 0.852 of
- * the width by rasterising the PNGs and scanning the alpha bounds.
+ * box the width of the art draws it too small - it has to be divided
+ * by how much of the canvas the art actually covers.
  *
- * This was 1.5 while it was a guess, which drew every crate in the game
- * about a quarter too large - the meter, the daily strip, the player
- * card, the vault preview and the board itself.
+ * This was a flat 1.5 while it was a guess, which drew every crate in
+ * the game about a quarter too large, and then a flat 1/0.852, which
+ * was right for the four chests and wrong for the container.
  */
+export function crateBoxFor(tier: string, drawnWidth: number): number {
+  return drawnWidth / (CRATE_EXTENT[tier]?.w ?? 0.852);
+}
+
+/** Kept for the call sites that size in drawn width and centre it. */
 export const CRATE_RENDER_BOX = 1 / 0.852;
 
 /**
@@ -847,7 +870,9 @@ export function crateArt(
   if (key) {
     // The render is a square canvas with the crate centred in it, so it
     // is sized by the box rather than by the drawn face.
-    const box = drawnWidth * CRATE_RENDER_BOX;
+    // Each tier by its OWN measurement, so the container does not draw
+    // taller than the chests it sits beside.
+    const box = crateBoxFor(tier, drawnWidth);
     return scene.add.image(0, 0, key).setDisplaySize(box, box);
   }
   const g = scene.add.graphics();
