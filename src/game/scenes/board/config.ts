@@ -440,15 +440,18 @@ export const LOCK_PRICE_DEPTH = -1;
 /**
  * The three states, as multiplies over the one render.
  *
- * Taken as ratios off the drawn plate this replaces: its face was
- * 0xaeb7bb when the row could be bought, 0x969fa3 when it could not,
- * and 0x5a6063 while the row below was still hidden. The render is
- * calibrated to the first of those, so the other two are that colour
- * divided by it - which keeps the relationship the drawn version had
- * without a second and third trip through Blender.
+ * ONLY the hidden state is dimmed. The drawn plate had three
+ * different greys and these started as ratios off them, but a render
+ * is not a flat fill - it has its own lit and shadowed faces, and
+ * multiplying those down a little just makes the steel look dirty
+ * without saying anything a player can read. So a plate is shown at
+ * full strength whether or not the row can be bought yet, and the
+ * dimming is kept for the one state where it carries meaning: a row
+ * that cannot even be attempted because the row above it is still
+ * locked.
  */
 export const LOCK_ART_TINT_READY = 0xffffff;
-export const LOCK_ART_TINT_WAITING = 0xdedee0;
+export const LOCK_ART_TINT_WAITING = 0xffffff;
 export const LOCK_ART_TINT_HIDDEN = 0x848586;
 
 /**
