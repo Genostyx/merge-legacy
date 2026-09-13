@@ -3108,6 +3108,93 @@ def build_source_building(family: str):
     return out
 
 
+# ---- the splitter ----------------------------------------------------------
+#
+# A pair of scissors, which is what the drawn icon is: two crossed
+# steel blades, a violet ring on each handle, and a pale pivot at the
+# crossing. The violet is the gem colour the drawing uses - the
+# splitter is bought with gems, and that is the one thing its art has
+# to say.
+SPLITTER_STEEL = 0x8e989a
+SPLITTER_HANDLE = 0x9a5fe0
+SPLITTER_OPEN_DEG = 13.0
+
+
+def _splitter_arm(sign: float):
+    """One blade with its handle, swung about the pivot at the origin."""
+    # THE BLADE, as an outline rather than a box: a scissor blade is a
+    # long taper to a point, and that taper is the whole silhouette.
+    blade = extrude_profile([
+        (0.00, -0.052), (0.09, -0.058), (0.52, -0.012), (0.60, 0.0),
+        (0.52, 0.011), (0.09, 0.048), (0.00, 0.044),
+    ], 0.030)
+    # `extrude_profile` builds in x-z and extrudes along y; the piece
+    # lies FLAT on the board, so it is turned onto its face.
+    blade.rotation_euler = Euler((math.radians(90), 0.0, 0.0))
+    bpy.ops.object.select_all(action='DESELECT')
+    blade.select_set(True)
+    bpy.context.view_layer.objects.active = blade
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+
+    # The shank back to the handle, and the ring itself.
+    shank = cube(0.20, 0.042, 0.028, base=False)
+    ring = torus(0.088, 0.024, squash=0.62, major_segments=32)
+
+    arm = stack([
+        blade,
+        translate_to(shank, (-0.13, 0.0, 0.0)),
+        translate_to(ring, (-0.30, 0.0, 0.0)),
+    ])
+    # Swung open about the pivot, and lifted so the two arms stack
+    # rather than intersect at the crossing.
+    arm.rotation_euler = Euler((0.0, 0.0, math.radians(SPLITTER_OPEN_DEG * sign)))
+    bpy.ops.object.select_all(action='DESELECT')
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    return translate_to(arm, (0.0, 0.0, 0.016 * sign))
+
+
+def build_splitter():
+    """The scissors, as one board object rather than a tier ladder."""
+    arms = [_splitter_arm(1.0), _splitter_arm(-1.0)]
+    # The rings are their own material, so they are cut back out of the
+    # arms afterwards rather than modelled apart - one pass of geometry,
+    # two surfaces.
+    rings = [translate_to(torus(0.088, 0.026, squash=0.62, major_segments=32),
+                          (0.0, 0.0, 0.0)) for _ in range(2)]
+    for ring, sign in zip(rings, (1.0, -1.0)):
+        ring.rotation_euler = Euler((0.0, 0.0, math.radians(SPLITTER_OPEN_DEG * sign)))
+        bpy.ops.object.select_all(action='DESELECT')
+        ring.select_set(True)
+        bpy.context.view_layer.objects.active = ring
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        offset = Vector((-0.30, 0.0, 0.0))
+        offset.rotate(Euler((0.0, 0.0, math.radians(SPLITTER_OPEN_DEG * sign))))
+        translate_to(ring, (offset.x, offset.y, 0.016 * sign))
+
+    pivot = revolve([(0.0, 0.0), (0.034, 0.0), (0.034, 0.052), (0.0, 0.052)],
+                    segments=16)
+
+    steel = tier_material("splitter-steel", SPLITTER_STEEL, SPLITTER_STEEL,
+                          max_gain=1.0)
+    _shader(steel).inputs["Metallic"].default_value = 0.55
+    _shader(steel).inputs["Roughness"].default_value = 0.22
+    polished(steel, coat_roughness=0.05)
+    handle = tier_material("splitter-handle", SPLITTER_HANDLE, SPLITTER_HANDLE,
+                           max_gain=1.0)
+    _shader(handle).inputs["Roughness"].default_value = 0.30
+    polished(handle, coat_roughness=0.08)
+
+    blades = stack(arms)
+    finish(blades, "splitter-blades", steel, bevel=0.004)
+    grips = stack(rings)
+    finish(grips, "splitter-grips", handle, bevel=0.004)
+    finish(translate_to(pivot, (0.0, 0.0, -0.026)), "splitter-pivot", steel,
+           bevel=0.003)
+    return {1: stack([blades, grips, pivot])}
+
+
 # ---- the board itself ------------------------------------------------------
 #
 # The WHOLE board, modelled once. An earlier pass rendered a single
@@ -5634,6 +5721,7 @@ def main(only: str = ""):
 
     families = [("wood", build_wood), ("mineral", build_mineral),
                 ("water", build_water), ("glass", build_glass),
+                ("splitter", build_splitter),
                 ("event-token", build_event_token),
                 ("credit-mark", build_chip_coin),
                 ("gem-mark", build_chip_gem)]

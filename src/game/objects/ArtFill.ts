@@ -208,6 +208,8 @@ export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number 
   'currency-gem-4': { w: 0.823, h: 0.688, bottom: 0.844 },
   'currency-gem-5': { w: 0.865, h: 0.719, bottom: 0.859 },
 
+  'splitter-1': { w: 0.867, h: 0.391, bottom: 0.695 },
+
   'piece-wood-1': { w: 0.500, h: 0.375, bottom: 0.688 },
   'piece-wood-2': { w: 0.583, h: 0.401, bottom: 0.703 },
   'piece-wood-3': { w: 0.510, h: 0.760, bottom: 0.880 },

@@ -30,6 +30,9 @@ export const SPRITE_FAMILIES: Readonly<Record<string, number>> = {
   // presentations - face to the camera and swung - rendered for the HUD and
   // the panels, where a coin lying flat at the board's angle is an ellipse
   // with a scratch on it. They live here because this is what preloads them.
+  // Board furniture rather than a ladder, but it loads and draws the
+  // same way, so it lives here.
+  splitter: 1,
   'event-token': 1,
   'credit-mark': 1,
   'gem-mark': 1

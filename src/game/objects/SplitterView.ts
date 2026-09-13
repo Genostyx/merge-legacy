@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { loadedItemSprite } from './itemSprites';
+import { castShadow, feetOf, itemPlacementFor } from './ArtFill';
 import type { GridPosition, TileState } from '../types';
 import { Theme } from '../ui/Theme';
 
@@ -31,10 +33,20 @@ export class SplitterView extends Phaser.GameObjects.Container {
     super(scene, x, y);
     this.gridPos = gridPos;
     this.icon = scene.add.graphics();
-    // 0.88, matching the dispensers and spawner pieces it sits among. At 0.78 it
-    // was the only piece of board furniture drawn smaller than the rest.
-    drawSplitterIcon(this.icon, cellSize * 0.88);
-    this.add(this.icon);
+    // THE RENDER WHEN IT IS LOADED, the drawing when it is not - the
+    // same rule every converted object follows.
+    const sprite = loadedItemSprite(scene, 'splitter', 1);
+    if (sprite) {
+      const { box, offsetY } = itemPlacementFor('splitter', 1, cellSize * 0.88);
+      this.add(castShadow(scene, sprite, 'splitter-1', box,
+        feetOf('splitter-1', box, offsetY)));
+      this.add(scene.add.image(0, 0, sprite).setDisplaySize(box, box).setY(offsetY));
+    } else {
+      // 0.88, matching the dispensers and spawner pieces it sits among. At 0.78 it
+      // was the only piece of board furniture drawn smaller than the rest.
+      drawSplitterIcon(this.icon, cellSize * 0.88);
+      this.add(this.icon);
+    }
     this.setSize(cellSize, cellSize);
     scene.add.existing(this);
   }
