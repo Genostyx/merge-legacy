@@ -3607,21 +3607,23 @@ def render_board():
 # Everything here is in CELLS, scaled by BOARD_CELL at build time, so
 # the numbers can be read straight against the drawn version's own
 # fractions of `size`.
-LOCK_STEEL = 0xaeb7bb
-LOCK_HEIGHT = 0.20
+LOCK_STEEL = 0x7e878b
+LOCK_HEIGHT = 0.22
 # How far the outer chamfer reaches in from the edge. Wide, because
 # from overhead the chamfer is the only part of the plate's edge that
 # has an angle to catch anything - a square edge returns nothing and
 # the plate ends in a hard line.
-LOCK_RIM = 0.060
-LOCK_POCKET = 0.150
-LOCK_POCKET_DEPTH = 0.070
-LOCK_BOLT_INSET = 0.100
-LOCK_BOLT_R = 0.038
+LOCK_RIM = 0.065
+LOCK_POCKET = 0.220
+LOCK_POCKET_DEPTH = 0.064
+# How far the pocket wall leans out per unit of depth.
+LOCK_POCKET_SLOPE = 1.25
+LOCK_BOLT_INSET = 0.105
+LOCK_BOLT_R = 0.032
 LOCK_BOLT_H = 0.030
 # What the last render measured on the plate's own face, so
 # `tier_material` can scale the base colour back onto LOCK_STEEL.
-LOCK_MEASURED = 0xaeb7bb
+LOCK_MEASURED = 0x7e878b
 # The frame, in cells. Bigger than the plate so the chamfer highlight
 # has somewhere to land instead of being clipped at the image edge;
 # the game multiplies the cell by it, so it is a number both sides
@@ -3635,12 +3637,12 @@ LOCK_MEASURED = 0xaeb7bb
 # result away. Pulling the exposure down moves the plate off the
 # shoulder and into the part of the curve that still has slope, which
 # is where its chamfers and its pocket get their contrast back.
-LOCK_LIGHT_SCALE = 0.40
+LOCK_LIGHT_SCALE = 0.30
 # How bright the room the plate mirrors is, and how rough its surface.
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.72
+LOCK_HDRI_STRENGTH = 0.06
 LOCK_ROUGHNESS = 0.09
 LOCK_METALLIC = 0.7
 LOCK_FRAME_CELLS = 1.25
@@ -3685,6 +3687,40 @@ def _lock_slab(size: float, height: float, rim: float):
     return ob
 
 
+def _lock_frustum(bottom: float, top: float, depth: float, at: float):
+    """The pocket's cutter: a square well that widens as it rises.
+
+    Tall enough above the plate that the boolean has somewhere to
+    finish, so only the sloped part is ever in contact with the face.
+    """
+    lift = depth * 3
+    b, t = bottom / 2, top / 2
+    flare = t + lift * (top - bottom) / (2 * depth)
+    bm = bmesh.new()
+    rings = [
+        [bm.verts.new(v) for v in ((-b, -b, at - depth), (b, -b, at - depth),
+                                   (b, b, at - depth), (-b, b, at - depth))],
+        [bm.verts.new(v) for v in ((-t, -t, at), (t, -t, at),
+                                   (t, t, at), (-t, t, at))],
+        [bm.verts.new(v) for v in ((-flare, -flare, at + lift), (flare, -flare, at + lift),
+                                   (flare, flare, at + lift), (-flare, flare, at + lift))],
+    ]
+    bm.faces.new(tuple(rings[0]))
+    for lower, upper in zip(rings, rings[1:]):
+        for k in range(4):
+            n = (k + 1) % 4
+            bm.faces.new((lower[k], lower[n], upper[n], upper[k]))
+    bm.faces.new(tuple(rings[-1]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new("lock-pocket")
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("lock-pocket", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
 def _lock_bolt(cell: float):
     """One pan-head fastener, sitting proud of the plate's face."""
     r = LOCK_BOLT_R * cell
@@ -3706,14 +3742,19 @@ def build_locked_plate():
     height = LOCK_HEIGHT * cell
     body = _lock_slab(size, height, LOCK_RIM * cell)
 
-    # The recessed centre, square, with its opening left sharp - the
-    # small bevel `finish` puts on it is what gives the pocket a lit
-    # lip on one side and a shadowed one on the other.
-    pocket_w = size * (1.0 - LOCK_POCKET * 2)
+    # The recessed centre, cut with SLOPING walls.
+    #
+    # A vertical-walled pocket is two flat horizontal surfaces - its
+    # floor and the land around it - and from overhead those return
+    # the same value however the light is arranged: measured at four
+    # values apart across every exposure tried. The wall is the only
+    # part of a recess that can carry tone, and a vertical one is
+    # edge-on to this camera, so it is worth nothing. Sloped, it is a
+    # visible band with a lit side and a shadowed side.
     depth = LOCK_POCKET_DEPTH * cell
-    cutter = cube(pocket_w, pocket_w, depth * 2, base=False)
-    translate_to(cutter, (0.0, 0.0, height))
-    carve(body, cutter)
+    floor_w = size * (1.0 - LOCK_POCKET * 2)
+    mouth_w = floor_w + depth * 2 * LOCK_POCKET_SLOPE
+    carve(body, _lock_frustum(floor_w, mouth_w, depth, height))
 
     bolts = []
     reach = size / 2 - LOCK_BOLT_INSET * cell
