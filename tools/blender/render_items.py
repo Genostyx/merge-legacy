@@ -3642,6 +3642,7 @@ LOCK_LIGHT_SCALE = 0.40
 # setting - it is most of the plate's appearance.
 LOCK_HDRI_STRENGTH = 0.72
 LOCK_ROUGHNESS = 0.09
+LOCK_METALLIC = 0.7
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3737,7 +3738,7 @@ def build_locked_plate():
     # `render_locked_plate`: that is the other half of this change, and
     # without it Metallic 1.0 renders black, which is what happened the
     # last time it was tried.
-    _shader(steel).inputs["Metallic"].default_value = 1.0
+    _shader(steel).inputs["Metallic"].default_value = LOCK_METALLIC
     brushed(steel, roughness=LOCK_ROUGHNESS)
 
     plate = stack([body] + bolts)
