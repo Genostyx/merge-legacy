@@ -277,6 +277,28 @@ export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number 
  */
 const ITEM_LADDER_FLOOR = 0.82;
 
+/**
+ * A family's own scale, for objects whose real size everyone knows.
+ *
+ * Normalising on the art cannot know how big a thing is MEANT to be,
+ * so a stack of coins gets the same footprint as a stone archway and
+ * reads as enormous. The currencies are the only families where that
+ * bites - a spire cluster being tall is correct, a coin being the
+ * size of a doorway is not.
+ */
+const ITEM_FAMILY_SCALE: Record<string, number> = {
+  'currency-credit': 0.76,
+  'currency-gem': 0.76,
+  'currency-energy': 0.80
+};
+
+function familyScale(textureKey: string): number {
+  for (const family in ITEM_FAMILY_SCALE) {
+    if (textureKey.startsWith(`${family}-`)) return ITEM_FAMILY_SCALE[family];
+  }
+  return 1;
+}
+
 /** Where in its family's ladder a tier sits, as a scale on the box. */
 function ladderScale(tier: number, tiers: number): number {
   if (tiers <= 1) return 1;
@@ -299,8 +321,8 @@ export function itemPlacement(
   // An unmeasured key keeps the old behaviour rather than guessing: a
   // missing entry should be invisible, not a regression.
   if (!extent) return { box: cellSize, offsetY: 0 };
-  const box = cellSize * ladderScale(tier, tiers) * Math.min(
-    ITEM_TARGET_W / extent.w, ITEM_MAX_H / extent.h);
+  const box = cellSize * ladderScale(tier, tiers) * familyScale(textureKey)
+    * Math.min(ITEM_TARGET_W / extent.w, ITEM_MAX_H / extent.h);
   // Where the art's own centre and feet sit inside the image, which is
   // drawn centred on the origin.
   const artCentre = (extent.bottom - extent.h / 2 - 0.5) * box;
