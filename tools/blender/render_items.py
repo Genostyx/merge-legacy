@@ -3148,9 +3148,18 @@ BOARD_CHAMFER = 0.10
 # How far the studio's lamps are turned down for the board's own pass.
 BOARD_LIGHT_SCALE = 0.35
 # How far back the camera sits, off the view this was framed from.
-# Long, so the perspective is gentle - a wide lens would splay the
-# outer cells badly. The camera's distance follows from it.
-BOARD_CAM_LENS = 85.0
+# THE LENS THE REFERENCE VIEW WAS AT.
+#
+# Distance and lens together set how strong the perspective reads,
+# and the view this was framed from sat 3.4 from the board. At 85 the
+# camera has to stand 5.1 back to frame it, which flattens the sheet
+# out again; 57 puts it at that 3.4 and the cells recede the way they
+# did in the viewport.
+#
+# The camera still aims at the board's middle. The reference was
+# panned as well as tilted - aimed at (-0.18, -0.24) - and that pan
+# is what threw it off centre; only the angle is wanted.
+BOARD_CAM_LENS = 57.0
 
 
 def board_glass_material():
