@@ -3134,6 +3134,45 @@ BOARD_SCORE_WIDTH = 0.034
 BOARD_THICKNESS = 0.22
 
 
+def board_glass_material():
+    """The saved glass, appended from the project it was tuned in.
+
+    `GLASS_PRESET` is the recipe in code; the MATERIAL lives in
+    legacy-machine.blend as `piece-glass`, which is the one the glass
+    family's own parts are cut from. Appending it means the board is
+    the same glass rather than a second attempt at it - and a change
+    made to it over there arrives here.
+
+    Falls back to building the recipe if the file is not there, so a
+    fresh checkout still renders.
+    """
+    name = "board-glass"
+    existing = bpy.data.materials.get(name)
+    if existing is not None:
+        bpy.data.materials.remove(existing)
+    here = os.path.dirname(os.path.abspath(__file__))
+    library = os.path.join(here, "legacy-machine.blend")
+    if os.path.exists(library):
+        with bpy.data.libraries.load(library, link=False) as (src, dst):
+            if "piece-glass" in src.materials:
+                dst.materials = ["piece-glass"]
+        appended = dst.materials[0] if dst.materials else None
+        if appended is not None:
+            appended.name = name
+            # ITS SURFACE, NOT ITS COLOUR. `piece-glass` is the pale
+            # blue the source parts are cut from; a board in it looks
+            # like bathroom tile. The roughness, IOR, transmission and
+            # coat are the point - the body goes dark.
+            _shader(appended).inputs["Base Color"].default_value = (
+                *(srgb_to_linear((BOARD_GLASS >> shift) & 255)
+                  for shift in (16, 8, 0)), 1.0)
+            return appended
+    glass = tier_material(name, BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
+    gemstone(glass, **GLASS_PRESET)
+    polished(glass, coat_roughness=0.05)
+    return glass
+
+
 def build_board_slab():
     """A sheet of glass with the cell boundaries cut into it.
 
@@ -3176,29 +3215,12 @@ def build_board_slab():
         bpy.ops.object.modifier_apply(modifier=modifier.name)
         bpy.data.objects.remove(cutter, do_unlink=True)
 
-    glass = tier_material("board-glass", BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
+    glass = board_glass_material()
     # THE FAMILY'S OWN GLASS RECIPE, the same call the glass items use:
     # `gemstone` sets the lifted base, the transmission, the IOR and the
     # roughness together, which is what GLASS_PRESET exists to stop
     # being re-derived by hand at every site.
-    body_colour = _shader(glass).inputs["Base Color"].default_value[:]
-    gemstone(glass, **GLASS_PRESET)
-    # ... EXCEPT ITS BASE AND ITS TRANSMISSION.
-    #
-    # `gemstone` lifts the base toward white - a tint multiplies along
-    # the whole path through a solid, so an unlifted one comes back
-    # black. There is no path through a sheet at 0.18, so the lift only
-    # washes it: a near-black board came out mid grey. Put back.
-    _shader(glass).inputs["Base Color"].default_value = body_colour
-    # ... EXCEPT ITS TRANSMISSION. `gemstone` sets that to 1.0, which is
-    # right for a solid held up in a studio and wrong for a sheet with
-    # a transparent film behind it: there is nothing back there to
-    # transmit, so the board renders black and the sun refracts into a
-    # bright caustic at every groove crossing. Held low, the preset's
-    # IOR and roughness still give the reflection and the body reads.
-    _shader(glass).inputs["Transmission Weight"].default_value = 0.18
-    polished(glass, coat_roughness=0.05)
-    finish(body, "board-slab", glass, bevel=0.012)
+    finish(body, "board-slab", glass, bevel=0.004)
     return body
 
 
@@ -3241,6 +3263,30 @@ def render_board():
     # groove, grazing barely touches the flat face.
     sun.location = (-24.0, 24.0, 24.0)
     sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
+
+    # A SOFTBOX FOR THE SHEET TO MIRROR, which is what actually says
+    # glass. The sun gives the grooves their lit and shadowed walls but
+    # a flat face has nothing to reflect except a pinpoint, so the
+    # surface between the lines came back as a dark film - the drawn
+    # pane had to fake exactly this with two painted streaks.
+    #
+    # Long, narrow and turned off square, so its reflection sweeps
+    # across the board as a broad diagonal band rather than sitting on
+    # it as a blob.
+    sheen_data = bpy.data.lights.get("BoardSheen") or bpy.data.lights.new("BoardSheen", type='AREA')
+    sheen_data.type = 'AREA'
+    sheen_data.shape = 'RECTANGLE'
+    sheen_data.size = 26.0
+    sheen_data.size_y = 3.0
+    sheen_data.energy = 2600.0
+    sheen = bpy.data.objects.get("BoardSheen")
+    if sheen is None:
+        sheen = bpy.data.objects.new("BoardSheen", sheen_data)
+        bpy.context.collection.objects.link(sheen)
+    sheen.data = sheen_data
+    sheen.location = (-7.0, 9.0, 13.0)
+    sheen.rotation_euler = (-Vector(sheen.location)).to_track_quat('-Z', 'Y').to_euler()
+    sheen.rotation_euler.rotate_axis("Z", math.radians(-34))
 
     configure_render()
     sc = bpy.context.scene
