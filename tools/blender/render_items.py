@@ -3117,7 +3117,7 @@ def build_source_building(family: str):
 # to say.
 SPLITTER_STEEL = 0x8e989a
 SPLITTER_HANDLE = 0x9a5fe0
-SPLITTER_OPEN_DEG = 13.0
+SPLITTER_OPEN_DEG = 24.0
 
 
 def _splitter_arm(sign: float):
