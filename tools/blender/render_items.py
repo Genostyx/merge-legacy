@@ -3642,9 +3642,23 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.06
-LOCK_ROUGHNESS = 0.09
-LOCK_METALLIC = 0.7
+LOCK_HDRI_STRENGTH = 0.45
+LOCK_ROUGHNESS = 0.28
+LOCK_METALLIC = 1.0
+# The softbox directly over the plate: its size in world units, how
+# far above it sits, and how hard it burns.
+#
+# Required by Metallic 1.0, not a taste knob. A metal has no diffuse,
+# so a face seen from straight down shows whatever is straight above
+# it - and what is above it here is the ceiling of an interior HDRI,
+# which is dark. At full metal that renders a black tile with chrome
+# along the chamfers, which is exactly what came back. A big square
+# source overhead is what a photographer puts there for the same
+# reason, and a square one because the plate is square: it mirrors as
+# a sheen the shape of the piece rather than a disc floating on it.
+LOCK_SOFTBOX_SIZE = 1.10
+LOCK_SOFTBOX_Z = 1.40
+LOCK_SOFTBOX_POWER = 12.0
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3827,6 +3841,21 @@ def render_locked_plate():
         lamp = bpy.data.objects.get(name)
         if lamp is not None:
             lamp.data.energy *= LOCK_LIGHT_SCALE
+    # AND A SOFTBOX OVER IT - see LOCK_SOFTBOX_POWER.
+    box_data = (bpy.data.lights.get("LockSoftbox")
+                or bpy.data.lights.new("LockSoftbox", type='AREA'))
+    box_data.type = 'AREA'
+    box_data.shape = 'SQUARE'
+    box_data.size = LOCK_SOFTBOX_SIZE
+    box_data.energy = LOCK_SOFTBOX_POWER
+    box = bpy.data.objects.get("LockSoftbox")
+    if box is None:
+        box = bpy.data.objects.new("LockSoftbox", box_data)
+        bpy.context.collection.objects.link(box)
+    box.data = box_data
+    box.location = (0.0, 0.0, LOCK_SOFTBOX_Z)
+    box.rotation_euler = (0.0, 0.0, 0.0)
+
     # A ROOM FOR THE STEEL TO MIRROR, replacing the studio's near-black
     # sky - and the reason Metallic 1.0 is usable here at all.
     #
@@ -3854,6 +3883,14 @@ def render_locked_plate():
     os.makedirs(out_dir, exist_ok=True)
     sc.render.filepath = os.path.join(out_dir, "locked.png")
     bpy.ops.render.render(write_still=True)
+    # THE SOFTBOX GOES AWAY AGAIN. `build_lights` only knows about the
+    # two studio lamps, so a box left in the scene would quietly light
+    # every item rendered after this one in the same session - the
+    # kind of live-scene state that has already cost this project a
+    # day of blaming materials.
+    box = bpy.data.objects.get("LockSoftbox")
+    if box is not None:
+        bpy.data.objects.remove(box, do_unlink=True)
     print("rendered locked plate", sc.render.filepath)
     return sc.render.filepath
 
