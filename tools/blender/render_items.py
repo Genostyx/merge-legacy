@@ -3712,16 +3712,16 @@ LOCK_BOX_DROP = 0.60
 # be roughly the size of the piece.
 LOCK_CEILING_SPAN = 0.34
 LOCK_CEILING_Z = 0.30
-LOCK_CEILING_PEAK = 1.60
-# Stops on the softbox's radial falloff, from its rim inwards. A
-# spherical gradient over centred 0..1 coordinates reads about 0.3 at
-# the card's corners and 1.0 at its middle.
-LOCK_CEILING_RAMP = ((0.00, 0.00), (0.34, 0.04), (0.62, 0.34),
-                     (0.86, 0.88), (1.00, 1.00))
+LOCK_CEILING_PEAK = 2.20
+# The bands across the softbox, top of frame to bottom - and screen
+# up is world -y here, so the first stop is the top edge.
+LOCK_CEILING_RAMP = ((0.00, 0.30), (0.13, 1.00), (0.33, 0.26),
+                     (0.49, 0.72), (0.60, 0.22), (0.76, 0.50),
+                     (0.88, 0.20))
 # And a big dim one well above it, for fill - the small card lights
 # almost nothing on its own.
 LOCK_DOME_Z = 0.95
-LOCK_DOME_STRENGTH = 0.05
+LOCK_DOME_STRENGTH = 0.10
 # The four walls, in the order -y (top of frame), +y, -x, +x.
 LOCK_WALLS = (5.00, 0.06, 0.70, 0.70)
 LOCK_FRAME_CELLS = 1.25
@@ -3946,33 +3946,38 @@ def render_locked_plate():
         emit = nodes.new("ShaderNodeEmission")
         emit.inputs["Strength"].default_value = strength
         if graded:
-            # A RADIAL FALLOFF, hot in the middle and near nothing at
-            # the edges - which is how a real softbox is built and the
-            # thing every linear ramp here was missing. A flat card
-            # reflects as a flat patch; a card with a hot spot
-            # reflects as a highlight, and a highlight is what reads
-            # as polish. Edges fading rather than cutting is the same
-            # trick: a hard-edged card leaves a hard-edged rectangle
-            # sitting on the metal.
+            # HARD-EDGED BANDS, not a falloff.
             #
-            # Mapping is used only to TRANSLATE here. Generated
-            # coordinates run 0..1, so the centre has to be brought to
-            # the origin before a spherical gradient means anything -
-            # and translating them is safe where rotating them is not.
+            # A mirror shows you what is in front of it. A card that
+            # is a smooth radial blob reflects as a smooth radial
+            # blob, which is indistinguishable from a matte surface -
+            # that is what the last two passes produced. What reads
+            # as polish is an EDGE: a bright band that stops.
+            #
+            # The gem family's sky in `build_lights` has known this
+            # all along and its ramp is all hard stops - white at
+            # 0.33, down to 0.09 at 0.50, bright again at 0.78. Same
+            # idea here, and CONSTANT interpolation so the stops
+            # really are steps rather than ramps.
+            #
+            # The card is plate-sized, so these bands land on the
+            # floor at their own width, in plan.
             coords = nodes.new("ShaderNodeTexCoord")
-            mapping = nodes.new("ShaderNodeMapping")
-            mapping.inputs["Location"].default_value = (-0.5, -0.5, -0.5)
-            links.new(coords.outputs["Generated"], mapping.inputs["Vector"])
-            gradient = nodes.new("ShaderNodeTexGradient")
-            gradient.gradient_type = 'SPHERICAL'
-            links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
+            axis = nodes.new("ShaderNodeSeparateXYZ")
+            links.new(coords.outputs["Generated"], axis.inputs["Vector"])
             ramp = nodes.new("ShaderNodeValToRGB")
+            ramp.color_ramp.interpolation = 'CONSTANT'
+            # The two elements a fresh ramp already has are set in
+            # place; the rest are added and held by REFERENCE. They
+            # cannot be indexed - `new()` inserts in sorted order and
+            # moving an element re-sorts the list, so `stops[i]`
+            # stops meaning what it did a line ago.
             stops = ramp.color_ramp.elements
             for index, (position, value) in enumerate(LOCK_CEILING_RAMP):
-                element = stops[index] if index < len(stops) else stops.new(position)
+                element = stops[index] if index < 2 else stops.new(position)
                 element.position = position
                 element.color = (value, value, value, 1.0)
-            links.new(gradient.outputs["Fac"], ramp.inputs["Fac"])
+            links.new(axis.outputs["Y"], ramp.inputs["Fac"])
             links.new(ramp.outputs["Color"], emit.inputs["Color"])
         links.new(emit.outputs["Emission"], out.inputs["Surface"])
         ob.data.materials.append(mat)
