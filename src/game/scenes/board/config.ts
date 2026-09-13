@@ -390,16 +390,8 @@ export const SOURCE_TEXTURE_PX = potTextureSize(96);
  */
 export const BOARD_ART_FRAME = 9.8;
 export const BOARD_ART_TILT = 3;
-/**
- * How solid the sheet is drawn.
- *
- * ONE, deliberately. The transparency lives in the render's own alpha
- * now - see `_glass_alpha_from_light` - so the body is see-through
- * while the speculars and the scored lines stay solid. Fading the
- * sprite here multiplies both together, which is exactly what made
- * the board read as a dark film rather than as glass.
- */
-export const BOARD_ART_ALPHA = 1;
+/** How solid the sheet is. The drawn pane it replaced sat here too. */
+export const BOARD_ART_ALPHA = 0.87;
 
 /**
  * How many source tiers each building family has.
