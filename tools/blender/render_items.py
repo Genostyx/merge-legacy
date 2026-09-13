@@ -3531,6 +3531,218 @@ def render_board():
     return sc.render.filepath
 
 
+# ---- the locked cell plate -------------------------------------------------
+#
+# The steel access plate that covers a board cell the player has not
+# bought yet. Traced off `drawExpansionMetalTile` in
+# src/game/scenes/board/boardExpansion.ts, which is the thing it
+# replaces: a full-square footprint so neighbouring plates meet with
+# no board showing between them, a recessed centre for the price to
+# sit in, and four fasteners at the corners.
+#
+# IT IS A SURFACE, NOT AN OBJECT, and that is what decides the camera.
+# The item studio looks down from an azimuth of 225 degrees, which
+# draws a square as a diamond - fine for a thing standing on the
+# board, wrong for a thing that IS the board there. So this is shot
+# from straight down, and none of its shading can come from the camera
+# seeing the sides: it all has to come from geometry catching the
+# light, which is why the rim is chamfered as wide as it is and the
+# pocket is cut as deep.
+#
+# Turned 180 degrees from the board's own camera, though. The board
+# looks from -y, which puts the key lamp at the BOTTOM left of the
+# frame; every item is shot from an azimuth that puts the same lamp
+# above. A plate lit from below sitting under items lit from above is
+# the one mismatch a flat grey square will show plainly, so the camera
+# is spun to agree with the items rather than with the sheet.
+#
+# Everything here is in CELLS, scaled by BOARD_CELL at build time, so
+# the numbers can be read straight against the drawn version's own
+# fractions of `size`.
+LOCK_STEEL = 0xaeb7bb
+LOCK_HEIGHT = 0.20
+# How far the outer chamfer reaches in from the edge. Wide, because
+# from overhead the chamfer is the only part of the plate's edge that
+# has an angle to catch anything - a square edge returns nothing and
+# the plate ends in a hard line.
+LOCK_RIM = 0.060
+LOCK_POCKET = 0.150
+LOCK_POCKET_DEPTH = 0.070
+LOCK_BOLT_INSET = 0.100
+LOCK_BOLT_R = 0.038
+LOCK_BOLT_H = 0.030
+# What the last render measured on the plate's own face, so
+# `tier_material` can scale the base colour back onto LOCK_STEEL.
+LOCK_MEASURED = 0xaeb7bb
+# The frame, in cells. Bigger than the plate so the chamfer highlight
+# has somewhere to land instead of being clipped at the image edge;
+# the game multiplies the cell by it, so it is a number both sides
+# have to agree on.
+# How far the studio's lamps are turned down for this pass.
+#
+# NOT a taste knob - AgX compresses hard at the top, and at full power
+# the whole plate sat inside that shoulder: lit rim #e4e5e6, shadowed
+# rim #cdcfd2, a range of fourteen values across the entire piece. The
+# geometry was doing its job and the view transform was throwing the
+# result away. Pulling the exposure down moves the plate off the
+# shoulder and into the part of the curve that still has slope, which
+# is where its chamfers and its pocket get their contrast back.
+LOCK_LIGHT_SCALE = 0.40
+LOCK_FRAME_CELLS = 1.25
+LOCK_PX = 512
+
+
+def _lock_slab(size: float, height: float, rim: float):
+    """The plate body: a square block chamfered ONLY around its top.
+
+    Built by hand rather than with a bevel modifier because the
+    modifier cannot be told which edges to take. Set to the angle
+    limit it chamfers the four vertical corners as well, and the plate
+    comes out an octagon - which on a board is not a style choice but
+    a hole: these things sit edge to edge, and a cut corner shows the
+    board through the join between four of them.
+    """
+    half = size / 2
+    inner = half - rim
+    shoulder = height - rim
+    bm = bmesh.new()
+    rings = [
+        [bm.verts.new(v) for v in ((-half, -half, 0.0), (half, -half, 0.0),
+                                   (half, half, 0.0), (-half, half, 0.0))],
+        [bm.verts.new(v) for v in ((-half, -half, shoulder), (half, -half, shoulder),
+                                   (half, half, shoulder), (-half, half, shoulder))],
+        [bm.verts.new(v) for v in ((-inner, -inner, height), (inner, -inner, height),
+                                   (inner, inner, height), (-inner, inner, height))],
+    ]
+    bm.faces.new(tuple(rings[0]))
+    for lower, upper in zip(rings, rings[1:]):
+        for k in range(4):
+            n = (k + 1) % 4
+            bm.faces.new((lower[k], lower[n], upper[n], upper[k]))
+    bm.faces.new(tuple(rings[-1]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new("lock-slab")
+    bm.to_mesh(mesh)
+    bm.free()
+    ob = bpy.data.objects.new("lock-slab", mesh)
+    bpy.context.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    return ob
+
+
+def _lock_bolt(cell: float):
+    """One pan-head fastener, sitting proud of the plate's face."""
+    r = LOCK_BOLT_R * cell
+    collar = LOCK_BOLT_H * cell * 0.32
+    dome = LOCK_BOLT_H * cell - collar
+    profile = [(r, 0.0), (r, collar)]
+    steps = 6
+    for i in range(1, steps + 1):
+        t = i / steps
+        profile.append((r * math.cos(t * math.pi / 2),
+                        collar + dome * math.sin(t * math.pi / 2)))
+    return revolve(profile, segments=20)
+
+
+def build_locked_plate():
+    """The plate, as one object framed on its own."""
+    cell = BOARD_CELL
+    size = cell
+    height = LOCK_HEIGHT * cell
+    body = _lock_slab(size, height, LOCK_RIM * cell)
+
+    # The recessed centre, square, with its opening left sharp - the
+    # small bevel `finish` puts on it is what gives the pocket a lit
+    # lip on one side and a shadowed one on the other.
+    pocket_w = size * (1.0 - LOCK_POCKET * 2)
+    depth = LOCK_POCKET_DEPTH * cell
+    cutter = cube(pocket_w, pocket_w, depth * 2, base=False)
+    translate_to(cutter, (0.0, 0.0, height))
+    carve(body, cutter)
+
+    bolts = []
+    reach = size / 2 - LOCK_BOLT_INSET * cell
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            bolt = _lock_bolt(cell)
+            bolts.append(translate_to(bolt, (sx * reach, sy * reach, height)))
+
+    steel = tier_material("locked-steel", LOCK_STEEL, LOCK_MEASURED,
+                          max_gain=1.0)
+    # Held at 0.55, the same place every other metal in this file sits.
+    # The studio is deliberately dim and a fully metallic surface has
+    # no diffuse term to fall back on, so it renders black.
+    _shader(steel).inputs["Metallic"].default_value = 0.55
+    _shader(steel).inputs["Roughness"].default_value = 0.26
+    polished(steel, coat_roughness=0.06)
+
+    plate = stack([body] + bolts)
+    finish(plate, "locked-plate", steel, bevel=0.006 * cell)
+    return plate
+
+
+def render_locked_plate():
+    """The locked plate, through its own overhead camera."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for ob in list(bpy.data.objects):
+        if ob.type == 'MESH':
+            bpy.data.objects.remove(ob, do_unlink=True)
+
+    data = bpy.data.cameras.get("LockCam") or bpy.data.cameras.new("LockCam")
+    # ORTHO, unlike the board's own camera.
+    #
+    # The board is one perspective frame 9.8 cells wide, so any single
+    # cell of it occupies about a tenth of the field - an angular slice
+    # narrow enough that it is orthographic in all but name. Framing
+    # one cell perspectively at the same lens would mean standing a
+    # tenth as far back and giving the plate ten times the divergence
+    # the board gives it, which is the opposite of matching.
+    data.type = 'ORTHO'
+    data.ortho_scale = LOCK_FRAME_CELLS * BOARD_CELL
+    cam = bpy.data.objects.get("LockCam")
+    if cam is None:
+        cam = bpy.data.objects.new("LockCam", data)
+        bpy.context.collection.objects.link(cam)
+    cam.data = data
+    # The board's tilt, seen from the other side - see the note above.
+    tilt = math.radians(BOARD_TILT_DEG)
+    reach = 4.0
+    cam.location = (0.0, reach * math.sin(tilt), reach * math.cos(tilt))
+    cam.rotation_euler = (tilt, 0.0, math.pi)
+    bpy.context.scene.camera = cam
+
+    # THE STUDIO'S LAMPS AT FULL POWER, not the board's dimmed pass.
+    # What this has to sit beside is the items, and they are lit at
+    # full - the board is turned down because dark glass under lamps
+    # sized for a thing you could hold came back as light grey tile,
+    # which is not a problem a steel plate has.
+    build_lights()
+    for name in ("KeyLight", "FillLight"):
+        lamp = bpy.data.objects.get(name)
+        if lamp is not None:
+            lamp.data.energy *= LOCK_LIGHT_SCALE
+    # The sky comes down with them. Lamp energy does not touch the
+    # world, and a coat mirrors the sky as readily as it mirrors a
+    # lamp - dimming only the lamps leaves the plate propped up on a
+    # floor of reflected background.
+    world = bpy.context.scene.world
+    if world is not None and world.use_nodes:
+        for node in world.node_tree.nodes:
+            if "Strength" in node.inputs:
+                node.inputs["Strength"].default_value *= LOCK_LIGHT_SCALE
+    configure_render()
+    sc = bpy.context.scene
+    sc.render.resolution_x = sc.render.resolution_y = LOCK_PX
+
+    build_locked_plate()
+    out_dir = os.path.join(root, "public", "assets", "board")
+    os.makedirs(out_dir, exist_ok=True)
+    sc.render.filepath = os.path.join(out_dir, "locked.png")
+    bpy.ops.render.render(write_still=True)
+    print("rendered locked plate", sc.render.filepath)
+    return sc.render.filepath
+
+
 def build_water_source():
     """The Water dispenser: a well that gets built up tier by tier.
 

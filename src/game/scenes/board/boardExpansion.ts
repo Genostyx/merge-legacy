@@ -2,6 +2,10 @@ import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import {
   COLS,
+  LOCK_ART_FRAME,
+  LOCK_ART_TINT_HIDDEN,
+  LOCK_ART_TINT_READY,
+  LOCK_ART_TINT_WAITING,
   EXPANSION_ROW_ONE,
   EXPANSION_ROW_ONE_PRICES,
   EXPANSION_ROW_TWO,
@@ -85,6 +89,13 @@ export function buildBoardExpansionLocks(scene: BoardScene): void {
       if (!scene.grid.isBlocked(pos)) continue;
       const world = scene.cellToWorld(pos);
       const bg = scene.add.graphics().setDepth(4);
+      // THE RENDERED PLATE, when it is loaded. The graphics object
+      // stays either way - it is the fallback, and `refresh` leaves it
+      // cleared when the render is there rather than drawing a second
+      // plate under the first.
+      const plate = scene.textures.exists('locked-plate')
+        ? scene.add.image(world.x, world.y, 'locked-plate').setDepth(4)
+        : null;
       const price = scene.add.text(world.x, world.y, '', {
         resolution: textResolution,
         fontFamily: Theme.fontNumeric,
@@ -98,7 +109,7 @@ export function buildBoardExpansionLocks(scene: BoardScene): void {
         .setDepth(7)
         .setInteractive({ useHandCursor: true });
       zone.on('pointerdown', () => buyExpansionCell(scene, pos));
-      scene.expansionLockViews.set(scene.keyOf(pos), { bg, price, mark, zone });
+      scene.expansionLockViews.set(scene.keyOf(pos), { bg, plate, price, mark, zone });
     }
   }
   refreshBoardExpansionLocks(scene);
@@ -113,7 +124,19 @@ export function refreshBoardExpansionLocks(scene: BoardScene): void {
     const left = world.x - scene.cellSize / 2;
     const top = world.y - scene.cellSize / 2;
     view.bg.clear();
-    drawExpansionMetalTile(scene, view.bg, left - 0.5, top - 0.5, scene.cellSize + 1, eligible, concealed);
+    if (view.plate) {
+      // A pixel of overlap, as the drawn plate had: neighbouring cells
+      // that merely abut leave a hairline of board between them at
+      // most cell sizes, because the grid is not on whole pixels.
+      const span = (scene.cellSize + 1) * LOCK_ART_FRAME;
+      view.plate.setPosition(world.x, world.y)
+        .setDisplaySize(span, span)
+        .setTint(concealed ? LOCK_ART_TINT_HIDDEN
+          : eligible ? LOCK_ART_TINT_READY : LOCK_ART_TINT_WAITING)
+        .setVisible(!scene.roomPanelOpen);
+    } else {
+      drawExpansionMetalTile(scene, view.bg, left - 0.5, top - 0.5, scene.cellSize + 1, eligible, concealed);
+    }
     const showPrice = eligible && !concealed && !scene.roomPanelOpen;
     const rawPrice = expansionPrice(scene, { col, row });
     const priceLabel = rawPrice >= 1_000 ? `${rawPrice / 1_000}k` : String(rawPrice);
@@ -239,6 +262,7 @@ export function buyExpansionCell(scene: BoardScene, pos: GridPosition): void {
   scene.boardExpansionUnlocked.add(scene.keyOf(pos));
   const view = scene.expansionLockViews.get(scene.keyOf(pos));
   view?.bg.destroy();
+  view?.plate?.destroy();
   view?.price.destroy();
   view?.mark.destroy();
   view?.zone.destroy();

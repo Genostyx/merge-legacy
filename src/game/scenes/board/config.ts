@@ -167,6 +167,7 @@ export interface HudChip {
 }
 export interface ExpansionLockView {
   bg: Phaser.GameObjects.Graphics;
+  plate: Phaser.GameObjects.Image | null;
   price: Phaser.GameObjects.Text;
   mark: Phaser.GameObjects.Image;
   zone: Phaser.GameObjects.Zone;
@@ -404,6 +405,32 @@ export const BOARD_ART_ALPHA = 0.94;
  * render untouched; 0xcccccc is 80% of it.
  */
 export const BOARD_ART_TINT = 0x808080;
+
+/**
+ * The locked plate render's frame, in cells.
+ *
+ * Has to match `LOCK_FRAME_CELLS` in tools/blender/render_items.py.
+ * The plate itself is exactly one cell; the render is framed wider so
+ * its chamfer highlight is not clipped at the image edge, so the
+ * sprite is drawn that much larger than the cell and the steel still
+ * lands on the cell exactly - which is what lets neighbouring plates
+ * meet with no board showing between them.
+ */
+export const LOCK_ART_FRAME = 1.25;
+
+/**
+ * The three states, as multiplies over the one render.
+ *
+ * Taken as ratios off the drawn plate this replaces: its face was
+ * 0xaeb7bb when the row could be bought, 0x969fa3 when it could not,
+ * and 0x5a6063 while the row below was still hidden. The render is
+ * calibrated to the first of those, so the other two are that colour
+ * divided by it - which keeps the relationship the drawn version had
+ * without a second and third trip through Blender.
+ */
+export const LOCK_ART_TINT_READY = 0xffffff;
+export const LOCK_ART_TINT_WAITING = 0xdedee0;
+export const LOCK_ART_TINT_HIDDEN = 0x848586;
 
 /**
  * How many source tiers each building family has.

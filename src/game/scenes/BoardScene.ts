@@ -798,6 +798,10 @@ export class BoardScene extends Phaser.Scene {
     if (!this.textures.exists('board-art')) {
       this.load.image('board-art', `assets/board/board.png?v=${ITEM_ART_VERSION}`);
     }
+    // The steel plate over a cell the player has not bought yet.
+    if (!this.textures.exists('locked-plate')) {
+      this.load.image('locked-plate', `assets/board/locked.png?v=${ITEM_ART_VERSION}`);
+    }
     // The rendered crates, one per tier - and the open chest for the
     // four that have a lid.
     for (const tier of Object.keys(CRATE_SPRITE_INDEX)) {
