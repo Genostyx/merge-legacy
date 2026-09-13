@@ -1403,7 +1403,11 @@ export class BoardScene extends Phaser.Scene {
         this.boardOriginX, this.boardOriginY,
         COLS * this.cellSize, ROWS * this.cellSize, 'board-cell'
       ).setOrigin(0, 0);
-      const source = surface.texture.getSourceImage();
+      // THE SOURCE IMAGE, not `surface.texture`. A TileSprite's own
+      // texture is an internal canvas sized to the SPRITE - 322x414
+      // here - so scaling by that put a fraction of a tile in every
+      // cell and the board came out with the wrong number of squares.
+      const source = this.textures.get('board-cell').getSourceImage();
       surface.setTileScale(
         this.cellSize / source.width, this.cellSize / source.height);
       // HALF A TILE ACROSS. The render carries its scored lines through
