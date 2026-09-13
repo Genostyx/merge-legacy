@@ -3629,12 +3629,12 @@ LOCK_HEIGHT = 0.22
 # has an angle to catch anything - a square edge returns nothing and
 # the plate ends in a hard line.
 LOCK_RIM = 0.065
-LOCK_POCKET = 0.220
+LOCK_POCKET = 0.260
 LOCK_POCKET_DEPTH = 0.064
 # How far the pocket wall leans out per unit of depth.
 LOCK_POCKET_SLOPE = 1.25
-LOCK_BOLT_INSET = 0.105
-LOCK_BOLT_R = 0.032
+LOCK_BOLT_INSET = 0.1225
+LOCK_BOLT_R = 0.045
 LOCK_BOLT_H = 0.030
 # What the last render measured on the plate's own face, so
 # `tier_material` can scale the base colour back onto LOCK_STEEL.
@@ -3661,7 +3661,7 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.22
+LOCK_HDRI_STRENGTH = 0.17
 LOCK_ROUGHNESS = 0.30
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
@@ -3677,7 +3677,7 @@ LOCK_METALLIC = 1.0
 # a sheen the shape of the piece rather than a disc floating on it.
 LOCK_SOFTBOX_SIZE = 1.10
 LOCK_SOFTBOX_Z = 1.40
-LOCK_SOFTBOX_POWER = 6.0
+LOCK_SOFTBOX_POWER = 2.0
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
