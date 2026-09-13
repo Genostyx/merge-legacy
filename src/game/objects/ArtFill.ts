@@ -372,10 +372,14 @@ export function piecePlacementFor(typeId: string, tier: number, cellSize: number
  * is neutral and disagrees between families. The objects are lit from
  * overhead, so their shadows fall under them, not off to one side.
  */
-const SHADOW_SQUASH = 0.42;
+// TIGHT AND CLOSE. A squashed silhouette is not a true projection,
+// and the further it is thrown from the object the more obviously
+// wrong its shape is - kept tucked under the piece it reads as
+// contact, which is all it has to do.
+const SHADOW_SQUASH = 0.26;
 const SHADOW_SKEW = 0.0;
-const SHADOW_DROP = 0.13;
-const SHADOW_ALPHA = 0.38;
+const SHADOW_DROP = 0.045;
+const SHADOW_ALPHA = 0.42;
 
 /**
  * The object's own sprite as its shadow, with its feet on the
