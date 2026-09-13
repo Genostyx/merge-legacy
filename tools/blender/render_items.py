@@ -3297,10 +3297,28 @@ def render_board():
     # how much of it there is - so the lamps keep their positions and
     # lose most of their power. A sheet this size under lamps sized
     # for a thing you could hold came back as light grey tile.
+    # MATCHED IN SCREEN TERMS, not in world coordinates.
+    #
+    # Reusing the studio's lamp POSITIONS does not reproduce their
+    # apparent direction: the item camera looks from 225 degrees at 26
+    # of elevation and this one looks straight down, so the same lamp
+    # that reads as upper-left through the first reads as lower-left
+    # through the second. The board came back with a lit edge under
+    # every cell while the objects standing on it cast down and right.
+    #
+    # A top-down camera has world -x to the left and +y up the screen,
+    # so the lamps are mirrored in y to bring them round to the upper
+    # left, which is where every drawn surface in this game is lit
+    # from.
     for name in ("KeyLight", "FillLight"):
         lamp = bpy.data.objects.get(name)
-        if lamp is not None:
-            lamp.data.energy *= BOARD_LIGHT_SCALE
+        if lamp is None:
+            continue
+        lamp.data.energy *= BOARD_LIGHT_SCALE
+        x, y, z = lamp.location
+        lamp.location = (x, -y, z)
+        lamp.rotation_euler = (
+            -Vector(lamp.location)).to_track_quat('-Z', 'Y').to_euler()
     # THE WORLD COMES DOWN WITH THEM. Lamp energy does not touch the
     # sky, and a coat mirrors the sky as readily as it mirrors a lamp -
     # dimming only the lamps bottomed the board out at #303237 however
