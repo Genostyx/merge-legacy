@@ -3110,52 +3110,57 @@ def build_source_building(family: str):
 
 # ---- the board itself ------------------------------------------------------
 #
-# The board is a sheet of dark glass with the cell boundaries scored
-# into it. It is rendered as ONE SEAMLESS CELL rather than as a whole
-# slab, because the board changes size - expansion adds rows and
-# columns, and `cellSize` moves with the device - and a stretched slab
-# puts its scored lines somewhere other than the cell boundaries the
-# moment either happens. A tile lands them exactly, at any grid.
+# The WHOLE board, modelled once. An earlier pass rendered a single
+# cell and tiled it, on the reasoning that the board changes size -
+# which it does not: COLS and ROWS are fixed at 7 by 9 and expansion
+# unlocks cells inside that grid rather than adding to it. Only
+# `cellSize` moves, and the whole sheet scales with it.
 #
-# Everything here is its own little studio: a top-down orthographic
-# camera, and a SUN rather than the item set's area lamps. A sun's rays
-# are parallel, so the shading is identical at both edges of the tile;
-# an area lamp puts a gradient across it and the repeat shows up as a
-# grid of bright patches.
-BOARD_TILE_PX = 256
-# COOL AND NEAR BLACK. 0x332e26 was a warm brown, which renders as
-# painted board however it is lit - glass is not a colour, it is a dark
-# body with a hard reflection on it.
+# Modelling it whole is what lets the sheet be TILTED. A tile cannot
+# be: tip it and its own thickness shows at one edge and every repeat
+# seams.
+BOARD_COLS = 7
+BOARD_ROWS = 9
+BOARD_PX = 1024
+# The frame, in cells. Wider than the board so the tilt and the outer
+# chamfer have somewhere to go; the game divides by it to line the grid
+# up, so it is a number both sides have to agree on.
+BOARD_FRAME_CELLS = 9.8
+# How far off straight down the sheet is seen from.
+BOARD_TILT_DEG = 3.0
 BOARD_GLASS = 0x141a1e
 BOARD_SCORE_DEPTH = 0.030
 BOARD_SCORE_WIDTH = 0.034
+BOARD_THICKNESS = 0.22
 
 
-def build_board_tile():
-    """One cell of the board: a glass square scored on two edges.
+def build_board_slab():
+    """A sheet of glass with the cell boundaries cut into it.
 
-    THE GROOVES RUN THROUGH THE MIDDLE, not along the edges. On the
-    edges each one is half outside the frame, so the render came back
-    as a plain square with a slightly dark rim. Through the centre the
-    tile carries one whole groove each way; the board offsets its
-    tiling by half a cell to put them back on the cell boundaries.
+    The cuts are V-CHANNELS, not square slots. A slot's walls are
+    vertical and a camera looking down sees neither of them - only the
+    floor, evenly lit, which reads as a dark stripe painted onto the
+    glass rather than a line cut into it. Sloped walls give each line a
+    lit side and a shadowed side.
     """
-    body = cube(1.0, 1.0, 0.16, base=False)
+    body = cube(BOARD_COLS, BOARD_ROWS, BOARD_THICKNESS, base=False)
 
-    # A V-CHANNEL, not a slot. A square cut has vertical walls, and a
-    # camera looking straight down sees neither of them - only the
-    # floor, evenly lit, which reads as a dark stripe painted onto the
-    # glass rather than a cut into it. Sloped walls give the line a lit
-    # side and a shadowed side, and that is the whole of what says
-    # groove.
-    #
-    # Cut by a square bar turned 45 degrees about its own length, so
-    # its lower half is a wedge.
-    cutters = []
     reach = BOARD_SCORE_WIDTH * math.sqrt(2)
-    for axis in (0, 1):
-        cutter = cube(reach if axis == 0 else 1.2,
-                      1.2 if axis == 0 else reach, reach, base=False)
+    top = BOARD_THICKNESS / 2
+    cut_z = top - BOARD_SCORE_DEPTH + reach * math.sqrt(2) / 2
+
+    cutters = []
+    # Interior boundaries only. A groove on the outer edge would be half
+    # a groove against the frame.
+    for col in range(1, BOARD_COLS):
+        cutters.append((col - BOARD_COLS / 2, 0.0, 0))
+    for row in range(1, BOARD_ROWS):
+        cutters.append((0.0, row - BOARD_ROWS / 2, 1))
+
+    for x, y, axis in cutters:
+        cutter = cube(reach if axis == 0 else BOARD_COLS * 1.1,
+                      BOARD_ROWS * 1.1 if axis == 0 else reach,
+                      reach, base=False)
         cutter.rotation_euler = Euler(
             (0.0, math.radians(45), 0.0) if axis == 0
             else (math.radians(45), 0.0, 0.0))
@@ -3163,12 +3168,7 @@ def build_board_tile():
         cutter.select_set(True)
         bpy.context.view_layer.objects.active = cutter
         bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-        # The wedge's point sits half a diagonal below its centre, so
-        # this lands the point at the groove's depth.
-        cutters.append(translate_to(cutter, (
-            0.0, 0.0, 0.08 - BOARD_SCORE_DEPTH + reach * math.sqrt(2) / 2)))
-
-    for cutter in cutters:
+        translate_to(cutter, (x, y, cut_z))
         modifier = body.modifiers.new("score", 'BOOLEAN')
         modifier.operation = 'DIFFERENCE'
         modifier.object = cutter
@@ -3177,31 +3177,33 @@ def build_board_tile():
         bpy.data.objects.remove(cutter, do_unlink=True)
 
     glass = tier_material("board-glass", BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
-    shader = _shader(glass)
-    # SMOKED, not clear. A transmissive pane over a transparent film
-    # renders as nothing at all; what reads as dark glass here is a
-    # near-black body with a hard specular on it and a coat over that.
-    shader.inputs["Roughness"].default_value = 0.06
-    shader.inputs["Metallic"].default_value = 0.0
-    # A LITTLE TRANSMISSION, so the sheet has an inside. Fully opaque it
-    # is a painted panel; fully transmissive over a transparent film it
-    # is nothing at all. A quarter gives the body depth under the
-    # reflection without the board turning into a window.
-    shader.inputs["Transmission Weight"].default_value = 0.25
-    shader.inputs["IOR"].default_value = 1.52
-    polished(glass, coat_roughness=0.015)
-    # NO BEVEL, and flat shading. A bevelled top under smooth shading
-    # curves away at the edges, which puts a gradient across the tile -
-    # and a tile with a gradient repeats as a patchwork.
-    finish(body, "board-tile", glass, bevel=0.0)
-    for face in body.data.polygons:
-        face.use_smooth = False
+    # THE FAMILY'S OWN GLASS RECIPE, the same call the glass items use:
+    # `gemstone` sets the lifted base, the transmission, the IOR and the
+    # roughness together, which is what GLASS_PRESET exists to stop
+    # being re-derived by hand at every site.
+    body_colour = _shader(glass).inputs["Base Color"].default_value[:]
+    gemstone(glass, **GLASS_PRESET)
+    # ... EXCEPT ITS BASE AND ITS TRANSMISSION.
+    #
+    # `gemstone` lifts the base toward white - a tint multiplies along
+    # the whole path through a solid, so an unlifted one comes back
+    # black. There is no path through a sheet at 0.18, so the lift only
+    # washes it: a near-black board came out mid grey. Put back.
+    _shader(glass).inputs["Base Color"].default_value = body_colour
+    # ... EXCEPT ITS TRANSMISSION. `gemstone` sets that to 1.0, which is
+    # right for a solid held up in a studio and wrong for a sheet with
+    # a transparent film behind it: there is nothing back there to
+    # transmit, so the board renders black and the sun refracts into a
+    # bright caustic at every groove crossing. Held low, the preset's
+    # IOR and roughness still give the reflection and the body reads.
+    _shader(glass).inputs["Transmission Weight"].default_value = 0.18
+    polished(glass, coat_roughness=0.05)
+    finish(body, "board-slab", glass, bevel=0.012)
     return body
 
 
-def render_board_tile():
-    """Draws the tile through its own camera and light, then restores
-    neither - `main` rebuilds both for every family anyway."""
+def render_board():
+    """The board, through its own camera and light."""
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     for ob in list(bpy.data.objects):
         if ob.type == 'MESH':
@@ -3209,18 +3211,19 @@ def render_board_tile():
 
     data = bpy.data.cameras.get("BoardCam") or bpy.data.cameras.new("BoardCam")
     data.type = 'ORTHO'
-    data.ortho_scale = 1.0
+    data.ortho_scale = BOARD_FRAME_CELLS
     cam = bpy.data.objects.get("BoardCam")
     if cam is None:
         cam = bpy.data.objects.new("BoardCam", data)
         bpy.context.collection.objects.link(cam)
     cam.data = data
-    cam.location = (0.0, 0.0, 4.0)
-    cam.rotation_euler = (0.0, 0.0, 0.0)
+    # TILTED BACK, so the sheet is seen slightly from the front rather
+    # than dead overhead - enough to catch the far wall of each groove.
+    tilt = math.radians(BOARD_TILT_DEG)
+    cam.location = (0.0, -40.0 * math.sin(tilt), 40.0 * math.cos(tilt))
+    cam.rotation_euler = (tilt, 0.0, 0.0)
     bpy.context.scene.camera = cam
 
-    # The board's own light: parallel, from the upper left, matching the
-    # direction every drawn surface in the game is lit from.
     for name in ("KeyLight", "FillLight"):
         existing = bpy.data.objects.get(name)
         if existing is not None:
@@ -3234,27 +3237,23 @@ def render_board_tile():
         sun = bpy.data.objects.new("BoardSun", sun_data)
         bpy.context.collection.objects.link(sun)
     sun.data = sun_data
-    # 45 DEGREES. Overhead drops no light into a shallow groove and the
-    # score vanishes; grazing lights the groove but barely touches the
-    # flat top, which came back black. Half way does both.
-    sun.location = (-2.4, 2.4, 2.4)
+    # 45 degrees from the upper left: overhead drops no light into a
+    # groove, grazing barely touches the flat face.
+    sun.location = (-24.0, 24.0, 24.0)
     sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
 
     configure_render()
     sc = bpy.context.scene
-    sc.render.resolution_x = sc.render.resolution_y = BOARD_TILE_PX
-    sc.render.film_transparent = False
+    sc.render.resolution_x = sc.render.resolution_y = BOARD_PX
 
-    build_board_tile()
+    build_board_slab()
     out_dir = os.path.join(root, "public", "assets", "board")
     os.makedirs(out_dir, exist_ok=True)
-    sc.render.filepath = os.path.join(out_dir, "cell.png")
+    sc.render.filepath = os.path.join(out_dir, "board.png")
     bpy.ops.render.render(write_still=True)
-    # LEFT IN THE SCENE, unlike the item families. There is one of it
-    # and it is the thing most likely to want adjusting by hand, so it
-    # stays put to be looked at; the next run clears it anyway.
-    sc.render.film_transparent = True
-    print("rendered board tile", sc.render.filepath)
+    # LEFT IN THE SCENE, unlike the item families: there is one of it
+    # and it is the thing most likely to want adjusting by hand.
+    print("rendered board", sc.render.filepath)
     return sc.render.filepath
 
 

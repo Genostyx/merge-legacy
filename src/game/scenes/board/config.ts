@@ -380,6 +380,18 @@ export function potTextureSize(cssPixels: number): number {
 export const SOURCE_TEXTURE_PX = potTextureSize(96);
 
 /**
+ * The board render's frame, in cells, and how far it is tilted back.
+ *
+ * Both have to match `BOARD_FRAME_CELLS` and `BOARD_TILT_DEG` in
+ * tools/blender/render_items.py: the frame is what puts one cell of
+ * the render on one cell of the grid, and the tilt is what the
+ * on-screen height has to be stretched back by, since the camera sees
+ * the sheet slightly from the front.
+ */
+export const BOARD_ART_FRAME = 9.8;
+export const BOARD_ART_TILT = 3;
+
+/**
  * How many source tiers each building family has.
  *
  * Water is a well and is built elsewhere; these three are the modernist

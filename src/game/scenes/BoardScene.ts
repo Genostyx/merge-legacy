@@ -252,6 +252,8 @@ import {
   ROWS,
   RoomItemDef,
   SAVE_KEY,
+  BOARD_ART_FRAME,
+  BOARD_ART_TILT,
   SOURCE_FAMILIES,
   SOURCE_TEXTURE_PX,
   SPAWNER_PIECE_NAMES,
@@ -790,9 +792,9 @@ export class BoardScene extends Phaser.Scene {
         imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
       }
     }
-    // The board's own surface: one scored glass cell, tiled.
-    if (!this.textures.exists('board-cell')) {
-      this.load.image('board-cell', `assets/board/cell.png?v=${ITEM_ART_VERSION}`);
+    // The board's own surface, rendered whole.
+    if (!this.textures.exists('board-art')) {
+      this.load.image('board-art', `assets/board/board.png?v=${ITEM_ART_VERSION}`);
     }
     // The rendered crates, one per tier - and the open chest for the
     // four that have a lid.
@@ -1374,8 +1376,8 @@ export class BoardScene extends Phaser.Scene {
    * fixed light source every tile uses. Grid lines are thin pale etched
    * lines rather than dark rules, to read as cut into glass.
    */
-  /** The tiled glass surface, when its render is loaded. */
-  private boardSurface?: Phaser.GameObjects.TileSprite;
+  /** The rendered glass sheet, when its art is loaded. */
+  private boardSurface?: Phaser.GameObjects.Image;
 
   private drawBoardBackground(): void {
     this.boardSurface?.destroy();
@@ -1390,33 +1392,27 @@ export class BoardScene extends Phaser.Scene {
     const bw = COLS * this.cellSize + pad * 2;
     const bh = ROWS * this.cellSize + pad * 2;
 
-    // THE RENDERED SURFACE, when it is loaded: one scored glass cell
-    // tiled across the grid.
+    // THE RENDERED SURFACE, when it is loaded.
     //
-    // A tile rather than a slab because the board is not one size - it
-    // grows by expansion and `cellSize` moves with the device - and a
-    // stretched slab puts its scored lines somewhere other than the
-    // cell boundaries the moment either happens. Tiled at exactly
-    // `cellSize`, they land on them at any grid.
-    if (this.textures.exists('board-cell')) {
-      const surface = this.add.tileSprite(
-        this.boardOriginX, this.boardOriginY,
-        COLS * this.cellSize, ROWS * this.cellSize, 'board-cell'
-      ).setOrigin(0, 0);
-      // THE SOURCE IMAGE, not `surface.texture`. A TileSprite's own
-      // texture is an internal canvas sized to the SPRITE - 322x414
-      // here - so scaling by that put a fraction of a tile in every
-      // cell and the board came out with the wrong number of squares.
-      const source = this.textures.get('board-cell').getSourceImage();
-      surface.setTileScale(
-        this.cellSize / source.width, this.cellSize / source.height);
-      // HALF A TILE ACROSS. The render carries its scored lines through
-      // its own middle - on the edges they fall half outside the frame
-      // and come back as nothing - so the tiling is shifted by half a
-      // cell to put them back on the cell boundaries. tilePosition is
-      // in texture pixels, before the scale above.
-      surface.setTilePosition(source.width / 2, source.height / 2);
-      this.boardSurface = surface;
+    // The WHOLE board is one render, not a tiled cell. COLS and ROWS
+    // are fixed at 7 by 9 - expansion unlocks cells inside that grid
+    // rather than adding to it - so there is only ever one board to
+    // draw, and only `cellSize` moves. Modelling it whole is also what
+    // lets the sheet be tilted: tip a tile and its own thickness shows
+    // at one edge and every repeat seams.
+    //
+    // It is framed at BOARD_ART_FRAME cells across, so one cell of the
+    // render is one cell on screen, and stretched back by the cosine
+    // of the tilt - the camera looks at the sheet slightly from the
+    // front, which foreshortens it.
+    if (this.textures.exists('board-art')) {
+      const frame = BOARD_ART_FRAME * this.cellSize;
+      this.boardSurface = this.add.image(
+        this.boardOriginX + (COLS * this.cellSize) / 2,
+        this.boardOriginY + (ROWS * this.cellSize) / 2,
+        'board-art'
+      ).setDisplaySize(
+        frame, frame / Math.cos(Phaser.Math.DegToRad(BOARD_ART_TILT)));
     }
 
     // NOTHING DRAWN OVER THE RENDER. The pane, its reflection streak,
