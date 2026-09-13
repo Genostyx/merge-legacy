@@ -790,6 +790,10 @@ export class BoardScene extends Phaser.Scene {
         imageOnce(itemSpriteKey(family, tier), itemSpritePath(family, tier));
       }
     }
+    // The board's own surface: one scored glass cell, tiled.
+    if (!this.textures.exists('board-cell')) {
+      this.load.image('board-cell', `assets/board/cell.png?v=${ITEM_ART_VERSION}`);
+    }
     // The rendered crates, one per tier - and the open chest for the
     // four that have a lid.
     for (const tier of Object.keys(CRATE_SPRITE_INDEX)) {
@@ -1370,7 +1374,12 @@ export class BoardScene extends Phaser.Scene {
    * fixed light source every tile uses. Grid lines are thin pale etched
    * lines rather than dark rules, to read as cut into glass.
    */
+  /** The tiled glass surface, when its render is loaded. */
+  private boardSurface?: Phaser.GameObjects.TileSprite;
+
   private drawBoardBackground(): void {
+    this.boardSurface?.destroy();
+    this.boardSurface = undefined;
     // Hugs the grid. At 8px of padding the pane sat wider than the order bar
     // and the tray above and below it, which are both exactly the grid's
     // width - so the one element that framed everything else was also the one
@@ -1381,14 +1390,36 @@ export class BoardScene extends Phaser.Scene {
     const bw = COLS * this.cellSize + pad * 2;
     const bh = ROWS * this.cellSize + pad * 2;
 
+    // THE RENDERED SURFACE, when it is loaded: one scored glass cell
+    // tiled across the grid.
+    //
+    // A tile rather than a slab because the board is not one size - it
+    // grows by expansion and `cellSize` moves with the device - and a
+    // stretched slab puts its scored lines somewhere other than the
+    // cell boundaries the moment either happens. Tiled at exactly
+    // `cellSize`, they land on them at any grid.
+    if (this.textures.exists('board-cell')) {
+      const surface = this.add.tileSprite(
+        this.boardOriginX, this.boardOriginY,
+        COLS * this.cellSize, ROWS * this.cellSize, 'board-cell'
+      ).setOrigin(0, 0);
+      surface.setTileScale(
+        this.cellSize / surface.texture.getSourceImage().width,
+        this.cellSize / surface.texture.getSourceImage().height
+      );
+      this.boardSurface = surface;
+    }
+
     const g = this.add.graphics();
 
     // Translucent glass body - lets the room show through faintly instead
     // of hiding it behind an opaque panel. Darkened on both axes: a deeper
     // tone AND more of it, so the backdrop reads as further behind the glass
     // and the item art has more contrast to sit against.
-    g.fillStyle(0x0f0d0b, 0.95);
-    g.fillRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
+    if (!this.boardSurface) {
+      g.fillStyle(0x0f0d0b, 0.95);
+      g.fillRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
+    }
 
     // Diagonal reflection streak, the single clearest "this is glass" cue.
     // Points stay a few px inset from the panel edges so the streak doesn't
@@ -1430,7 +1461,10 @@ export class BoardScene extends Phaser.Scene {
     g.lineStyle(1, Theme.borderOnDark, 0.5);
     g.strokeRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
 
-    // Etched grid - thin pale lines, not dark rules.
+    // Etched grid - thin pale lines, not dark rules. Only when the
+    // render is absent: the tile carries its own scored lines, and
+    // drawing these over them doubles every boundary.
+    if (this.boardSurface) return;
     g.lineStyle(1, 0xf4f0e8, 0.11);
     for (let c = 1; c < COLS; c++) {
       const x = this.boardOriginX + c * this.cellSize;

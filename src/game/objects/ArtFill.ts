@@ -1,3 +1,4 @@
+import { PIECE_FAMILIES, SPRITE_FAMILIES } from './itemSprites';
 /**
  * How much of its own square each asset's drawing actually covers.
  *
@@ -259,9 +260,30 @@ export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number 
  * Sizing on width and height rather than on `sqrt(w * h)` is the point:
  * an area metric cannot tell a flat wide thing from a tall narrow one.
  *
- * ONE SIZE FOR EVERY TIER. A tier nine item is a different SHAPE from a
- * tier one, not a bigger one.
+ * A GENTLE LADDER, WORKED BACKWARDS. The top tier sits at the full
+ * allowance - the size everything was tuned flat at - and the lower
+ * tiers come down from it, so nothing grew when the ladder was added
+ * and nothing gained the right to spill by being high tier.
+ *
+ * The whole BOX is scaled, not one axis: the placement already takes
+ * whichever of width or height binds, so scaling the box grows a flat
+ * coin and a tall obelisk by the same percentage instead of making one
+ * wider and the other taller.
+ *
+ * Front-loaded, because the early merges are the ones a player does
+ * hundreds of times: on a nine-tier chain the first step is about 9%
+ * and the last about 2%. Subtle between neighbours, obvious end to
+ * end.
  */
+const ITEM_LADDER_FLOOR = 0.82;
+
+/** Where in its family's ladder a tier sits, as a scale on the box. */
+function ladderScale(tier: number, tiers: number): number {
+  if (tiers <= 1) return 1;
+  const u = Math.sqrt((tier - 1) / (tiers - 1));
+  return ITEM_LADDER_FLOOR + (1 - ITEM_LADDER_FLOOR) * u;
+}
+
 const ITEM_TARGET_W = 0.86;
 // 1.10 of the size passed in, which is 1.056 of a real cell, so a
 // capped item clears the top edge by about 6% of a cell. Below roughly
@@ -271,13 +293,13 @@ const ITEM_MAX_H = 1.10;
 const ITEM_FLOOR = 0.50;
 
 export function itemPlacement(
-  textureKey: string, cellSize: number
+  textureKey: string, cellSize: number, tier = 1, tiers = 1
 ): { box: number; offsetY: number } {
   const extent = ITEM_EXTENT[textureKey];
   // An unmeasured key keeps the old behaviour rather than guessing: a
   // missing entry should be invisible, not a regression.
   if (!extent) return { box: cellSize, offsetY: 0 };
-  const box = cellSize * Math.min(
+  const box = cellSize * ladderScale(tier, tiers) * Math.min(
     ITEM_TARGET_W / extent.w, ITEM_MAX_H / extent.h);
   // Where the art's own centre and feet sit inside the image, which is
   // drawn centred on the origin.
@@ -289,8 +311,10 @@ export function itemPlacement(
   return { box, offsetY };
 }
 
-export function itemBoxForCell(textureKey: string, cellSize: number): number {
-  return itemPlacement(textureKey, cellSize).box;
+export function itemBoxForCell(
+  textureKey: string, cellSize: number, tier = 1, tiers = 1
+): number {
+  return itemPlacement(textureKey, cellSize, tier, tiers).box;
 }
 
 /**
@@ -298,11 +322,13 @@ export function itemBoxForCell(textureKey: string, cellSize: number): number {
  * and a tier, rather than a texture key.
  */
 export function itemDisplaySize(typeId: string, tier: number, cellSize: number): number {
-  return itemBoxForCell(`${typeId}-${tier}`, cellSize);
+  return itemBoxForCell(`${typeId}-${tier}`, cellSize, tier,
+    SPRITE_FAMILIES[typeId] ?? 9);
 }
 
 export function pieceDisplaySize(typeId: string, tier: number, cellSize: number): number {
-  return itemBoxForCell(`piece-${typeId}-${tier}`, cellSize);
+  return itemBoxForCell(`piece-${typeId}-${tier}`, cellSize, tier,
+    PIECE_FAMILIES[typeId] ?? 4);
 }
 
 /**
@@ -317,9 +343,11 @@ export function artBoxFor(extentKey: string, size: number): number {
 }
 
 export function itemPlacementFor(typeId: string, tier: number, cellSize: number) {
-  return itemPlacement(`${typeId}-${tier}`, cellSize);
+  return itemPlacement(`${typeId}-${tier}`, cellSize, tier,
+    SPRITE_FAMILIES[typeId] ?? 9);
 }
 
 export function piecePlacementFor(typeId: string, tier: number, cellSize: number) {
-  return itemPlacement(`piece-${typeId}-${tier}`, cellSize);
+  return itemPlacement(`piece-${typeId}-${tier}`, cellSize, tier,
+    PIECE_FAMILIES[typeId] ?? 4);
 }

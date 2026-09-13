@@ -3108,6 +3108,120 @@ def build_source_building(family: str):
     return out
 
 
+# ---- the board itself ------------------------------------------------------
+#
+# The board is a sheet of dark glass with the cell boundaries scored
+# into it. It is rendered as ONE SEAMLESS CELL rather than as a whole
+# slab, because the board changes size - expansion adds rows and
+# columns, and `cellSize` moves with the device - and a stretched slab
+# puts its scored lines somewhere other than the cell boundaries the
+# moment either happens. A tile lands them exactly, at any grid.
+#
+# Everything here is its own little studio: a top-down orthographic
+# camera, and a SUN rather than the item set's area lamps. A sun's rays
+# are parallel, so the shading is identical at both edges of the tile;
+# an area lamp puts a gradient across it and the repeat shows up as a
+# grid of bright patches.
+BOARD_TILE_PX = 256
+BOARD_GLASS = 0x14120f
+BOARD_SCORE_DEPTH = 0.014
+BOARD_SCORE_WIDTH = 0.022
+
+
+def build_board_tile():
+    """One cell of the board: a glass square scored on two edges.
+
+    HALF A GROOVE PER EDGE, on two edges only. A full groove on all
+    four would double up where tiles meet and draw every line twice as
+    wide as the ones at the board's rim; half on the +x and +y edges
+    meets its other half on the neighbour.
+    """
+    half = 0.5
+    body = cube(1.0, 1.0, 0.16, base=False)
+
+    cutters = []
+    for axis in (0, 1):
+        cutter = cube(
+            BOARD_SCORE_WIDTH if axis == 0 else 1.2,
+            1.2 if axis == 0 else BOARD_SCORE_WIDTH,
+            BOARD_SCORE_DEPTH * 2.2, base=False)
+        spot = (half, 0.0, 0.08) if axis == 0 else (0.0, half, 0.08)
+        cutters.append(translate_to(cutter, spot))
+
+    for cutter in cutters:
+        modifier = body.modifiers.new("score", 'BOOLEAN')
+        modifier.operation = 'DIFFERENCE'
+        modifier.object = cutter
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
+        bpy.data.objects.remove(cutter, do_unlink=True)
+
+    glass = tier_material("board-glass", BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
+    shader = _shader(glass)
+    # SMOKED, not clear. A transmissive pane over a transparent film
+    # renders as nothing at all; what reads as dark glass here is a
+    # near-black body with a hard specular on it and a coat over that.
+    shader.inputs["Roughness"].default_value = 0.10
+    shader.inputs["Metallic"].default_value = 0.0
+    polished(glass, coat_roughness=0.02)
+    finish(body, "board-tile", glass, bevel=0.004)
+    return body
+
+
+def render_board_tile():
+    """Draws the tile through its own camera and light, then restores
+    neither - `main` rebuilds both for every family anyway."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for ob in list(bpy.data.objects):
+        if ob.type == 'MESH':
+            bpy.data.objects.remove(ob, do_unlink=True)
+
+    data = bpy.data.cameras.get("BoardCam") or bpy.data.cameras.new("BoardCam")
+    data.type = 'ORTHO'
+    data.ortho_scale = 1.0
+    cam = bpy.data.objects.get("BoardCam")
+    if cam is None:
+        cam = bpy.data.objects.new("BoardCam", data)
+        bpy.context.collection.objects.link(cam)
+    cam.data = data
+    cam.location = (0.0, 0.0, 4.0)
+    cam.rotation_euler = (0.0, 0.0, 0.0)
+    bpy.context.scene.camera = cam
+
+    # The board's own light: parallel, from the upper left, matching the
+    # direction every drawn surface in the game is lit from.
+    for name in ("KeyLight", "FillLight"):
+        existing = bpy.data.objects.get(name)
+        if existing is not None:
+            bpy.data.objects.remove(existing, do_unlink=True)
+    sun_data = bpy.data.lights.get("BoardSun") or bpy.data.lights.new("BoardSun", type='SUN')
+    sun_data.type = 'SUN'
+    sun_data.energy = 3.2
+    sun_data.angle = math.radians(8)
+    sun = bpy.data.objects.get("BoardSun")
+    if sun is None:
+        sun = bpy.data.objects.new("BoardSun", sun_data)
+        bpy.context.collection.objects.link(sun)
+    sun.data = sun_data
+    sun.location = (-2.0, 2.0, 3.0)
+    sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
+
+    configure_render()
+    sc = bpy.context.scene
+    sc.render.resolution_x = sc.render.resolution_y = BOARD_TILE_PX
+    sc.render.film_transparent = False
+
+    tile = build_board_tile()
+    out_dir = os.path.join(root, "public", "assets", "board")
+    os.makedirs(out_dir, exist_ok=True)
+    sc.render.filepath = os.path.join(out_dir, "cell.png")
+    bpy.ops.render.render(write_still=True)
+    bpy.data.objects.remove(tile, do_unlink=True)
+    sc.render.film_transparent = True
+    print("rendered board tile", sc.render.filepath)
+    return sc.render.filepath
+
+
 def build_water_source():
     """The Water dispenser: a well that gets built up tier by tier.
 
