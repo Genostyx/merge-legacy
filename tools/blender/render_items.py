@@ -3123,7 +3123,10 @@ def build_source_building(family: str):
 # an area lamp puts a gradient across it and the repeat shows up as a
 # grid of bright patches.
 BOARD_TILE_PX = 256
-BOARD_GLASS = 0x332e26
+# COOL AND NEAR BLACK. 0x332e26 was a warm brown, which renders as
+# painted board however it is lit - glass is not a colour, it is a dark
+# body with a hard reflection on it.
+BOARD_GLASS = 0x141a1e
 BOARD_SCORE_DEPTH = 0.030
 BOARD_SCORE_WIDTH = 0.034
 
@@ -3139,13 +3142,31 @@ def build_board_tile():
     """
     body = cube(1.0, 1.0, 0.16, base=False)
 
+    # A V-CHANNEL, not a slot. A square cut has vertical walls, and a
+    # camera looking straight down sees neither of them - only the
+    # floor, evenly lit, which reads as a dark stripe painted onto the
+    # glass rather than a cut into it. Sloped walls give the line a lit
+    # side and a shadowed side, and that is the whole of what says
+    # groove.
+    #
+    # Cut by a square bar turned 45 degrees about its own length, so
+    # its lower half is a wedge.
     cutters = []
+    reach = BOARD_SCORE_WIDTH * math.sqrt(2)
     for axis in (0, 1):
-        cutter = cube(
-            BOARD_SCORE_WIDTH if axis == 0 else 1.2,
-            1.2 if axis == 0 else BOARD_SCORE_WIDTH,
-            BOARD_SCORE_DEPTH * 2.2, base=False)
-        cutters.append(translate_to(cutter, (0.0, 0.0, 0.08)))
+        cutter = cube(reach if axis == 0 else 1.2,
+                      1.2 if axis == 0 else reach, reach, base=False)
+        cutter.rotation_euler = Euler(
+            (0.0, math.radians(45), 0.0) if axis == 0
+            else (math.radians(45), 0.0, 0.0))
+        bpy.ops.object.select_all(action='DESELECT')
+        cutter.select_set(True)
+        bpy.context.view_layer.objects.active = cutter
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+        # The wedge's point sits half a diagonal below its centre, so
+        # this lands the point at the groove's depth.
+        cutters.append(translate_to(cutter, (
+            0.0, 0.0, 0.08 - BOARD_SCORE_DEPTH + reach * math.sqrt(2) / 2)))
 
     for cutter in cutters:
         modifier = body.modifiers.new("score", 'BOOLEAN')
@@ -3160,9 +3181,15 @@ def build_board_tile():
     # SMOKED, not clear. A transmissive pane over a transparent film
     # renders as nothing at all; what reads as dark glass here is a
     # near-black body with a hard specular on it and a coat over that.
-    shader.inputs["Roughness"].default_value = 0.10
+    shader.inputs["Roughness"].default_value = 0.06
     shader.inputs["Metallic"].default_value = 0.0
-    polished(glass, coat_roughness=0.02)
+    # A LITTLE TRANSMISSION, so the sheet has an inside. Fully opaque it
+    # is a painted panel; fully transmissive over a transparent film it
+    # is nothing at all. A quarter gives the body depth under the
+    # reflection without the board turning into a window.
+    shader.inputs["Transmission Weight"].default_value = 0.25
+    shader.inputs["IOR"].default_value = 1.52
+    polished(glass, coat_roughness=0.015)
     # NO BEVEL, and flat shading. A bevelled top under smooth shading
     # curves away at the edges, which puts a gradient across the tile -
     # and a tile with a gradient repeats as a patchwork.
@@ -3218,12 +3245,14 @@ def render_board_tile():
     sc.render.resolution_x = sc.render.resolution_y = BOARD_TILE_PX
     sc.render.film_transparent = False
 
-    tile = build_board_tile()
+    build_board_tile()
     out_dir = os.path.join(root, "public", "assets", "board")
     os.makedirs(out_dir, exist_ok=True)
     sc.render.filepath = os.path.join(out_dir, "cell.png")
     bpy.ops.render.render(write_still=True)
-    bpy.data.objects.remove(tile, do_unlink=True)
+    # LEFT IN THE SCENE, unlike the item families. There is one of it
+    # and it is the thing most likely to want adjusting by hand, so it
+    # stays put to be looked at; the next run clears it anyway.
     sc.render.film_transparent = True
     print("rendered board tile", sc.render.filepath)
     return sc.render.filepath
