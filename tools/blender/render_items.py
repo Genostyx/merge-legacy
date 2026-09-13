@@ -3661,7 +3661,7 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.02
+LOCK_HDRI_STRENGTH = 0.10
 LOCK_ROUGHNESS = 0.05
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
