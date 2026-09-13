@@ -278,25 +278,20 @@ export const ITEM_EXTENT: Record<string, { w: number; h: number; bottom: number 
 const ITEM_LADDER_FLOOR = 0.82;
 
 /**
- * A family's own scale, for objects whose real size everyone knows.
+ * A correction for one piece of art, where normalising it misreads.
  *
- * Normalising on the art cannot know how big a thing is MEANT to be,
- * so a stack of coins gets the same footprint as a stone archway and
- * reads as enormous. The currencies are the only families where that
- * bites - a spire cluster being tall is correct, a coin being the
- * size of a doorway is not.
+ * PER ITEM, not per family. Scaling the whole credit chain down to
+ * fix the stack made every other coin too small - measured, its tiers
+ * run 0.31 to 0.88 of a cell tall and the stack alone is 0.99, since
+ * its art is the one narrow-tall piece in the set and the width
+ * target inflates it furthest.
  */
-const ITEM_FAMILY_SCALE: Record<string, number> = {
-  'currency-credit': 0.76,
-  'currency-gem': 0.76,
-  'currency-energy': 0.80
+const ITEM_SCALE: Record<string, number> = {
+  'currency-credit-3': 0.78
 };
 
-function familyScale(textureKey: string): number {
-  for (const family in ITEM_FAMILY_SCALE) {
-    if (textureKey.startsWith(`${family}-`)) return ITEM_FAMILY_SCALE[family];
-  }
-  return 1;
+function itemScale(textureKey: string): number {
+  return ITEM_SCALE[textureKey] ?? 1;
 }
 
 /** Where in its family's ladder a tier sits, as a scale on the box. */
@@ -321,7 +316,7 @@ export function itemPlacement(
   // An unmeasured key keeps the old behaviour rather than guessing: a
   // missing entry should be invisible, not a regression.
   if (!extent) return { box: cellSize, offsetY: 0 };
-  const box = cellSize * ladderScale(tier, tiers) * familyScale(textureKey)
+  const box = cellSize * ladderScale(tier, tiers) * itemScale(textureKey)
     * Math.min(ITEM_TARGET_W / extent.w, ITEM_MAX_H / extent.h);
   // Where the art's own centre and feet sit inside the image, which is
   // drawn centred on the origin.
