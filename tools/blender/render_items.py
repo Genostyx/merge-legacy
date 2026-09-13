@@ -3127,7 +3127,7 @@ BOARD_PX = 1024
 # up, so it is a number both sides have to agree on.
 BOARD_FRAME_CELLS = 9.8
 # How far off straight down the sheet is seen from.
-BOARD_TILT_DEG = 3.0
+BOARD_TILT_DEG = 3.127
 # The drawn pane's own colour, so the render is as dark and as
 # transparent as the thing it replaced.
 BOARD_GLASS = 0x0f0d0b
@@ -3147,6 +3147,8 @@ BOARD_CELL = 0.22
 BOARD_CHAMFER = 0.10
 # How far the studio's lamps are turned down for the board's own pass.
 BOARD_LIGHT_SCALE = 0.35
+# How far back the camera sits, off the view this was framed from.
+BOARD_CAM_REACH = 3.4
 
 
 def board_glass_material():
@@ -3272,11 +3274,14 @@ def render_board():
         cam = bpy.data.objects.new("BoardCam", data)
         bpy.context.collection.objects.link(cam)
     cam.data = data
-    # TILTED BACK, so the sheet is seen slightly from the front rather
-    # than dead overhead - enough to catch the far wall of each groove.
+    # THE VIEW THIS WAS FRAMED FROM, centred.
+    #
+    # Taken off the viewport rather than derived: 3.127 degrees of tilt
+    # at a distance of 3.4, with the lateral offset dropped so the
+    # sheet sits in the middle of the frame instead of low and left.
     tilt = math.radians(BOARD_TILT_DEG)
-    reach_back = 6.0
-    cam.location = (0.0, -reach_back * math.sin(tilt), reach_back * math.cos(tilt))
+    cam.location = (0.0, -BOARD_CAM_REACH * math.sin(tilt),
+                    BOARD_CAM_REACH * math.cos(tilt))
     cam.rotation_euler = (tilt, 0.0, 0.0)
     bpy.context.scene.camera = cam
 
