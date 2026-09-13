@@ -3128,7 +3128,9 @@ BOARD_PX = 1024
 BOARD_FRAME_CELLS = 9.8
 # How far off straight down the sheet is seen from.
 BOARD_TILT_DEG = 3.0
-BOARD_GLASS = 0x141a1e
+# The drawn pane's own colour, so the render is as dark and as
+# transparent as the thing it replaced.
+BOARD_GLASS = 0x0f0d0b
 BOARD_SCORE_DEPTH = 0.030
 BOARD_SCORE_WIDTH = 0.034
 BOARD_THICKNESS = 0.22
@@ -3264,29 +3266,34 @@ def render_board():
     sun.location = (-24.0, 24.0, 24.0)
     sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
 
-    # A SOFTBOX FOR THE SHEET TO MIRROR, which is what actually says
-    # glass. The sun gives the grooves their lit and shadowed walls but
-    # a flat face has nothing to reflect except a pinpoint, so the
-    # surface between the lines came back as a dark film - the drawn
-    # pane had to fake exactly this with two painted streaks.
-    #
-    # Long, narrow and turned off square, so its reflection sweeps
-    # across the board as a broad diagonal band rather than sitting on
-    # it as a blob.
-    sheen_data = bpy.data.lights.get("BoardSheen") or bpy.data.lights.new("BoardSheen", type='AREA')
-    sheen_data.type = 'AREA'
-    sheen_data.shape = 'RECTANGLE'
-    sheen_data.size = 26.0
-    sheen_data.size_y = 3.0
-    sheen_data.energy = 2600.0
-    sheen = bpy.data.objects.get("BoardSheen")
-    if sheen is None:
-        sheen = bpy.data.objects.new("BoardSheen", sheen_data)
-        bpy.context.collection.objects.link(sheen)
-    sheen.data = sheen_data
-    sheen.location = (-7.0, 9.0, 13.0)
-    sheen.rotation_euler = (-Vector(sheen.location)).to_track_quat('-Z', 'Y').to_euler()
-    sheen.rotation_euler.rotate_axis("Z", math.radians(-34))
+    # TWO FAINT DIAGONALS IN THE UPPER LEFT, which is what the drawn
+    # pane had: white at 0.018 and 0.024 alpha, running from the top
+    # edge down to the left one. They are the clearest "this is glass"
+    # cue there is, and a sun cannot make them - a flat sheet under an
+    # orthographic camera reflects a distant light uniformly or not at
+    # all. These are close and narrow, so each one lands as a band
+    # rather than covering the sheet.
+    for index, (size, size_y, energy, spot) in enumerate((
+        (5.5, 0.55, 16.0, (-2.5, 3.4, 2.2)),
+        (3.8, 0.42, 20.0, (-1.9, 2.5, 2.2)),
+    )):
+        name = "BoardStreak%d" % index
+        data = bpy.data.lights.get(name) or bpy.data.lights.new(name, type='AREA')
+        data.type = 'AREA'
+        data.shape = 'RECTANGLE'
+        data.size = size
+        data.size_y = size_y
+        data.energy = energy
+        streak = bpy.data.objects.get(name)
+        if streak is None:
+            streak = bpy.data.objects.new(name, data)
+            bpy.context.collection.objects.link(streak)
+        streak.data = data
+        streak.location = spot
+        streak.rotation_euler = (0.0, 0.0, 0.0)
+        # Turned to run down-left across the sheet, the way the drawn
+        # streaks did.
+        streak.rotation_euler.rotate_axis("Z", math.radians(-52))
 
     configure_render()
     sc = bpy.context.scene
