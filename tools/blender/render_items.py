@@ -2947,9 +2947,20 @@ SOURCE_ROOF = {
 # Pale blue-grey daylight in the windows, warmer and paler on the glass
 # houses, whose whole envelope is glazing.
 SOURCE_GLAZING = {"wood": 0x93a4a5, "mineral": 0x8b9aa4, "glass": 0xd2e6e4}
-# The mullions and fascias. Cream on the glass houses, cool white on the
-# other two - the drawings are specific about that difference.
-SOURCE_FRAME = {"wood": 0xd1d2ce, "mineral": 0xc6cbce, "glass": 0xf4f3e6}
+# The mullions and fascias. Cool white on wood and stone.
+#
+# Glass was originally coded cream here too, on the assumption the whole
+# envelope shared one frame tone. Re-checked against the rendered
+# reference: the cream is the INTERIOR FLOOR seen THROUGH the glass, not
+# the frame - the frame itself is a dark charcoal-navy, the same family
+# of tone as the wood/stone roofs. That is why the glass source read as
+# an opaque grey box instead of a lit greenhouse: the one dark structural
+# note the reference has was being painted the lightest colour in it.
+SOURCE_FRAME = {"wood": 0xd1d2ce, "mineral": 0xc6cbce, "glass": 0x3c4650}
+# The floor a glass house's transparency exists to reveal. Only glass
+# needs one - the other two families are clad, so their interiors are
+# never seen.
+SOURCE_FLOOR_GLASS = 0xf4f2e6
 SOURCE_TERRACE = 0xa8a8a6
 
 # Storey height and the terrace slab. Both were measured against the
@@ -3035,6 +3046,33 @@ def _source_materials(family: str, tier: int):
             _tone(frame, "frame"), _tone(plinth, "terrace"))
 
 
+def _glaze_floor_gradient(mat):
+    """Warms a glazing material's base colour toward the floor tone low
+    down, standing in for the interior floor a real greenhouse would
+    show through it.
+
+    Object-space Z, not world Z: `translate_to` bakes each volume's
+    position into its own vertices, so a tall tier's upper storeys still
+    read as glass rather than inheriting the ground floor's warmth.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    shader = _shader(mat)
+    coords = nodes.new("ShaderNodeTexCoord")
+    axis = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(coords.outputs["Object"], axis.inputs["Vector"])
+    ramp = nodes.new("ShaderNodeValToRGB")
+    floor_rgb = tuple(srgb_to_linear((SOURCE_FLOOR_GLASS >> shift) & 255)
+                      for shift in (16, 8, 0))
+    glass_rgb = shader.inputs["Base Color"].default_value[:3]
+    ramp.color_ramp.elements[0].position = 0.0
+    ramp.color_ramp.elements[0].color = (*floor_rgb, 1.0)
+    ramp.color_ramp.elements[1].position = 0.34
+    ramp.color_ramp.elements[1].color = (*glass_rgb, 1.0)
+    links.new(axis.outputs["Z"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], shader.inputs["Base Color"])
+    return mat
+
+
 def _glazed_volume(width, depth, storeys, base_z, origin, clad, glazing,
                    frames, clad_bay=True):
     """One volume: a glazed box with a clad bay down one side.
@@ -3096,6 +3134,155 @@ def _glazed_volume(width, depth, storeys, base_z, origin, clad, glazing,
                  base=False),
             (ox, oy, z0 + storey_h * 0.017)))
     return base_z + storeys * storey_h
+
+
+def _glass_volume(width, depth, storeys, base_z, origin, glazing, frames,
+                  floor, roof_glazing, roof_frames):
+    """One glass volume: a full-envelope greenhouse, walls AND roof glazed.
+
+    `_glazed_volume` clads one bay and leaves the roof an opaque blade,
+    which is right for wood and stone - they are buildings WITH windows.
+    The reference glass source is a building MADE of window: every face the
+    camera can see is glass, including the roof, and the frame is what
+    reads as its structure rather than its cladding.
+    """
+    ox, oy = origin
+    storey_h = SOURCE_STOREY * (1.34 if storeys == 1 else 1.0)
+    for storey in range(storeys):
+        z0 = base_z + storey * storey_h
+        mid = z0 + storey_h / 2
+        pane_h = storey_h * 0.90
+        # FULL-WIDTH GLAZING on both visible faces - no clad bay. The
+        # whole envelope is the material, which is the one thing every
+        # tier of the reference agrees on.
+        glazing.append(translate_to(
+            cube(width * 0.94, 0.016, pane_h, base=False),
+            (ox, oy + depth / 2 + 0.004, mid)))
+        glazing.append(translate_to(
+            cube(0.016, depth * 0.94, pane_h, base=False),
+            (ox - width / 2 - 0.004, oy, mid)))
+        frames.append(translate_to(
+            cube(0.026, 0.026, storey_h, base=False),
+            (ox - width / 2, oy + depth / 2, mid)))
+        for k in range(2):
+            u = (k + 1) / 3 - 0.5
+            frames.append(translate_to(
+                cube(0.014, 0.024, pane_h, base=False),
+                (ox + u * width * 0.94, oy + depth / 2 + 0.007, mid)))
+            frames.append(translate_to(
+                cube(0.024, 0.014, pane_h, base=False),
+                (ox - width / 2 - 0.007, oy + u * depth * 0.94, mid)))
+        frames.append(translate_to(
+            cube(width * 1.005, depth * 1.005, storey_h * 0.035, base=False),
+            (ox, oy, z0 + storey_h * 0.017)))
+        # THE FLOOR THE GLASS EXISTS TO SHOW. Ground storey only - the
+        # reference is never seen from high enough to need an upper one.
+        if storey == 0:
+            floor.append(translate_to(
+                cube(width * 0.92, depth * 0.92, 0.014, base=False),
+                (ox, oy, z0 + storey_h * 0.06)))
+    top = base_z + storeys * storey_h
+
+    # THE ROOF, GLAZED - a grid of panes rather than an opaque cap. Kept
+    # as its own group (`roof_glazing`/`roof_frames`) so it can be built
+    # from the SAME glazing material as the walls without the caller
+    # having to know that; a second material would read as two different
+    # buildings stacked on each other.
+    roof_h = 0.020
+    roof_glazing.append(translate_to(
+        cube(width * 0.98, depth * 0.98, roof_h, base=False),
+        (ox, oy, top + roof_h / 2)))
+    ridge = roof_h * 1.6
+    for gx in (-0.98, -0.33, 0.33, 0.98):
+        roof_frames.append(translate_to(
+            cube(0.022, depth * 0.99, ridge, base=False),
+            (ox + gx * width / 2, oy, top + roof_h + ridge / 2)))
+    for gy in (-0.98, -0.33, 0.33, 0.98):
+        roof_frames.append(translate_to(
+            cube(width * 0.99, 0.022, ridge, base=False),
+            (ox, oy + gy * depth / 2, top + roof_h + ridge / 2)))
+    return top + roof_h + ridge
+
+
+def build_glass_source():
+    """The glass dispenser: a greenhouse, tier by tier.
+
+    A dedicated builder rather than a `build_source_building("glass")`
+    call, because the construction is a different KIND of thing from wood
+    and stone - a fully glazed volume with a floor to see, not a clad box
+    with windows in it. Sharing `_glazed_volume` was what made every
+    family read as one generic building with different paint.
+    """
+    plan = SOURCE_PLAN["glass"]
+    out = {}
+    for index, (width, depth, storeys, wing) in enumerate(plan):
+        tier = index + 1
+        glaze_hex = SOURCE_GLAZING["glass"]
+        glazing_mat = tier_material("source-glass-glazing-%d" % tier,
+                                    glaze_hex, glaze_hex, max_gain=1.0)
+        # NOT the item chain's gemstone() recipe, even though it is the
+        # obvious thing to reach for. That recipe brightens through the
+        # studio's TRANSMISSION-ONLY banded sky, which is built for small
+        # FACETED stones sweeping across many band values - a large FLAT
+        # pane samples one fixed point in that gradient instead, and a
+        # single isolated pane with the gem recipe rendered solid black
+        # in a control test to prove it, independent of this building's
+        # geometry entirely.
+        #
+        # This is a moderate transmission over a glossy coat instead, so
+        # the pane's brightness comes mostly from reflecting the studio
+        # normally rather than gambling on one lucky sample of the gem
+        # sky - and a height gradient toward the floor's cream tone,
+        # since a literal floor slab sits exactly where the walls' own
+        # thickness occludes it from this camera on every tier.
+        glazing_shader = _shader(glazing_mat)
+        glazing_shader.inputs["Transmission Weight"].default_value = 0.5
+        glazing_shader.inputs["Metallic"].default_value = 0.10
+        glazing_shader.inputs["Roughness"].default_value = 0.06
+        glazing_shader.inputs["IOR"].default_value = 1.45
+        polished(glazing_mat, coat_roughness=0.05)
+        _glaze_floor_gradient(glazing_mat)
+
+        frame_hex = SOURCE_FRAME["glass"]
+        frame_mat = tier_material("source-glass-frame-%d" % tier, frame_hex,
+                                  frame_hex, max_gain=1.0)
+        _shader(frame_mat).inputs["Roughness"].default_value = 0.42
+        _tone(frame_mat, "frame")
+
+        plinth_mat = tier_material("source-glass-terrace-%d" % tier,
+                                   SOURCE_TERRACE, SOURCE_TERRACE,
+                                   max_gain=1.0)
+        _shader(plinth_mat).inputs["Roughness"].default_value = 0.66
+        _tone(plinth_mat, "terrace")
+
+        glazing, frames, roof_glazing, roof_frames = [], [], [], []
+        floor: list = []  # unused now - kept so `_glass_volume`'s signature stays one shape
+        plinth = [translate_to(
+            cube(width * 1.30, depth * 1.22, SOURCE_PLINTH, base=False),
+            (width * 0.06, -depth * 0.04, SOURCE_PLINTH / 2))]
+
+        _glass_volume(width, depth, storeys, SOURCE_PLINTH, (0.0, 0.0),
+                     glazing, frames, floor, roof_glazing, roof_frames)
+        if wing:
+            w_w, w_d, w_s = wing
+            spot = (-(width + w_w) / 2 + 0.02, depth * 0.16)
+            _glass_volume(w_w, w_d, w_s, SOURCE_PLINTH, spot,
+                         glazing, frames, floor, roof_glazing, roof_frames)
+
+        parts = []
+        for name, group, material in (
+            ("glazing", glazing + roof_glazing, glazing_mat),
+            ("frame", frames + roof_frames, frame_mat),
+            ("plinth", plinth, plinth_mat),
+        ):
+            if not group:
+                continue
+            solid = stack(group)
+            finish(solid, "source-glass-%d-%s" % (tier, name), material,
+                   bevel=0.004)
+            parts.append(solid)
+        out[tier] = stack(parts)
+    return out
 
 
 def build_source_building(family: str):
@@ -6238,8 +6425,8 @@ def main(only: str = ""):
     # dispenser is not a member of an item ladder - it never sits beside an
     # item for comparison - so it takes the whole canvas at every tier
     # rather than a shared family scale.
-    sources = [("water", build_water_source)]
-    for building in ("wood", "mineral", "glass"):
+    sources = [("water", build_water_source), ("glass", build_glass_source)]
+    for building in ("wood", "mineral"):
         sources.append((building,
                         (lambda f: lambda: build_source_building(f))(building)))
     for family, build in sources:

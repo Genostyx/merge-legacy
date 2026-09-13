@@ -2,7 +2,7 @@ import { CHAINS, isCurrencyChain, isUtilityChain } from '../data/chains';
 import type { CrateTier } from '../rewards/Rewards';
 
 /**
- * THE MAX-TIER CONSUMER - rules only. Nothing draws it yet.
+ * THE MAX-TIER CONSUMER. Wired into BoardScene's feed/roll flow.
  *
  * The problem it exists for: an item at the top of its chain cannot merge
  * again, so the two most expensive things in the game are worth exactly what
