@@ -3145,6 +3145,8 @@ BOARD_THICKNESS = 0.048
 BOARD_CELL = 0.22
 # How wide the sheet's own edge is chamfered, in cells.
 BOARD_CHAMFER = 0.10
+# How far the studio's lamps are turned down for the board's own pass.
+BOARD_LIGHT_SCALE = 0.35
 
 
 def board_glass_material():
@@ -3176,20 +3178,13 @@ def board_glass_material():
             # blue the source parts are cut from; a board in it looks
             # like bathroom tile. The roughness, IOR, transmission and
             # coat are the point - the body goes dark.
-            shader = _shader(appended)
-            shader.inputs["Base Color"].default_value = (
+            _shader(appended).inputs["Base Color"].default_value = (
                 *(srgb_to_linear((BOARD_GLASS >> shift) & 255)
                   for shift in (16, 8, 0)), 1.0)
-            # AND IT RETURNS LESS. The studio's lamps are sized for a
-            # thing you could hold; a whole sheet under them came back
-            # as light grey tile, because almost all of that is coat
-            # and specular rather than body. The glass stays glass -
-            # same roughness, IOR and transmission - it just stops
-            # mirroring the lamps quite so hard.
-            if "Coat Weight" in shader.inputs:
-                shader.inputs["Coat Weight"].default_value = 0.13
-            if "Specular IOR Level" in shader.inputs:
-                shader.inputs["Specular IOR Level"].default_value = 0.20
+            # Nothing else touched. The board is dimmed by turning the
+            # studio's lamps down for its own pass - see
+            # BOARD_LIGHT_SCALE - rather than by editing the saved
+            # material, so the glass really is the glass.
             return appended
     glass = tier_material(name, BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
     gemstone(glass, **GLASS_PRESET)
@@ -3297,6 +3292,24 @@ def render_board():
         if stale is not None:
             bpy.data.objects.remove(stale, do_unlink=True)
     build_lights()
+    # DIMMED FOR THIS PASS ONLY. What has to agree with the objects
+    # standing on the board is the DIRECTION the light comes from, not
+    # how much of it there is - so the lamps keep their positions and
+    # lose most of their power. A sheet this size under lamps sized
+    # for a thing you could hold came back as light grey tile.
+    for name in ("KeyLight", "FillLight"):
+        lamp = bpy.data.objects.get(name)
+        if lamp is not None:
+            lamp.data.energy *= BOARD_LIGHT_SCALE
+    # THE WORLD COMES DOWN WITH THEM. Lamp energy does not touch the
+    # sky, and a coat mirrors the sky as readily as it mirrors a lamp -
+    # dimming only the lamps bottomed the board out at #303237 however
+    # far they went down.
+    world = bpy.context.scene.world
+    if world is not None and world.use_nodes:
+        for node in world.node_tree.nodes:
+            if "Strength" in node.inputs:
+                node.inputs["Strength"].default_value *= BOARD_LIGHT_SCALE
 
     configure_render()
     sc = bpy.context.scene
