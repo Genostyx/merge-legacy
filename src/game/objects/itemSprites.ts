@@ -135,7 +135,7 @@ export function itemSpriteKey(typeId: string, tier: number): string {
  * A version in the query string makes the URL new, so every client refetches
  * once and then caches again normally.
  */
-export const ITEM_ART_VERSION = 46;
+export const ITEM_ART_VERSION = 47;
 
 /** Where the renderer writes it, relative to `public/`. */
 export function itemSpritePath(typeId: string, tier: number): string {

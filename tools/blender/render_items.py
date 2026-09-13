@@ -3134,6 +3134,8 @@ BOARD_GLASS = 0x0f0d0b
 BOARD_SCORE_DEPTH = 0.030
 BOARD_SCORE_WIDTH = 0.034
 BOARD_THICKNESS = 0.22
+# How wide the sheet's own edge is chamfered, in cells.
+BOARD_CHAMFER = 0.10
 
 
 def board_glass_material():
@@ -3185,6 +3187,19 @@ def build_board_slab():
     lit side and a shadowed side.
     """
     body = cube(BOARD_COLS, BOARD_ROWS, BOARD_THICKNESS, base=False)
+
+    # A CHAMFER ROUND THE SHEET, cut before the grooves so it belongs
+    # to the slab rather than to every cell. A square edge turns its
+    # face away from everything and stays black; a chamfer is a third
+    # surface at its own angle, so the streaks and the sun catch it and
+    # the board gets a lit rim - which is most of what says the glass
+    # has thickness.
+    chamfer = body.modifiers.new("chamfer", 'BEVEL')
+    chamfer.width = BOARD_CHAMFER
+    chamfer.segments = 2
+    chamfer.limit_method = 'ANGLE'
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.modifier_apply(modifier=chamfer.name)
 
     reach = BOARD_SCORE_WIDTH * math.sqrt(2)
     top = BOARD_THICKNESS / 2
