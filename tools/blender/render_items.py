@@ -3146,7 +3146,7 @@ BOARD_CELL = 0.22
 # How wide the sheet's own edge is chamfered, in cells.
 BOARD_CHAMFER = 0.10
 # How far the studio's lamps are turned down for the board's own pass.
-BOARD_LIGHT_SCALE = 0.35
+BOARD_LIGHT_SCALE = 0.26
 # How far back the camera sits, off the view this was framed from.
 # THE LENS THE REFERENCE VIEW WAS AT.
 #
