@@ -3131,8 +3131,8 @@ BOARD_TILT_DEG = 3.0
 # The drawn pane's own colour, so the render is as dark and as
 # transparent as the thing it replaced.
 BOARD_GLASS = 0x0f0d0b
-BOARD_SCORE_DEPTH = 0.030
-BOARD_SCORE_WIDTH = 0.034
+BOARD_SCORE_DEPTH = 0.055
+BOARD_SCORE_WIDTH = 0.055
 BOARD_THICKNESS = 0.22
 # How wide the sheet's own edge is chamfered, in cells.
 BOARD_CHAMFER = 0.10
@@ -3269,16 +3269,20 @@ def render_board():
             bpy.data.objects.remove(existing, do_unlink=True)
     sun_data = bpy.data.lights.get("BoardSun") or bpy.data.lights.new("BoardSun", type='SUN')
     sun_data.type = 'SUN'
-    sun_data.energy = 7.0
+    sun_data.energy = 11.0
     sun_data.angle = math.radians(8)
     sun = bpy.data.objects.get("BoardSun")
     if sun is None:
         sun = bpy.data.objects.new("BoardSun", sun_data)
         bpy.context.collection.objects.link(sun)
     sun.data = sun_data
-    # 45 degrees from the upper left: overhead drops no light into a
-    # groove, grazing barely touches the flat face.
-    sun.location = (-24.0, 24.0, 24.0)
+    # LOW AND FROM THE UPPER LEFT, about twenty degrees up. The higher
+    # the sun the less of it reaches into a V, and at 45 the grooves
+    # were only just there. Grazing light is what fills one wall and
+    # shadows the other; it costs the flat face its brightness, which
+    # on a sheet meant to be dark is no loss - the streaks and the
+    # chamfer carry that.
+    sun.location = (-26.0, 26.0, 12.0)
     sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
 
     # TWO FAINT DIAGONALS IN THE UPPER LEFT, which is what the drawn
