@@ -3262,8 +3262,13 @@ def build_board_slab():
 
 
 # Which of Blender's own studio HDRIs lights the board, and how hard.
-BOARD_HDRI = "studio.exr"
-BOARD_HDRI_STRENGTH = 3.0
+# INTERIOR, not studio. The camera looks down, so what a flat cell
+# mirrors is the CEILING - and measured across Blender's studio
+# lights, studio.exr's brightest ceiling source is 458 while
+# interior.exr's is 35744. Two orders of magnitude, and round: those
+# are the blobs the viewport was showing.
+BOARD_HDRI = "interior.exr"
+BOARD_HDRI_STRENGTH = 1.0
 
 
 def _board_environment():
@@ -3294,7 +3299,33 @@ def _board_environment():
         bpy.utils.system_resource('DATAFILES', path="studiolights/world"),
         BOARD_HDRI)
     environment.image = bpy.data.images.load(path, check_existing=True)
-    links.new(environment.outputs["Color"], background.inputs["Color"])
+
+    # TURNED WITH THE CAMERA, which is the thing the viewport does and
+    # a render does not.
+    #
+    # The reference was a 3D view in Rendered shading with Scene World
+    # off - Cycles shading it, but lit by this same studio HDRI rather
+    # than by the scene. Blender rotates that studio light WITH the
+    # view, so its lamps sit in the same place on the board however
+    # you orbit. A render's world is fixed in world space, so those
+    # lamps land somewhere off frame and the glass mirrors nothing.
+    #
+    # Rotating the environment by the camera's own orientation puts
+    # them back where the preview had them.
+    coords = nodes.new("ShaderNodeTexCoord")
+    mapping = nodes.new("ShaderNodeMapping")
+    camera = bpy.context.scene.camera
+    if camera is not None:
+        mapping.inputs["Rotation"].default_value = camera.rotation_euler
+    links.new(coords.outputs["Generated"], mapping.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], environment.inputs["Vector"])
+    # NEUTRALISED. interior.exr is a warm room and the sheet came back
+    # brown; the board wants the SHAPE of those ceiling fixtures, not
+    # the colour of the lamps in them.
+    grey = nodes.new("ShaderNodeHueSaturation")
+    grey.inputs["Saturation"].default_value = 0.0
+    links.new(environment.outputs["Color"], grey.inputs["Color"])
+    links.new(grey.outputs["Color"], background.inputs["Color"])
     links.new(background.outputs["Background"], output.inputs["Surface"])
     return world
 
