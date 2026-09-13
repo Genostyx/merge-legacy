@@ -3148,7 +3148,9 @@ BOARD_CHAMFER = 0.10
 # How far the studio's lamps are turned down for the board's own pass.
 BOARD_LIGHT_SCALE = 0.35
 # How far back the camera sits, off the view this was framed from.
-BOARD_CAM_REACH = 3.4
+# Long, so the perspective is gentle - a wide lens would splay the
+# outer cells badly. The camera's distance follows from it.
+BOARD_CAM_LENS = 85.0
 
 
 def board_glass_material():
@@ -3267,8 +3269,16 @@ def render_board():
             bpy.data.objects.remove(ob, do_unlink=True)
 
     data = bpy.data.cameras.get("BoardCam") or bpy.data.cameras.new("BoardCam")
-    data.type = 'ORTHO'
-    data.ortho_scale = BOARD_FRAME_CELLS * BOARD_CELL
+    # PERSPECTIVE, matching the view this was framed from.
+    #
+    # It costs the exact grid: under perspective the cells nearest the
+    # camera are drawn larger than the far ones, so the render's
+    # squares no longer map one to one onto the game's cell maths and
+    # drift from it toward the edges. That is the trade for the sheet
+    # reading as a physical thing rather than a diagram.
+    data.type = 'PERSP'
+    data.lens = BOARD_CAM_LENS
+    data.sensor_fit = 'AUTO'
     cam = bpy.data.objects.get("BoardCam")
     if cam is None:
         cam = bpy.data.objects.new("BoardCam", data)
@@ -3280,8 +3290,11 @@ def render_board():
     # at a distance of 3.4, with the lateral offset dropped so the
     # sheet sits in the middle of the frame instead of low and left.
     tilt = math.radians(BOARD_TILT_DEG)
-    cam.location = (0.0, -BOARD_CAM_REACH * math.sin(tilt),
-                    BOARD_CAM_REACH * math.cos(tilt))
+    # DISTANCE DERIVED FROM THE LENS. Under perspective the framing is
+    # set by the two together, not by `ortho_scale` - left at the
+    # ortho camera's 3.4 the board overflowed the frame entirely.
+    reach = (BOARD_FRAME_CELLS * BOARD_CELL) * BOARD_CAM_LENS / 36.0
+    cam.location = (0.0, -reach * math.sin(tilt), reach * math.cos(tilt))
     cam.rotation_euler = (tilt, 0.0, 0.0)
     bpy.context.scene.camera = cam
 
