@@ -3146,7 +3146,11 @@ BOARD_CELL = 0.22
 # How wide the sheet's own edge is chamfered, in cells.
 BOARD_CHAMFER = 0.10
 # How far the studio's lamps are turned down for the board's own pass.
-BOARD_LIGHT_SCALE = 0.35
+# THE STUDIO AT FULL POWER. The board used to be dimmed to fake a
+# dark sheet; it is genuinely transparent now, so the body is dark
+# because you can see through it and the highlights stay as bright as
+# the lamps make them.
+BOARD_LIGHT_SCALE = 1.0
 
 
 def board_glass_material():
@@ -3181,10 +3185,15 @@ def board_glass_material():
             _shader(appended).inputs["Base Color"].default_value = (
                 *(srgb_to_linear((BOARD_GLASS >> shift) & 255)
                   for shift in (16, 8, 0)), 1.0)
-            # Nothing else touched. The board is dimmed by turning the
-            # studio's lamps down for its own pass - see
-            # BOARD_LIGHT_SCALE - rather than by editing the saved
-            # material, so the glass really is the glass.
+            # FULLY TRANSMISSIVE, which the saved copy is not - it
+            # sits at 0.5, half of it still diffuse. Cycles only
+            # writes real per-pixel alpha for a surface that transmits
+            # everything, and that alpha is the whole point here: it
+            # lets the body be see-through while the speculars and the
+            # scored lines stay at full strength. Fading the sprite in
+            # the game instead multiplies both together, which is why
+            # the board kept reading as a dark film.
+            _shader(appended).inputs["Transmission Weight"].default_value = 1.0
             return appended
     glass = tier_material(name, BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
     gemstone(glass, **GLASS_PRESET)
@@ -3255,6 +3264,48 @@ def build_board_slab():
     # being re-derived by hand at every site.
     finish(body, "board-slab", glass, bevel=0.004 * BOARD_CELL)
     return body
+
+
+# How see-through the unlit body is, and how hard the lit parts climb
+# back to solid.
+BOARD_BODY_ALPHA = 0.38
+BOARD_ALPHA_GAIN = 2.2
+
+
+def _glass_alpha_from_light(path: str):
+    """Writes the sheet's alpha from its own brightness.
+
+    WHY THIS IS NOT DONE IN THE GAME. Fading the sprite multiplies the
+    whole image, body and specular together, so the glass only ever
+    gets uniformly fainter - which is what kept it reading as a dark
+    film. Real glass is nearly clear where nothing is happening and
+    fully solid where a highlight is.
+
+    WHY IT IS NOT DONE IN THE RENDER EITHER. Cycles can write true
+    per-pixel alpha for a transmissive surface, but `film_transparent
+    _glass` is a no-op in 5.0.1: the board came back at mean alpha 253
+    with transmission at 1.0, and the same with the coat removed, so
+    it is not the material. Two control renders said so.
+
+    So the alpha is derived here instead - dark stays see-through,
+    bright goes solid - which is the shape the real thing would have
+    had.
+    """
+    image = bpy.data.images.load(path)
+    pixels = [0.0] * (len(image.pixels))
+    image.pixels.foreach_get(pixels)
+    for i in range(0, len(pixels), 4):
+        if pixels[i + 3] <= 0.0:
+            continue
+        luma = (0.2126 * pixels[i] + 0.7152 * pixels[i + 1]
+                + 0.0722 * pixels[i + 2])
+        lit = min(1.0, BOARD_BODY_ALPHA + luma * BOARD_ALPHA_GAIN)
+        pixels[i + 3] = pixels[i + 3] * lit
+    image.pixels.foreach_set(pixels)
+    image.filepath_raw = path
+    image.file_format = 'PNG'
+    image.save()
+    bpy.data.images.remove(image)
 
 
 def render_board():
@@ -3332,12 +3383,24 @@ def render_board():
     configure_render()
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = BOARD_PX
+    # TRANSPARENCY OUT OF THE RENDER, not out of the sprite's alpha.
+    #
+    # Fading the sprite in the game multiplies the whole image - body
+    # and specular together - so the glass could only ever get
+    # uniformly dimmer, which is what made it read as a dark film
+    # rather than as glass. Cycles will write real per-pixel alpha for
+    # a transmissive surface, but only with this on: without it a
+    # transmissive face renders opaque against a transparent film.
+    sc.render.film_transparent = True
+    sc.cycles.film_transparent_glass = True
+    sc.cycles.film_transparent_roughness = 0.2
 
     build_board_slab()
     out_dir = os.path.join(root, "public", "assets", "board")
     os.makedirs(out_dir, exist_ok=True)
     sc.render.filepath = os.path.join(out_dir, "board.png")
     bpy.ops.render.render(write_still=True)
+    _glass_alpha_from_light(sc.render.filepath)
     # LEFT IN THE SCENE, unlike the item families: there is one of it
     # and it is the thing most likely to want adjusting by hand.
     print("rendered board", sc.render.filepath)
