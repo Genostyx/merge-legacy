@@ -390,15 +390,8 @@ export const SOURCE_TEXTURE_PX = potTextureSize(96);
  */
 export const BOARD_ART_FRAME = 9.8;
 export const BOARD_ART_TILT = 3;
-/**
- * How solid the sheet is.
- *
- * The drawn pane sat at 0.95, but it was a flat fill - the render
- * carries its own shading and specular on top, which reads as more
- * substance at the same alpha. Lower, so the room behind shows
- * through as much as it used to.
- */
-export const BOARD_ART_ALPHA = 0.78;
+/** How solid the sheet is. The drawn pane it replaced sat here too. */
+export const BOARD_ART_ALPHA = 0.95;
 
 /**
  * How many source tiers each building family has.
