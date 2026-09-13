@@ -394,6 +394,18 @@ export const BOARD_ART_TILT = 3;
 export const BOARD_ART_ALPHA = 0.87;
 
 /**
+ * A multiply over the board's render, for darkening it without a trip
+ * through Blender.
+ *
+ * A TINT, not alpha: alpha makes the sheet more see-through, which
+ * lightens it over a lit room and fades its highlights along with its
+ * body. A tint scales the colour and leaves the alpha alone, so the
+ * glass keeps its transparency and just gets darker. 0xffffff is the
+ * render untouched; 0xcccccc is 80% of it.
+ */
+export const BOARD_ART_TINT = 0xcccccc;
+
+/**
  * How many source tiers each building family has.
  *
  * Water is a well and is built elsewhere; these three are the modernist

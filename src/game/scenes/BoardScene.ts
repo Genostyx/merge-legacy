@@ -254,6 +254,7 @@ import {
   SAVE_KEY,
   BOARD_ART_ALPHA,
   BOARD_ART_FRAME,
+  BOARD_ART_TINT,
   BOARD_ART_TILT,
   SOURCE_FAMILIES,
   SOURCE_TEXTURE_PX,
@@ -1421,7 +1422,7 @@ export class BoardScene extends Phaser.Scene {
         'board-art'
       ).setDisplaySize(
         frame, frame / Math.cos(Phaser.Math.DegToRad(BOARD_ART_TILT))
-      ).setAlpha(BOARD_ART_ALPHA);
+      ).setAlpha(BOARD_ART_ALPHA).setTint(BOARD_ART_TINT);
     }
 
     // NOTHING DRAWN OVER THE RENDER. The pane, its reflection streak,
