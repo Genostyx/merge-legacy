@@ -4042,13 +4042,16 @@ def render_locked_plate():
     os.makedirs(out_dir, exist_ok=True)
     sc.render.filepath = os.path.join(out_dir, "locked.png")
     bpy.ops.render.render(write_still=True)
-    # THE RIG GOES AWAY AGAIN. `build_lights` only knows about the two
-    # studio lamps, so anything left behind would quietly light every
-    # item rendered after this one in the same session - the kind of
-    # live-scene state that has already cost this project a day of
-    # blaming materials.
-    for lamp in _lock_rig:
-        bpy.data.objects.remove(lamp, do_unlink=True)
+    # THE RIG STAYS IN THE SCENE, deliberately.
+    #
+    # It used to be torn down here, which left anyone opening Blender
+    # afterwards looking at the plate under nothing but the two
+    # studio lamps and a near-black world - unlit chrome, which AgX
+    # lifts to a flat mid grey. It reads as a matte plastic tile at
+    # every angle and it is not what the render produced.
+    #
+    # `build_lights` clears it instead, so the pass every other
+    # family starts with is still clean.
     print("rendered locked plate", sc.render.filepath)
     return sc.render.filepath
 
@@ -5984,6 +5987,15 @@ def build_camera():
 
 
 def build_lights():
+    # ANY LEFTOVER LOCK RIG GOES FIRST. `render_locked_plate` leaves
+    # its cards and lamps in the scene so the result can be looked at
+    # by hand; this is the one place that guarantees they are gone
+    # before anything else is lit by them.
+    for ob in list(bpy.data.objects):
+        if ob.name.startswith(("LockPanel", "LockStrip", "LockCeiling",
+                               "LockDome", "LockWall")):
+            bpy.data.objects.remove(ob, do_unlink=True)
+
     # 450/180 left every tier at roughly 0.4x its own base colour. These sit
     # them at their palette value, which matters because the board shows them
     # against dark glass.
