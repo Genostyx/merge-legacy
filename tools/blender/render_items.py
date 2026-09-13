@@ -3293,8 +3293,8 @@ def render_board():
     # all. These are close and narrow, so each one lands as a band
     # rather than covering the sheet.
     for index, (size, size_y, energy, spot) in enumerate((
-        (5.5, 0.55, 16.0, (-2.5, 3.4, 2.2)),
-        (3.8, 0.42, 20.0, (-1.9, 2.5, 2.2)),
+        (4.6, 0.40, 4.5, (-2.6, 3.5, 2.2)),
+        (3.2, 0.30, 5.5, (-2.0, 2.6, 2.2)),
     )):
         name = "BoardStreak%d" % index
         data = bpy.data.lights.get(name) or bpy.data.lights.new(name, type='AREA')
