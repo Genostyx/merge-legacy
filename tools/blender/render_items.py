@@ -3661,8 +3661,8 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.17
-LOCK_ROUGHNESS = 0.30
+LOCK_HDRI_STRENGTH = 0.10
+LOCK_ROUGHNESS = 0.16
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
 # far above it sits, and how hard it burns.
@@ -3675,9 +3675,36 @@ LOCK_METALLIC = 1.0
 # source overhead is what a photographer puts there for the same
 # reason, and a square one because the plate is square: it mirrors as
 # a sheen the shape of the piece rather than a disc floating on it.
-LOCK_SOFTBOX_SIZE = 1.10
-LOCK_SOFTBOX_Z = 1.40
-LOCK_SOFTBOX_POWER = 2.0
+# A STRIP-LIT BOX, not one soft source.
+#
+# What a metal shows is its surroundings, so an even wash of light
+# gives evenly lit reflections - which is what a matte painted
+# surface looks like, and what this kept coming back as. Product
+# photographers shoot flat metal in front of long STRIP softboxes for
+# exactly this reason: a strip mirrors as a hard-edged bright bar,
+# and bars against dark are what the eye reads as polish.
+#
+# Three sources, each aimed at a different part of the piece:
+#
+#  - the PANEL stands off the top of the frame facing the plate. A
+#    45-degree chamfer turns a ray from this camera through ninety
+#    degrees, so chamfers do not mirror anything overhead at all -
+#    they mirror the HORIZON, which is why they kept going black. The
+#    panel is something at the horizon for the top one to find, and
+#    the bottom one faces the other way and stays dark. That pair is
+#    the whole lit-from-above read.
+#  - the STRIPS hang over the plate and land as bars across the flat
+#    floor and land, which is the 56% of the area that was one dead
+#    value.
+#  - the studio KEY stays for the bolt heads.
+LOCK_PANEL_SIZE = (1.00, 0.50)
+LOCK_PANEL_AT = (0.0, -0.60, 0.12)
+LOCK_PANEL_POWER = 4.0
+LOCK_STRIPS = (
+    # (size x, size y, position, power)
+    ((0.90, 0.035), (0.0, -0.050, 0.45), 0.55),
+    ((0.90, 0.020), (0.0, 0.045, 0.55), 0.22),
+)
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3878,20 +3905,31 @@ def render_locked_plate():
         lamp = bpy.data.objects.get(name)
         if lamp is not None:
             lamp.data.energy *= LOCK_LIGHT_SCALE
-    # AND A SOFTBOX OVER IT - see LOCK_SOFTBOX_POWER.
-    box_data = (bpy.data.lights.get("LockSoftbox")
-                or bpy.data.lights.new("LockSoftbox", type='AREA'))
-    box_data.type = 'AREA'
-    box_data.shape = 'SQUARE'
-    box_data.size = LOCK_SOFTBOX_SIZE
-    box_data.energy = LOCK_SOFTBOX_POWER
-    box = bpy.data.objects.get("LockSoftbox")
-    if box is None:
-        box = bpy.data.objects.new("LockSoftbox", box_data)
-        bpy.context.collection.objects.link(box)
-    box.data = box_data
-    box.location = (0.0, 0.0, LOCK_SOFTBOX_Z)
-    box.rotation_euler = (0.0, 0.0, 0.0)
+    # THE BOX AROUND IT - see LOCK_PANEL_SIZE.
+    def rect(name, size, loc, power, rotation):
+        data = (bpy.data.lights.get(name)
+                or bpy.data.lights.new(name, type='AREA'))
+        data.type = 'AREA'
+        data.shape = 'RECTANGLE'
+        data.size, data.size_y = size
+        data.energy = power
+        ob = bpy.data.objects.get(name)
+        if ob is None:
+            ob = bpy.data.objects.new(name, data)
+            bpy.context.collection.objects.link(ob)
+        ob.data = data
+        ob.location = loc
+        ob.rotation_euler = rotation
+        return ob
+
+    _lock_rig = []
+    # Stood on its edge facing the plate. An area lamp points down its
+    # own -z, so a quarter turn about x aims it at +y.
+    _lock_rig.append(rect("LockPanel", LOCK_PANEL_SIZE, LOCK_PANEL_AT,
+                          LOCK_PANEL_POWER, (math.radians(90), 0.0, 0.0)))
+    for index, (size, loc, power) in enumerate(LOCK_STRIPS):
+        _lock_rig.append(rect("LockStrip%d" % index, size, loc, power,
+                              (0.0, 0.0, 0.0)))
 
     # A ROOM FOR THE STEEL TO MIRROR, replacing the studio's near-black
     # sky - and the reason Metallic 1.0 is usable here at all.
@@ -3911,6 +3949,20 @@ def render_locked_plate():
     for node in world.node_tree.nodes:
         if node.type == 'BACKGROUND':
             node.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
+        # THE ROOM DOES NOT GET SPUN WITH THE CAMERA.
+        #
+        # `_board_environment` turns the environment by the camera's
+        # whole rotation, which is right for the board - it reproduces
+        # what the viewport does. This camera carries an extra 180
+        # degrees about z, put there so the key lamp reads from the
+        # top of the frame, and that took the room round with it: the
+        # HDRI's bright side landed at the BOTTOM, and it beat the
+        # lamp. Measured, the plate's top chamfer came back #797978
+        # against #8b8c8b at the bottom - lit from below, while every
+        # item standing on the board is lit from above.
+        if node.type == 'MAPPING':
+            node.inputs["Rotation"].default_value = (
+                math.radians(BOARD_TILT_DEG), 0.0, 0.0)
     configure_render()
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = LOCK_PX
@@ -3920,14 +3972,13 @@ def render_locked_plate():
     os.makedirs(out_dir, exist_ok=True)
     sc.render.filepath = os.path.join(out_dir, "locked.png")
     bpy.ops.render.render(write_still=True)
-    # THE SOFTBOX GOES AWAY AGAIN. `build_lights` only knows about the
-    # two studio lamps, so a box left in the scene would quietly light
-    # every item rendered after this one in the same session - the
-    # kind of live-scene state that has already cost this project a
-    # day of blaming materials.
-    box = bpy.data.objects.get("LockSoftbox")
-    if box is not None:
-        bpy.data.objects.remove(box, do_unlink=True)
+    # THE RIG GOES AWAY AGAIN. `build_lights` only knows about the two
+    # studio lamps, so anything left behind would quietly light every
+    # item rendered after this one in the same session - the kind of
+    # live-scene state that has already cost this project a day of
+    # blaming materials.
+    for lamp in _lock_rig:
+        bpy.data.objects.remove(lamp, do_unlink=True)
     print("rendered locked plate", sc.render.filepath)
     return sc.render.filepath
 
