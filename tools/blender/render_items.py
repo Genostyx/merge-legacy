@@ -3277,7 +3277,7 @@ def build_board_slab():
 # interior.exr's is 35744. Two orders of magnitude, and round: those
 # are the blobs the viewport was showing.
 BOARD_HDRI = "interior.exr"
-BOARD_HDRI_STRENGTH = 1.0
+BOARD_HDRI_STRENGTH = 0.22
 
 
 def _board_environment():
