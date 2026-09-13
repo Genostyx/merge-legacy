@@ -3131,7 +3131,7 @@ BOARD_TILT_DEG = 3.0
 # The drawn pane's own colour, so the render is as dark and as
 # transparent as the thing it replaced.
 BOARD_GLASS = 0x0f0d0b
-BOARD_SCORE_DEPTH = 0.055
+BOARD_SCORE_DEPTH = 0.032
 BOARD_SCORE_WIDTH = 0.055
 BOARD_THICKNESS = 0.048
 # One cell, in world units.
@@ -3176,9 +3176,20 @@ def board_glass_material():
             # blue the source parts are cut from; a board in it looks
             # like bathroom tile. The roughness, IOR, transmission and
             # coat are the point - the body goes dark.
-            _shader(appended).inputs["Base Color"].default_value = (
+            shader = _shader(appended)
+            shader.inputs["Base Color"].default_value = (
                 *(srgb_to_linear((BOARD_GLASS >> shift) & 255)
                   for shift in (16, 8, 0)), 1.0)
+            # AND IT RETURNS LESS. The studio's lamps are sized for a
+            # thing you could hold; a whole sheet under them came back
+            # as light grey tile, because almost all of that is coat
+            # and specular rather than body. The glass stays glass -
+            # same roughness, IOR and transmission - it just stops
+            # mirroring the lamps quite so hard.
+            if "Coat Weight" in shader.inputs:
+                shader.inputs["Coat Weight"].default_value = 0.18
+            if "Specular IOR Level" in shader.inputs:
+                shader.inputs["Specular IOR Level"].default_value = 0.28
             return appended
     glass = tier_material(name, BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
     gemstone(glass, **GLASS_PRESET)
