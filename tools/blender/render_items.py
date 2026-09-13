@@ -598,83 +598,54 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def brushed(mat, roughness=0.20, strength=0.42, anisotropy=0.8,
-            scale=(1.6, 340.0, 1.6)):
-    """Directional roughness: the thing that makes steel read as steel.
+def brushed(mat, roughness=0.35, spread=0.17, scale=(220.0, 1.4, 1.4)):
+    """Brushed steel, built the way the metal tutorials build it.
 
-    A metal with one flat roughness value has a single round highlight
-    and nothing else, which is what a snooker ball has - so it reads as
-    shiny PLASTIC no matter how high Metallic goes. Real rolled or
-    machined steel is covered in parallel tool marks, and each one
-    smears the highlight along its own direction. That smear is the
-    cue: it is why a stainless panel looks like metal in a photograph
-    even when there is nothing interesting nearby for it to mirror.
+    Three things, and none of them is the environment:
 
-    Built the way `grain` builds timber - noise squashed hard along one
-    axis - but driving ROUGHNESS rather than colour, because a metal
-    has no diffuse colour to vary. The lines run along x, which is the
-    screen horizontal on the plate's own camera.
+    1. ROUGHNESS IN THE MIDDLE, not at zero. Every attempt here
+       chased a mirror, and a mirror on a flat plate seen from
+       straight down can only ever show one patch of whatever is in
+       front of it - which is why a dozen lighting rigs all came back
+       looking the same. Real metal renders sit around 0.35 and get
+       their reflections from surface IMPERFECTIONS instead.
+
+    2. THOSE IMPERFECTIONS DRIVE ROUGHNESS, from a texture rather
+       than a number. Varying how polished the surface is from point
+       to point is what makes light break up across it.
+
+    3. THE BRUSH IS ONE STRETCHED NOISE: object coordinates through a
+       mapping node with the x scale run right up and y left near
+       0.1, so the noise smears into parallel lines. Lines run along
+       x, which is the screen horizontal on this plate's camera.
+
+    Specular is taken to zero as well - on a metal it does nothing
+    but put a rim on the silhouette.
     """
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     shader = _shader(mat)
-    noise = nodes.new("ShaderNodeTexNoise")
-    noise.inputs["Scale"].default_value = 5.0
-    noise.inputs["Detail"].default_value = 8.0
-    links.new(_texture_coords(mat, scale), noise.inputs["Vector"])
+    if "Specular IOR Level" in shader.inputs:
+        shader.inputs["Specular IOR Level"].default_value = 0.0
+
+    brush = nodes.new("ShaderNodeTexNoise")
+    brush.inputs["Scale"].default_value = 6.0
+    brush.inputs["Detail"].default_value = 6.0
+    links.new(_texture_coords(mat, scale), brush.inputs["Vector"])
     ramp = nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].color = (roughness * (1 - strength),) * 3 + (1.0,)
-    ramp.color_ramp.elements[1].color = (
-        min(1.0, roughness * (1 + strength)),) * 3 + (1.0,)
-    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    ramp.color_ramp.elements[0].color = (max(0.0, roughness - spread),) * 3 + (1.0,)
+    ramp.color_ramp.elements[1].color = (min(1.0, roughness + spread),) * 3 + (1.0,)
+    links.new(brush.outputs["Fac"], ramp.inputs["Fac"])
     links.new(ramp.outputs["Color"], shader.inputs["Roughness"])
 
-    # And the same lines as relief, faintly. AgX flattens a pure
-    # roughness variation more than it flattens a change in how much
-    # light a surface catches - the lesson `grain` records - so the
-    # streaks are given a little depth as well.
+    # The same lines as relief. Roughness alone is a shading change
+    # and AgX flattens those; a bump changes how much light a point
+    # actually catches, which survives the curve.
     bump = nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.10
-    links.new(noise.outputs["Fac"], bump.inputs["Height"])
-
-    # WAVINESS, and this is the one that makes an environment show up.
-    #
-    # A flat face under an orthographic camera reflects in ONE
-    # direction at every point on it, so however much is in the room
-    # the whole face samples a single patch of it and comes back as
-    # one tone. Measured twice, on two different environments:
-    # raising either only lifted the darks (p5 127 to 219) while the
-    # median barely moved. Nothing to see, just more light.
-    #
-    # Curvature is what sweeps a room across a surface, and real
-    # rolled sheet is never flat - it has a slow, shallow waviness
-    # that is exactly why a steel panel shimmers instead of sitting
-    # there. Low frequency, tiny amplitude, chained ahead of the
-    # brush so the fine grain rides on top of it.
-    wave = nodes.new("ShaderNodeTexNoise")
-    wave.inputs["Scale"].default_value = 18.0
-    wave.inputs["Detail"].default_value = 1.0
-    links.new(_texture_coords(mat), wave.inputs["Vector"])
-    swell = nodes.new("ShaderNodeBump")
-    swell.inputs["Strength"].default_value = 0.50
-    links.new(wave.outputs["Fac"], swell.inputs["Height"])
-    links.new(swell.outputs["Normal"], bump.inputs["Normal"])
+    bump.inputs["Strength"].default_value = 0.15
+    links.new(brush.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], shader.inputs["Normal"])
-
-    # AND THE REAL THING: Anisotropic, pointed along a UV tangent.
-    #
-    # This was tried once and abandoned after it put a vortex through
-    # the middle of the plate. That was the right symptom and the
-    # wrong conclusion - Principled needs a tangent FIELD to stretch
-    # the highlight along, and Blender's default is RADIAL, which
-    # swirls about the object's origin by construction. A Tangent node
-    # in UV Map mode points it in a straight line instead, which is
-    # what the mesh gets `_flat_uvs` for.
-    if "Anisotropic" in shader.inputs:
-        tangent = nodes.new("ShaderNodeTangent")
-        tangent.direction_type = 'UV_MAP'
-        links.new(tangent.outputs["Tangent"], shader.inputs["Tangent"])
-        shader.inputs["Anisotropic"].default_value = anisotropy
     return mat
+
 
 
 # THE GLASS RECIPE, kept for the glass family.
@@ -3671,82 +3642,34 @@ LOCK_MEASURED = 0xc4c5c4
 # the game multiplies the cell by it, so it is a number both sides
 # have to agree on.
 # How far the studio's lamps are turned down for this pass.
+# MATERIAL PREVIEW'S OWN WORLD, at its own strength.
 #
-# NOT a taste knob - AgX compresses hard at the top, and at full power
-# the whole plate sat inside that shoulder: lit rim #e4e5e6, shadowed
-# rim #cdcfd2, a range of fourteen values across the entire piece. The
-# geometry was doing its job and the view transform was throwing the
-# result away. Pulling the exposure down moves the plate off the
-# shoulder and into the part of the curve that still has slope, which
-# is where its chamfers and its pocket get their contrast back.
-LOCK_LIGHT_SCALE = 0.30
-# How bright the room the plate mirrors is, and how rough its surface.
+# Blender's Material Preview lights with a studiolight world -
+# forest.exr at 1.0, no scene lamps - and the plate looked like metal
+# in it the whole time this was being fought in the render. An
+# outdoor HDRI happens to be the right shape for a piece like this:
+# bright sky overhead, dark ground and trees round the horizon. The
+# flat faces mirror the sky and come back bright, the 45-degree
+# chamfers mirror the horizon and come back dark, and that is the
+# lit-from-above reading for free.
 #
-# A metal is nothing but its reflections, so this is not a background
-# setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.03
-# What the REFLECTIONS see the room at, as opposed to everything
-# else. Split apart because they want opposite things: a room worth
-# mirroring is far brighter than one that should quietly fill
-# shadows, and a single strength can only ever serve one of them.
-LOCK_HDRI_GLOSSY = 0.35
-# STUDIO, NOT INTERIOR - and measured rather than picked.
+# It is desaturated on the way in - the shape of the environment is
+# what is wanted, not the fact that it is green.
 #
-# The board uses interior.exr and there is a note above explaining
-# why, but it is the wrong file for a mirror. Sampled across every
-# world Blender ships, interior's MEDIAN is 0.291: an evenly lit
-# room, so turning it up for reflections only ever filled the
-# shadows - p5 went 144, 169, 185, 197 across a sweep while the
-# median sat still. Nothing to see, just more light.
-#
-# studio.exr has a median of 0.005 and sources to 471. That is a
-# black room with bright panels in it, which is what a lightbox IS,
-# and the only kind of environment a polished surface can show you
-# anything of.
-LOCK_HDRI = "studio.exr"
+# What this replaced: two dimmed studio lamps, a strip-light rig, a
+# box of graded emissive cards, a ray-type split on the background,
+# and a global exposure scale. All of them hand-built attempts at an
+# environment, none of them as good as one that already shipped.
+LOCK_HDRI = "forest.exr"
+LOCK_HDRI_STRENGTH = 1.0
+# Sharp enough to SHOW the environment. At 0.35 the reflection is
+# averaged into a wash and the room disappears back into grey.
 LOCK_ROUGHNESS = 0.12
+# How much of the world's colour survives. 0 is fully neutral steel
+# and throws the environment away with the green; 1 is the forest as
+# Material Preview shows it.
+LOCK_SATURATION = 1.0
 LOCK_METALLIC = 1.0
-# The softbox directly over the plate: its size in world units, how
-# far above it sits, and how hard it burns.
-#
-# Required by Metallic 1.0, not a taste knob. A metal has no diffuse,
-# so a face seen from straight down shows whatever is straight above
-# it - and what is above it here is the ceiling of an interior HDRI,
-# which is dark. At full metal that renders a black tile with chrome
-# along the chamfers, which is exactly what came back. A big square
-# source overhead is what a photographer puts there for the same
-# reason, and a square one because the plate is square: it mirrors as
-# a sheen the shape of the piece rather than a disc floating on it.
-# A STRIP-LIT BOX, not one soft source.
-#
-# What a metal shows is its surroundings, so an even wash of light
-# gives evenly lit reflections - which is what a matte painted
-# surface looks like, and what this kept coming back as. Product
-# photographers shoot flat metal in front of long STRIP softboxes for
-# exactly this reason: a strip mirrors as a hard-edged bright bar,
-# and bars against dark are what the eye reads as polish.
-#
-# Three sources, each aimed at a different part of the piece:
-#
-#  - the PANEL stands off the top of the frame facing the plate. A
-#    45-degree chamfer turns a ray from this camera through ninety
-#    degrees, so chamfers do not mirror anything overhead at all -
-#    they mirror the HORIZON, which is why they kept going black. The
-#    panel is something at the horizon for the top one to find, and
-#    the bottom one faces the other way and stays dark. That pair is
-#    the whole lit-from-above read.
-#  - the STRIPS hang over the plate and land as bars across the flat
-#    floor and land, which is the 56% of the area that was one dead
-#    value.
-#  - the studio KEY stays for the bolt heads.
-LOCK_PANEL_SIZE = (1.00, 0.50)
-LOCK_PANEL_AT = (0.0, -0.60, 0.12)
-LOCK_PANEL_POWER = 0.60
-LOCK_STRIPS = (
-    # (size x, size y, position, power)
-    ((0.90, 0.035), (0.0, -0.050, 0.45), 0.10),
-    ((0.90, 0.020), (0.0, 0.045, 0.55), 0.05),
-)
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3937,102 +3860,53 @@ def render_locked_plate():
     cam.rotation_euler = (tilt, 0.0, math.pi)
     bpy.context.scene.camera = cam
 
-    # THE STUDIO'S LAMPS AT FULL POWER, not the board's dimmed pass.
-    # What this has to sit beside is the items, and they are lit at
-    # full - the board is turned down because dark glass under lamps
-    # sized for a thing you could hold came back as light grey tile,
-    # which is not a problem a steel plate has.
-    build_lights()
-    for name in ("KeyLight", "FillLight"):
-        lamp = bpy.data.objects.get(name)
-        if lamp is not None:
-            lamp.data.energy *= LOCK_LIGHT_SCALE
-    # THE BOX AROUND IT - see LOCK_PANEL_SIZE.
-    def rect(name, size, loc, power, rotation):
-        data = (bpy.data.lights.get(name)
-                or bpy.data.lights.new(name, type='AREA'))
-        data.type = 'AREA'
-        data.shape = 'RECTANGLE'
-        data.size, data.size_y = size
-        data.energy = power
-        ob = bpy.data.objects.get(name)
-        if ob is None:
-            ob = bpy.data.objects.new(name, data)
-            bpy.context.collection.objects.link(ob)
-        ob.data = data
-        ob.location = loc
-        ob.rotation_euler = rotation
-        return ob
-
+    # MATERIAL PREVIEW'S OWN ENVIRONMENT, AND NOTHING ELSE.
+    #
+    # This is what the whole lighting effort should have been. The
+    # plate looked like metal in Material Preview the entire time, and
+    # Material Preview is not doing anything clever - it lights with
+    # one of Blender's studiolight worlds, forest.exr, at strength
+    # 1.0, with no scene lamps at all.
+    #
+    # An outdoor HDRI is the right shape for this piece by accident:
+    # bright sky overhead, dark ground and trees round the horizon. A
+    # flat face seen from above mirrors the sky and comes back bright;
+    # a 45-degree chamfer mirrors the horizon and comes back dark.
+    # That is the lit-from-above reading, for free, out of a real
+    # environment with real structure in it - which is the one thing
+    # every rig built here was missing.
+    #
+    # Everything else is gone: no area lamps, no emissive card box, no
+    # ray-type split, no exposure scaling. They were all attempts to
+    # hand-build what this file already contains.
+    # EVERY LAMP GOES, including any rig left over from an older run
+    # of this same function. `build_lights` used to be what cleared
+    # those and it is no longer called from here - without this the
+    # pass quietly renders under a previous version's lighting, which
+    # it did once already.
+    for lamp in [o for o in bpy.data.objects if o.type == 'LIGHT']:
+        bpy.data.objects.remove(lamp, do_unlink=True)
     _lock_rig = []
-    # Stood on its edge facing the plate. An area lamp points down its
-    # own -z, so a quarter turn about x aims it at +y.
-    _lock_rig.append(rect("LockPanel", LOCK_PANEL_SIZE, LOCK_PANEL_AT,
-                          LOCK_PANEL_POWER, (math.radians(90), 0.0, 0.0)))
-    for index, (size, loc, power) in enumerate(LOCK_STRIPS):
-        _lock_rig.append(rect("LockStrip%d" % index, size, loc, power,
-                              (0.0, 0.0, 0.0)))
 
-    # A ROOM FOR THE STEEL TO MIRROR, replacing the studio's near-black
-    # sky - and the reason Metallic 1.0 is usable here at all.
-    #
-    # A flat face seen from overhead reflects whatever is directly
-    # above it. Under the item studio that is a sky at 0.055, so a
-    # mirror-finish plate returns almost nothing and comes back as a
-    # black square with two lamp dots on it. The same HDRI the board
-    # experimented with puts a ceiling up there instead, and the plate
-    # gets the broad soft gradient across its face that says polished
-    # metal.
-    #
-    # Called after the camera is placed: it turns the environment by
-    # the camera's own rotation, so the ceiling fixtures land in frame
-    # rather than somewhere behind it.
     world = _board_environment()
-    nodes, links = world.node_tree.nodes, world.node_tree.links
-    background = next(n for n in nodes if n.type == 'BACKGROUND')
-    background.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
-    # A SECOND, BRIGHTER COPY OF THE ROOM, FOR REFLECTIONS ONLY.
-    #
-    # A metal shows the room and nothing else, so the room wants to
-    # be bright - but one strength feeds every ray, and turning it up
-    # floods the piece and flattens it. A Light Path node knows which
-    # kind of ray is asking, so glossy rays get the room at
-    # LOCK_HDRI_GLOSSY and the rest keep the dim one. The same split
-    # `build_lights` already uses to give the gems a lit box to
-    # refract without flooding the studio.
-    mirror = nodes.new("ShaderNodeBackground")
-    for link in list(links):
-        if link.to_node is background and link.to_socket.name == "Color":
-            links.new(link.from_socket, mirror.inputs["Color"])
-    mirror.inputs["Strength"].default_value = LOCK_HDRI_GLOSSY
+    nodes = world.node_tree.nodes
     for node in nodes:
+        if node.type == 'BACKGROUND':
+            node.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
         if node.type == 'TEX_ENVIRONMENT':
             node.image = bpy.data.images.load(
                 os.path.join(bpy.utils.system_resource(
                     'DATAFILES', path="studiolights/world"), LOCK_HDRI),
                 check_existing=True)
-    path = nodes.new("ShaderNodeLightPath")
-    mix = nodes.new("ShaderNodeMixShader")
-    links.new(path.outputs["Is Glossy Ray"], mix.inputs["Fac"])
-    links.new(background.outputs["Background"], mix.inputs[1])
-    links.new(mirror.outputs["Background"], mix.inputs[2])
-    links.new(mix.outputs["Shader"],
-              next(n for n in nodes if n.type == 'OUTPUT_WORLD').inputs["Surface"])
-    for node in nodes:
-        # THE ROOM DOES NOT GET SPUN WITH THE CAMERA.
-        #
-        # `_board_environment` turns the environment by the camera's
-        # whole rotation, which is right for the board - it reproduces
-        # what the viewport does. This camera carries an extra 180
-        # degrees about z, put there so the key lamp reads from the
-        # top of the frame, and that took the room round with it: the
-        # HDRI's bright side landed at the BOTTOM, and it beat the
-        # lamp. Measured, the plate's top chamfer came back #797978
-        # against #8b8c8b at the bottom - lit from below, while every
-        # item standing on the board is lit from above.
+        # NOT SPUN WITH THE CAMERA. `_board_environment` turns the
+        # environment by the camera's whole rotation to reproduce what
+        # the viewport does when orbiting; this camera carries an
+        # extra 180 degrees about z, and taking the sky round with it
+        # put the ground overhead.
         if node.type == 'MAPPING':
-            node.inputs["Rotation"].default_value = (
-                math.radians(BOARD_TILT_DEG), 0.0, 0.0)
+            node.inputs["Rotation"].default_value = (0.0, 0.0, 0.0)
+        if node.type == 'HUE_SAT':
+            node.inputs["Saturation"].default_value = LOCK_SATURATION
     configure_render()
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = LOCK_PX
