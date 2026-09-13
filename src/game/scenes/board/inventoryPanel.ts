@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { moveItem, inventoryGesture } from '../../inventory/Inventory';
 import type { BoardScene } from '../BoardScene';
 import { ROWS, familyTierLabel, sourceTierLabel, spawnerPieceLabel, type BoardView } from './config';
 import type { GridPosition } from '../../types';
@@ -512,7 +513,15 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
       hit.on('drag', (pointer: Phaser.Input.Pointer) => {
         // The list already claimed this gesture as a scroll.
         if (gesture === 'scroll') return;
-        if (!wasDragged && Phaser.Math.Distance.Between(pressX, pressY, pointer.worldX, pointer.worldY) <= 6) return;
+        if (!wasDragged) {
+          const intent = inventoryGesture(pointer.worldX - pressX, pointer.worldY - pressY, pointer.wasTouch);
+          if (intent === 'none') return;
+          if (intent === 'scroll') {
+            gesture = 'scroll';
+            setScroll(scrollStart + scrollStartY - pointer.worldY);
+            return;
+          }
+        }
         if (!wasDragged) {
           gesture = 'item';
           wasDragged = true;
@@ -528,13 +537,7 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
           visual.setPosition(cx, cy);
           return;
         }
-        const items = scene.inventory.items;
-        if (target < items.length) {
-          [items[slot], items[target]] = [items[target], items[slot]];
-        } else {
-          const [movedItem] = items.splice(slot, 1);
-          items.splice(Math.min(target, items.length), 0, movedItem);
-        }
+        moveItem(scene.inventory, slot, target);
         scene.saveState();
         reopen();
       });

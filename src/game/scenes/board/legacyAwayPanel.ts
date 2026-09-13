@@ -53,7 +53,7 @@ export function showLegacyAway(scene: BoardScene): void {
   // Never before the machine exists for this player, and never before it
   // has been started - a box reporting nothing is a lie about a feature
   // they have not met.
-  if (!legacyUnlocked(scene.projectStage, PROJECT_STAGES.length)) return;
+  if (!legacyUnlocked(scene.projectStage, PROJECT_STAGES.length, scene.projectStageFurnished(scene.projectStage))) return;
   if (state.gearOneLevel <= 0) return;
 
   const now = Date.now();

@@ -61,7 +61,7 @@ function turnsLabel(gear: number): string {
   // nothing to convert. Everything deeper is quoted in gear one's turns,
   // spelled out, because "729 OF G1" tells a player nothing about why
   // the number is big.
-  if (gear === 0) return 'PROJECT STAGES TURN THIS ONE DIRECTLY';
+  if (gear === 0) return 'TURNS WITH REAL TIME, EVEN WHILE AWAY';
   return `ONE TURN OF THIS = `
     + `${Math.round(gearOneTurnsFor(gear, 1)).toLocaleString()} OF GEAR 1’S`;
 }
@@ -271,7 +271,7 @@ export function openLegacyMachine(scene: BoardScene): void {
       w / 2, barY + 16 * s,
       next
         ? (rph === 0
-          ? 'START IT AND PROJECT STAGES WILL TURN GEAR 1'
+          ? 'BUY THE FIRST UPGRADE TO START GEAR 1'
           : `NEXT REWARD AT GEAR ${focus + 1}’S `
             + `${next.milestone}${next.milestone === 1 ? 'ST' : 'TH'} ROTATION`
             + `  ·  ${Math.round(next.progress * 100)}% THERE`)
@@ -388,7 +388,7 @@ export function openLegacyMachine(scene: BoardScene): void {
 
     content.add(scene.add.text(
       w / 2, h - 16 * s,
-      'FINISH PROJECT STAGES TO TURN GEAR 1',
+      'GEAR 1 RUNS WITH REAL TIME, EVEN WHILE AWAY',
       {
         resolution: textResolution, fontFamily: Theme.fontMono,
         fontSize: `${Math.round(9 * s)}px`, color: hex(Theme.textOnDarkMuted)
@@ -398,6 +398,7 @@ export function openLegacyMachine(scene: BoardScene): void {
 
   const dismiss = (): void => {
     spin?.remove();
+    readout.remove();
     overlay.destroy(true);
     scene.modalOpen = false;
   };
@@ -406,4 +407,19 @@ export function openLegacyMachine(scene: BoardScene): void {
   // button, which is the one control this screen cannot do without.
   overlay.add([bg, art, title, subtitle, close, content]);
   redraw();
+  let lastReadout = '';
+  const readout = scene.time.addEvent({
+    delay: 1_000,
+    loop: true,
+    callback: () => {
+      const next = JSON.stringify([
+        scene.legacyMachine.turns, scene.legacyMachine.claimed,
+        scene.legacyMachine.gearOneLevel, scene.legacyMachine.torqueLevel,
+        scene.economy.coins, scene.economy.gems, scene.energy.current
+      ]);
+      if (next === lastReadout) return;
+      lastReadout = next;
+      redraw();
+    }
+  });
 }

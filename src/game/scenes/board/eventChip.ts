@@ -8,7 +8,7 @@ import { CRATE_DRAWN, crateArt, drawCrate } from '../../objects/TierIcons';
 import { ORDER_CARD_H } from './config';
 import {
   claimMilestone, eventMsRemaining, eventProgress,
-  formatEventCountdown, isMilestoneClaimed, unclaimedMilestones
+  formatEventCountdown, isMilestoneClaimed, unclaimedMilestones, pendingEventRewards
 } from '../../events/TimedEvents';
 import type { TimedEventDef } from '../../events/TimedEvents';
 
@@ -109,17 +109,18 @@ export function refreshEventChip(scene: BoardScene, now = Date.now()): void {
   // SHOWN whether or not it has started for this player. Below the start
   // level the chip is a window onto the feature - what is on, and how
   // long it runs - and nothing accrues behind it.
-  const event = scene.previewEvent();
+  const pending = pendingEventRewards(scene.timedEvents, now);
+  const event = pending ?? scene.previewEvent();
   chip.setVisible(!!event);
   if (!event) return;
-  const started = scene.eventsStarted();
+  const started = !!pending || scene.eventsStarted();
 
   const points = started ? eventProgress(scene.timedEvents, event) : 0;
   scene.eventChipCount?.setText(started
     ? `${points}/${event.goal}`
     : `LVL ${EVENT_START_LEVEL}`);
-  scene.eventChipEnergy?.setText(started ? String(scene.eventBoard.energy) : '-');
-  scene.eventChipClock?.setText(formatEventCountdown(eventMsRemaining(event, now)));
+  scene.eventChipEnergy?.setText(started && !pending ? String(scene.eventBoard.energy) : '-');
+  scene.eventChipClock?.setText(pending ? 'CLAIM' : formatEventCountdown(eventMsRemaining(event, now)));
 
   const owed = started ? unclaimedMilestones(scene.timedEvents, event).length : 0;
   drawChipMeter(scene, event, points, owed);
@@ -197,7 +198,7 @@ export function openEventTrack(scene: BoardScene, overPanel = false): void {
   // is underneath, so a stacked open must not claim it - or closing the track
   // would leave the board beneath it inert.
   if ((scene.modalOpen && !overPanel) || scene.inputLocked) return;
-  const event = scene.currentEvent();
+  const event = (!overPanel ? pendingEventRewards(scene.timedEvents, Date.now()) : null) ?? scene.currentEvent();
   if (!event) return;
   if (!overPanel) scene.modalOpen = true;
   else scene.eventTrackOpen = true;

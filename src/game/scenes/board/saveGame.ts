@@ -1,4 +1,5 @@
 import type { BoardScene } from '../BoardScene';
+import { tryWriteSave } from './SaveStorage';
 import {
   COLS,
   ROWS,
@@ -191,6 +192,9 @@ export function loadOrSeed(scene: BoardScene): void {
       for (const pending of scene.forcedSpawnVault) {
         if (pending.kind === 'spawner') savedDispenserFamilies.add(pending.typeId);
       }
+      for (const item of scene.inventory.items) {
+        if (item?.kind === 'spawner') savedDispenserFamilies.add(item.typeId);
+      }
       if (savedDispenserFamilies.size === 0) savedDispenserFamilies.add(TYPE_ID);
       scene.orderState = normalizeOrderState(
         parsed.orderState ?? parsed.levelState ?? {},
@@ -253,7 +257,9 @@ export function loadOrSeed(scene: BoardScene): void {
 
       // One-time migration from the old off-board source dock. Existing
       // sources become real board pieces instead of disappearing.
-      if (spawnerCount === 0 && parsed.dispenserState) {
+      const hasStoredSource = scene.inventory.items.some((item) => item?.kind === 'spawner')
+        || scene.forcedSpawnVault.some((item) => item.kind === 'spawner');
+      if (spawnerCount === 0 && !hasStoredSource && parsed.dispenserState) {
         const legacyState = normalizeDispenserState(parsed.dispenserState);
         for (const legacy of legacyState.slots) {
           const empty = scene.grid.emptyCells()[0];
@@ -263,10 +269,11 @@ export function loadOrSeed(scene: BoardScene): void {
           spawnerCount++;
         }
       }
-      if (spawnerCount === 0) {
-        const empty = scene.grid.emptyCells()[0] ?? { col: 2, row: 5 };
+      if (spawnerCount === 0 && !hasStoredSource) {
+        const empty = scene.grid.emptyCells()[0];
         const fullStarter = makeDispenser(TYPE_ID, 1, Date.now(), capacityForTier(TYPE_ID, 1));
-        scene.placeSpawner(empty, TYPE_ID, 1, false, { kind: 'spawner', ...fullStarter });
+        if (empty) scene.placeSpawner(empty, TYPE_ID, 1, false, { kind: 'spawner', ...fullStarter });
+        else scene.forcedSpawnVault.push({ kind: 'spawner', typeId: TYPE_ID, tier: 1 });
         spawnerCount++;
       }
 
@@ -359,6 +366,8 @@ export function loadOrSeed(scene: BoardScene): void {
   saveState(scene);
 }
 
+let saveFailureReported = false;
+
 export function saveState(scene: BoardScene): void {
   const payload = {
     boardVersion: 10,
@@ -384,5 +393,10 @@ export function saveState(scene: BoardScene): void {
     ,supplyCooldownUntil: scene.supplyCooldownUntil
     ,supplyCooldownByTier: scene.supplyCooldownByTier
   };
-  localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+  const saved = tryWriteSave(SAVE_KEY, payload);
+  if (!saved && !saveFailureReported) {
+    console.warn('[save] browser storage unavailable; progress is only in memory');
+    scene.refreshActionTray('SAVING UNAVAILABLE\nKEEP THIS PAGE OPEN TO PRESERVE YOUR SESSION');
+  }
+  saveFailureReported = !saved;
 }

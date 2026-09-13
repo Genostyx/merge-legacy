@@ -3406,10 +3406,13 @@ def render_board():
         for node in world.node_tree.nodes:
             if "Strength" in node.inputs:
                 node.inputs["Strength"].default_value *= BOARD_LIGHT_SCALE
-    # THE HDRI GOES ON AFTER THE DIM, so it keeps the strength it is
-    # given - run before it, the same loop scaled it to 0.19 and the
-    # reflections it exists to provide barely showed.
-    _board_environment()
+    # NO HDRI. It gave the sheet real reflections - the ceiling
+    # fixtures of interior.exr, at full white - and those turned out
+    # to compete with the items standing on the board. The dimmed
+    # studio is duller and reads better underneath them.
+    #
+    # `_board_environment` is kept for when that trade is worth
+    # revisiting.
 
     configure_render()
     sc = bpy.context.scene

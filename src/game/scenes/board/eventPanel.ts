@@ -22,7 +22,7 @@ import {
 import {
   EVENT_START_LEVEL,
   addEventProgress, claimMilestone, eventMsRemaining, eventProgress,
-  formatEventCountdown, isMilestoneClaimed
+  formatEventCountdown, isMilestoneClaimed, pendingEventRewards
 } from '../../events/TimedEvents';
 import type { TimedEventDef } from '../../events/TimedEvents';
 
@@ -60,6 +60,7 @@ interface PanelState {
   views: Map<string, TileView | SpawnerView>;
   /** Held while a merge plays, so a second drag cannot start mid-animation. */
   inputLocked: boolean;
+  canAct: () => boolean;
   cellSize: number;
   originX: number;
   originY: number;
@@ -73,6 +74,8 @@ const keyOf = (pos: GridPosition): string => `${pos.col},${pos.row}`;
 
 export function openEventPanel(scene: BoardScene): void {
   if (scene.modalOpen || scene.inputLocked) return;
+  if (pendingEventRewards(scene.timedEvents, Date.now())) { scene.openEventTrack(); return; }
+  scene.settleExpiredEventBoard();
   // TAPPABLE BEFORE IT STARTS, but it does not open the board: a player
   // below the start level is told what an event is and when theirs
   // begins, rather than finding a chip that does nothing.
@@ -88,6 +91,7 @@ export function openEventPanel(scene: BoardScene): void {
   }
   const event = scene.currentEvent();
   if (!event) return;
+  const board = scene.eventBoard;
   scene.modalOpen = true;
 
   // The board is rebuilt from the save every time the panel opens, so the
@@ -137,6 +141,7 @@ export function openEventPanel(scene: BoardScene): void {
   const state: PanelState = {
     overlay, boardLayer, grid, views: new Map(), cellSize, originX, originY,
     inputLocked: false,
+    canAct: () => overlay.active && scene.eventBoard === board && scene.currentEvent()?.id === event.id,
     redraw: () => undefined, refreshChrome: () => undefined, say: () => undefined
   };
 
@@ -207,6 +212,7 @@ export function openEventPanel(scene: BoardScene): void {
   }
 
   const save = (): void => {
+    if (!state.canAct()) return;
     scene.eventBoard.grid = grid.serialize();
     scene.saveState();
   };
@@ -255,15 +261,20 @@ export function openEventPanel(scene: BoardScene): void {
 
   // The countdown runs while the panel is open. Removed on close, or it would
   // keep ticking against destroyed text after the overlay is gone.
-  const ticker = scene.time.addEvent({ delay: 1000, loop: true, callback: () => chrome.tick() });
+  const ticker = scene.time.addEvent({ delay: 1000, loop: true, callback: () => {
+    if (!state.canAct() && !state.inputLocked && !scene.eventTrackOpen) close();
+    else chrome.tick();
+  } });
 
   const close = (): void => {
+    if (!overlay.active || state.inputLocked) return;
     ticker.remove();
     input.detach();
     save();
     scene.eventOverlay = null;
     scene.modalOpen = false;
     overlay.destroy(true);
+    scene.settleExpiredEventBoard();
     scene.refreshEventChip();
     scene.refreshOrderBar();
   };
@@ -346,6 +357,7 @@ function buildChrome(
     layer.add(root);
 
     hit.on('pointerup', () => {
+      if (!state.canAct() || state.inputLocked) return;
       if (isSlotFilled(scene.eventBoard, slot)) return;
       const asking = visibleEventOrders(scene.eventBoard, state.grid)[slot];
       const from = asking ? findEventItem(state.grid, asking) : null;
@@ -746,6 +758,7 @@ function attachPanelInput(
   let active = false;
 
   const down = (pointer: Phaser.Input.Pointer): void => {
+    if (!state.canAct()) return;
     // The board is inert while the milestone track is stacked over it -
     // otherwise a drag would run underneath the panel the player is reading.
     if (scene.eventTrackOpen || state.inputLocked) return;
@@ -763,6 +776,7 @@ function attachPanelInput(
   };
 
   const move = (pointer: Phaser.Input.Pointer): void => {
+    if (!state.canAct()) return;
     if (!dragging) return;
     if (!active) {
       const travelled = Math.hypot(pointer.worldX - startPointer.x, pointer.worldY - startPointer.y);
@@ -781,6 +795,7 @@ function attachPanelInput(
     dragging = null;
     fromCell = null;
     active = false;
+    if (!state.canAct()) return;
     if (!view || !from) return;
     view.setScale(1);
 
@@ -1019,14 +1034,19 @@ async function runEventMerge(
   target: GridPosition,
   tier: number
 ): Promise<void> {
+  if (!state.canAct()) return;
+  const beforeFrom = state.grid.get(from);
+  const beforeTarget = state.grid.get(target);
   const targetView = state.views.get(keyOf(target));
   const world = opts.cellToWorld(target);
   const def = eventTierDef(tier + 1);
   const wasCrusted = targetView instanceof TileView && targetView.locked;
 
   state.inputLocked = true;
+  try {
   view.setScale(1);
   await view.snapTo(world.x, world.y);
+  if (!state.canAct()) return;
 
   state.grid.set(from, null);
   state.views.delete(keyOf(from));
@@ -1036,6 +1056,7 @@ async function runEventMerge(
     targetView instanceof TileView ? targetView.playMergeOutAndDestroy() : Promise.resolve()
   ]);
   state.views.delete(keyOf(target));
+  if (!state.canAct()) return;
 
   burstParticles(scene, world.x, world.y, def?.color ?? EVENT_TOKEN_COLOR, tier + 1);
   shakeForTier(scene, tier + 1);
@@ -1055,6 +1076,19 @@ async function runEventMerge(
   state.inputLocked = false;
   opts.save();
   opts.afterChange();
+  } catch (error) {
+    console.error('[event-merge] interrupted', error);
+    if (state.canAct()) {
+      view.destroy();
+      targetView?.destroy();
+      state.grid.set(from, beforeFrom);
+      state.grid.set(target, beforeTarget);
+      rebuildCells(scene, state, opts, [from, target]);
+      state.say('MERGE INTERRUPTED  ·  TRY AGAIN');
+    }
+  } finally {
+    state.inputLocked = false;
+  }
 }
 
 /**
@@ -1124,6 +1158,7 @@ function tapBooth(
     afterChange: () => void;
   }
 ): void {
+  if (!state.canAct()) return;
   const free = firstFreeCell(state.grid);
   // A full board and an empty pool both stop a tap, and both say so on the
   // booth itself rather than doing nothing - a source that ignores a tap is

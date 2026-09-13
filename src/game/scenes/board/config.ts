@@ -390,15 +390,8 @@ export const SOURCE_TEXTURE_PX = potTextureSize(96);
  */
 export const BOARD_ART_FRAME = 9.8;
 export const BOARD_ART_TILT = 3;
-/**
- * How solid the sheet is drawn.
- *
- * Full. Fading the sprite multiplies the whole image - body and
- * reflections together - so the glass only ever gets uniformly
- * dimmer. Whatever transparency the board wants belongs in the
- * render.
- */
-export const BOARD_ART_ALPHA = 1;
+/** How solid the sheet is drawn. */
+export const BOARD_ART_ALPHA = 0.92;
 
 /**
  * How many source tiers each building family has.

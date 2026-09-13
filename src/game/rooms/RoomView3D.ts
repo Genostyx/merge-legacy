@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { wallOccludes } from './WallCutaway';
 
 /**
  * The living room as real 3D, rendered on its own canvas layered over the
@@ -162,7 +163,8 @@ export class RoomView3D {
   private radius = 5;
   private scopeIndex = 0;
   /** Walls between the camera and the interior, dropped when looking inside. */
-  private nearWalls: THREE.Object3D[] = [];
+  private walls: Array<{ object: THREE.Object3D; axis: 'x' | 'z'; offset: number }> = [];
+  private settleFrame: number | null = null;
   private roof: THREE.Object3D[] = [];
   private target = new THREE.Vector3(0, 0.9, 0);
   private dragging = false;
@@ -293,8 +295,14 @@ export class RoomView3D {
     // Blender tagged every wall piece so the runtime knows which to drop.
     this.root.traverse((obj) => {
       const group = obj.userData?.wallGroup as string | undefined;
-      if (group === 'near') this.nearWalls.push(obj);
-      else if (group === 'roof') this.roof.push(obj);
+      if (group === 'roof') this.roof.push(obj);
+      else if (group === 'near' || group === 'far') {
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const axis = size.x <= size.z ? 'x' : 'z';
+        this.walls.push({ object: obj, axis, offset: center[axis] - this.target[axis] });
+      }
     });
 
     this.setBuilt(this.options.built);
@@ -321,6 +329,7 @@ export class RoomView3D {
    * scrubbing a free zoom, which is what keeps every framing deliberate.
    */
   setScope(index: number): RoomScope {
+    this.cancelSettle();
     this.scopeIndex = THREE.MathUtils.clamp(index, 0, ROOM_SCOPES.length - 1);
     const scope = ROOM_SCOPES[this.scopeIndex];
     this.halfHeight = this.radius * scope.frame;
@@ -329,7 +338,6 @@ export class RoomView3D {
     // "hide the room's walls". It reads the same when a neighbouring building
     // blocks the street later.
     const cutaway = scope.walls === 'cutaway';
-    for (const o of this.nearWalls) o.visible = !cutaway;
     for (const o of this.roof) o.visible = !cutaway;
 
     this.updateFrustum();
@@ -390,6 +398,7 @@ export class RoomView3D {
 
   private bindInput(): void {
     const down = (e: PointerEvent) => {
+      this.cancelSettle();
       this.dragging = true; this.moved = 0;
       this.lastX = e.clientX; this.lastY = e.clientY;
       this.canvas.setPointerCapture(e.pointerId);
@@ -439,6 +448,7 @@ export class RoomView3D {
    * halfway between two.
    */
   orbitBy(dx: number, _dy: number): void {
+    this.cancelSettle();
     // HALF THE OLD RATE, and capped. At 0.008 rad a pixel a flick of the
     // thumb crossed most of a turn, and one stray large delta could spin
     // the room right round between frames.
@@ -449,6 +459,7 @@ export class RoomView3D {
 
   /** Settles onto the nearest quarter turn. */
   settleRotation(): void {
+    this.cancelSettle();
     const quarter = Math.PI / 2;
     // Offset by 45 degrees. Snapping to bare multiples of 90 lands the camera
     // FACE-ON to a wall; the isometric corner views - where two walls recede
@@ -464,9 +475,14 @@ export class RoomView3D {
       const e = 1 - Math.pow(1 - t, 3);
       this.azimuth = from + (to - from) * e;
       this.render();
-      if (t < 1) requestAnimationFrame(step);
+      this.settleFrame = t < 1 ? requestAnimationFrame(step) : null;
     };
     step();
+  }
+
+  private cancelSettle(): void {
+    if (this.settleFrame != null) cancelAnimationFrame(this.settleFrame);
+    this.settleFrame = null;
   }
 
   /** Accumulates wheel/pinch until it crosses a threshold, then steps a scope -
@@ -570,6 +586,10 @@ export class RoomView3D {
    *  the player moves the camera, so an idle panel costs nothing. */
   render(): void {
     if (this.disposed) return;
+    const cutaway = ROOM_SCOPES[this.scopeIndex].walls === 'cutaway';
+    for (const wall of this.walls) {
+      wall.object.visible = !cutaway || !wallOccludes(wall.axis, wall.offset, this.azimuth);
+    }
     const cosE = Math.cos(this.elevation);
     this.camera.position.set(
       this.target.x + Math.sin(this.azimuth) * cosE * this.distance,
@@ -603,6 +623,7 @@ export class RoomView3D {
 
   dispose(): void {
     this.disposed = true;
+    this.cancelSettle();
     for (const flash of this.flashes.values()) cancelAnimationFrame(flash.frame);
     this.flashes.clear();
     this.root?.traverse((obj) => {

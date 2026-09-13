@@ -21,7 +21,7 @@ import {
   refreshEventChip as refreshEventChipExt
 } from './board/eventChip';
 import type { TimedEventDef, TimedEventState } from '../events/TimedEvents';
-import { addEventEnergy, createDefaultEventBoardState } from '../events/EventBoard';
+import { addEventEnergy, createDefaultEventBoardState, alignEventBoard } from '../events/EventBoard';
 import type { EventBoardState } from '../events/EventBoard';
 import { CRUCIBLE_METER_MAX, acceptsItem as crucibleAccepts, feedCrucible, rollCruciblePrize } from '../facility/Crucible';
 import { SHREDDER_METER_MAX, feedShredder, rollShredderPrize, shredderAccepts } from '../facility/Shredder';
@@ -1149,7 +1149,7 @@ export class BoardScene extends Phaser.Scene {
       const h = Math.round(rect.height);
       if (w < 2 || h < 2) return;
       if (Math.abs(w - this.viewW) < 2 && Math.abs(h - this.viewH) < 2) return;
-      this.scale.resize(w, h);
+      this.scale.resize(Math.round(w * renderScale), Math.round(h * renderScale));
       onViewportResize();
     });
     observer.observe(canvasBox);
@@ -1164,7 +1164,7 @@ export class BoardScene extends Phaser.Scene {
       const h = Math.round(rect.height);
       if (w < 2 || h < 2) return;
       if (Math.abs(w - this.viewW) < 2 && Math.abs(h - this.viewH) < 2) return;
-      this.scale.resize(w, h);
+      this.scale.resize(Math.round(w * renderScale), Math.round(h * renderScale));
       this.scene.restart();
     });
 
@@ -1590,6 +1590,8 @@ export class BoardScene extends Phaser.Scene {
         if (dispenser instanceof SpawnerView) {
           syncDispenser(dispenser.spawner, now);
           if (dispenser.spawner.charges <= 0 && msRemaining(dispenser.spawner, now) > 0) {
+            if (this.grid.emptyCells().length === 0) continue;
+            if (dispenser.spawner.typeId !== 'water' && !canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) continue;
             const refillCost = rushCostGems(dispenser.spawner, now);
             if (!spendGems(this.economy, refillCost)) continue;
             refillDispenser(dispenser.spawner);
@@ -1612,13 +1614,10 @@ export class BoardScene extends Phaser.Scene {
           // that could still be run was the one being skipped.
           if (!isWater && !canSpendEnergy(this.energy, ENERGY_COST_PER_COLLECT)) continue;
         } else if (dispenser instanceof ResourceProducerView) {
-          if (this.grid.emptyCells().length === 0) continue;
+          // Manual dispensing sends the drop to the vault on a full board.
         } else {
           const cell = this.grid.get(dispenser.gridPos);
           if (cell?.kind !== 'crate' || !crateReady(cell.readyAt, now)) continue;
-          const next = cell.remaining[0];
-          const needsBoardCell = next?.kind === 'item' || next?.kind === 'spawner-piece';
-          if (needsBoardCell && this.grid.emptyCells().length === 0) continue;
         }
         this.autoDispenserCursor = (index + 1) % dispensers.length;
         if (dispenser instanceof SpawnerView) this.spawnFromSpawner(dispenser);
@@ -1843,7 +1842,7 @@ export class BoardScene extends Phaser.Scene {
       }
     }
     for (const entry of this.inventory.items) {
-      if (entry.kind === 'crate' && !crateReady(entry.readyAt, now)) count++;
+      if (entry?.kind === 'crate' && !crateReady(entry.readyAt, now)) count++;
     }
     return count;
   }
@@ -2102,6 +2101,7 @@ export class BoardScene extends Phaser.Scene {
   }
 
   collectCurrencyItem(view: TileView): void {
+    if (!view.active || this.views.get(this.keyOf(view.gridPos)) !== view) return;
     const payout = currencyPayout(view.typeId, view.tier);
     if (payout <= 0) return;
     const key = this.keyOf(view.gridPos);
@@ -2122,6 +2122,7 @@ export class BoardScene extends Phaser.Scene {
   }
 
   collectFinalWater(view: TileView): void {
+    if (!view.active || this.views.get(this.keyOf(view.gridPos)) !== view) return;
     if (view.typeId !== 'water' || getTierDef('water', view.tier + 1) != null) return;
     const key = this.keyOf(view.gridPos);
     const world = this.cellToWorld(view.gridPos);
@@ -2820,6 +2821,9 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     for (const pending of this.forcedSpawnVault) {
       if (pending.kind === 'spawner' && pending.typeId !== 'water') unlocked.add(pending.typeId);
     }
+    for (const item of this.inventory.items) {
+      if (item?.kind === 'spawner' && item.typeId !== 'water') unlocked.add(item.typeId);
+    }
     return [...unlocked];
   }
 
@@ -2833,6 +2837,9 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     }
     for (const pending of this.forcedSpawnVault) {
       if (pending.kind === 'spawner') owned.add(pending.typeId);
+    }
+    for (const item of this.inventory.items) {
+      if (item?.kind === 'spawner') owned.add(item.typeId);
     }
     return owned.size > 0 ? [...owned] : [TYPE_ID];
   }
@@ -3134,6 +3141,7 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
    * plus a roll for the remainder - an order completion is worth a whole one.
    */
   maybeDropEventToken(chance: number): void {
+    this.settleExpiredEventBoard();
     const event = this.currentEvent();
     if (!event) return;
     let owed = Math.floor(chance);
@@ -3160,6 +3168,8 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
 
   /** Collects a token into the open event's meter. */
   collectEventToken(view: EventTokenView): void {
+    this.settleExpiredEventBoard();
+    if (!view.active || this.views.get(this.keyOf(view.gridPos)) !== view) return;
     // ONE TOKEN, ONE CREDIT. See `EventTokenView.collected` - the tap path
     // awaits a tween before it gets here, so without this a quick double tap
     // is paid twice.
@@ -3203,14 +3213,16 @@ TAP THE EVENT CARD TO SPEND IT`
    * cleared, so it cannot pay twice.
    */
   settleExpiredEventBoard(): void {
-    if (this.currentEvent()) return;
-    const board = this.eventBoard;
-    if (!board.seeded && board.energy <= 0 && board.overflowPaid === 0) return;
-    if (board.energy > 0) {
-      addEnergy(this.energy, board.energy);
+    const event = this.currentEvent();
+    const previous = this.eventBoard;
+    const settled = alignEventBoard(previous, event?.id ?? null);
+    if (settled.board === previous) return;
+    if (previous.eventId && previous.eventId !== event?.id) this.sweepExpiredEventTokens(true);
+    if (settled.refund > 0) {
+      addEnergy(this.energy, settled.refund);
       this.updateEnergyText();
     }
-    this.eventBoard = createDefaultEventBoardState();
+    this.eventBoard = settled.board;
     this.saveState();
   }
 
@@ -3221,8 +3233,8 @@ TAP THE EVENT CARD TO SPEND IT`
    * finished event sits on a cell for ever, uncollectable and unmergeable -
    * the exact failure the Decagon's temporary family had to avoid.
    */
-  sweepExpiredEventTokens(): void {
-    if (this.currentEvent()) return;
+  sweepExpiredEventTokens(force = false): void {
+    if (!force && this.currentEvent()) return;
     let swept = false;
     for (const [key, view] of [...this.views.entries()]) {
       if (!(view instanceof EventTokenView)) continue;
@@ -3662,7 +3674,7 @@ TAP THE EVENT CARD TO SPEND IT`
    * the offline ones do.
    */
   tickLegacyMachine(): void {
-    if (!legacyUnlocked(this.projectStage, PROJECT_STAGES.length)) return;
+    if (!legacyUnlocked(this.projectStage, PROJECT_STAGES.length, this.projectStageFurnished(this.projectStage))) return;
     const produced = advanceLegacyMachine(this.legacyMachine, Date.now());
     if (!produced.length) return;
     for (const entry of produced) {

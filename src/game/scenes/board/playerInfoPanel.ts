@@ -597,7 +597,7 @@ export function openPlayerInfo(scene: BoardScene): void {
   // Its OWN gate, not the project's. They shared `projectUnlocked` at
   // level 3, which put a system paced in days in front of a player still
   // learning the board.
-  const legacyUnlocked = legacyIsUnlocked(scene.projectStage, PROJECT_STAGES.length);
+  const legacyUnlocked = legacyIsUnlocked(scene.projectStage, PROJECT_STAGES.length, scene.projectStageFurnished(scene.projectStage));
   const legacyReady = legacyUnlocked
     && claimableLegacyMilestones(scene.legacyMachine).length > 0;
   const legacyPanel = scene.add.graphics();

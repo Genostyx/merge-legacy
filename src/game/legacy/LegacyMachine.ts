@@ -53,8 +53,8 @@ export type LegacyReward =
  * safely be, and it lands after the player has met the project - the
  * system the machine's fiction sits next to.
  */
-export function legacyUnlocked(projectStage: number, totalStages: number): boolean {
-  return projectStage >= totalStages;
+export function legacyUnlocked(projectStage: number, totalStages: number, furnished = true): boolean {
+  return projectStage >= totalStages && furnished;
 }
 
 /**
@@ -206,6 +206,7 @@ export function syncLegacyGears(state: LegacyMachineState): void {
 /** Gear one's actual rate, in rotations per hour. */
 export function legacyRotationsPerHour(level: number): number {
   if (level <= 0) return 0;
+  if (level >= LEGACY_MAX_LEVEL) return LEGACY_MAX_RPH;
   return Math.min(LEGACY_MAX_RPH,
     Math.round(LEGACY_BASE_RPH * LEGACY_SPEED_STEP ** (level - 1)));
 }
@@ -278,14 +279,15 @@ export function advanceLegacyMachine(
   state: LegacyMachineState, now: number
 ): Array<{ gear: number; milestone: number; reward: LegacyReward }> {
   if (state.gearOneLevel <= 0) {
-    state.lastTickAt = now;
+    state.lastTickAt = Math.max(state.lastTickAt, now);
     return [];
   }
   if (!state.lastTickAt) {
     state.lastTickAt = now;
     return [];
   }
-  const hours = Math.max(0, now - state.lastTickAt) / 3_600_000;
+  if (now <= state.lastTickAt) return [];
+  const hours = (now - state.lastTickAt) / 3_600_000;
   state.lastTickAt = now;
   if (hours <= 0) return [];
   state.turns[0] += legacyRotationsPerHour(state.gearOneLevel) * hours;

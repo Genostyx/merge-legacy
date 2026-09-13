@@ -70,6 +70,7 @@ export function eventPointsForTier(tier: number): number {
 }
 
 export interface EventBoardState {
+  eventId: string | null;
   /**
    * Event energy, bought with main-board play. Uncapped: it is earned rather
    * than regenerated, so a cap would only punish a player for banking taps
@@ -118,7 +119,7 @@ export interface EventBoardState {
 
 export function createDefaultEventBoardState(): EventBoardState {
   return {
-    energy: 0, grid: [], seeded: false, orders: [], orderBags: [], filled: [],
+    eventId: null, energy: 0, grid: [], seeded: false, orders: [], orderBags: [], filled: [],
     seenTier: 0, overflowPaid: 0
   };
 }
@@ -130,11 +131,22 @@ export function createDefaultEventBoardState(): EventBoardState {
  * is temporary, its dimensions are a constant, and a half-repaired grid would
  * put items on cells the player can never reach.
  */
+/** Adopts legacy saves once; subsequent events get a fresh board and an energy refund. */
+export function alignEventBoard(state: EventBoardState, eventId: string | null): { board: EventBoardState; refund: number } {
+  if (eventId && state.eventId === eventId) return { board: state, refund: 0 };
+  if (eventId && state.eventId == null) return { board: { ...state, eventId }, refund: 0 };
+  if (!eventId && state.eventId == null && !state.seeded && state.energy === 0 && state.overflowPaid === 0) {
+    return { board: state, refund: 0 };
+  }
+  return { board: { ...createDefaultEventBoardState(), eventId }, refund: state.energy };
+}
+
 export function normalizeEventBoardState(
   raw: Partial<EventBoardState> | undefined
 ): EventBoardState {
   const state = createDefaultEventBoardState();
   if (!raw) return state;
+  state.eventId = typeof raw.eventId === 'string' ? raw.eventId : null;
 
   if (Number.isFinite(raw.energy)) state.energy = Math.max(0, Math.floor(raw.energy as number));
   if (Array.isArray(raw.orderBags)) {

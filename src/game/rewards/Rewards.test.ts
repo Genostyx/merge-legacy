@@ -349,6 +349,15 @@ describe('crate loot', () => {
 });
 
 describe('save handling', () => {
+  it('does not replay daily rewards after a clock rewind', () => {
+    const state = createDefaultRewardsState();
+    const now = Date.UTC(2026, 8, 12, 12);
+    expect(claimDaily(state, now)).not.toBeNull();
+    expect(dailyAvailable(state, now - 86_400_000)).toBe(false);
+    expect(claimDaily(state, now - 86_400_000)).toBeNull();
+    expect(claimDaily(state, now)).toBeNull();
+    expect(claimDaily(state, now + 86_400_000)).not.toBeNull();
+  });
   it('defaults a missing or malformed save', () => {
     expect(normalizeRewardsState(undefined)).toEqual(createDefaultRewardsState());
     const junk = normalizeRewardsState({ meterCollects: NaN, dailyStreak: -4 } as never);

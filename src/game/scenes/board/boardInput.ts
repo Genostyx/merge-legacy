@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { withInputRecovery } from './ActionRecovery';
 import type { BoardScene } from '../BoardScene';
 import {
   DRAG_START_PX,
@@ -138,6 +139,18 @@ export function onPointerMove(scene: BoardScene, pointer: Phaser.Input.Pointer):
 }
 
 export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Pointer): Promise<void> {
+  if (scene.inputLocked) return;
+  await withInputRecovery(
+    (setLocked) => finishPointerUp(scene, pointer, setLocked),
+    (locked) => { scene.inputLocked = locked; },
+    (error) => {
+      console.error('[board-input] action interrupted', error);
+      scene.refreshActionTray('ACTION INTERRUPTED  ·  TRY AGAIN');
+    }
+  );
+}
+
+async function finishPointerUp(scene: BoardScene, pointer: Phaser.Input.Pointer, setLocked: (locked: boolean) => void): Promise<void> {
   // An order card only submits on a TAP. Without this, flicking the bar
   // sideways to reach a later order would fire whichever card the flick
   // happened to start on - the same rule the shop's scrolling list uses.
@@ -270,7 +283,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     const nextDef = getTierDef(view.typeId, view.tier + 1);
     if (!nextDef) return;
     const unlockedItem = targetView.locked;
-    scene.inputLocked = true;
+    setLocked(true);
     const worldTarget = scene.cellToWorld(targetCell);
     view.setScale(1);
     await view.snapTo(worldTarget.x, worldTarget.y);
@@ -299,7 +312,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     const automaticLevelRewards = levelAfter > levelBefore ? scene.autoDeliverLevelRewards() : [];
     scene.updateCurrencyText();
     scene.updateLevelBadge();
-    scene.inputLocked = false;
+    setLocked(false);
     scene.saveState();
     scene.refreshOrderBar();
     scene.checkDeadlock();
@@ -316,7 +329,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
   }
 
   if (view instanceof SpawnerPieceView && targetView instanceof SpawnerPieceView && canMergeViews(scene, view, targetView)) {
-    scene.inputLocked = true;
+    setLocked(true);
     const worldTarget = scene.cellToWorld(targetCell);
     view.setScale(1);
     await view.snapTo(worldTarget.x, worldTarget.y);
@@ -346,7 +359,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     } else {
       scene.placeSpawnerPiece(targetCell, view.typeId, view.tier + 1, true);
     }
-    scene.inputLocked = false;
+    setLocked(false);
     scene.saveState();
     scene.tryDeliverMeterGold();
     scene.refreshOrderBar();
@@ -356,7 +369,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
   }
 
   if (view instanceof SpawnerView && targetView instanceof SpawnerView && canMergeViews(scene, view, targetView)) {
-    scene.inputLocked = true;
+    setLocked(true);
     const worldTarget = scene.cellToWorld(targetCell);
     view.setScale(1);
     await view.snapTo(worldTarget.x, worldTarget.y);
@@ -372,7 +385,7 @@ export async function onPointerUp(scene: BoardScene, pointer: Phaser.Input.Point
     const color = getTierDef(typeId, Math.min(nextTier, 9))?.color ?? Theme.accentAmber;
     burstParticles(scene, worldTarget.x, worldTarget.y, color, nextTier);
     scene.placeSpawner(targetCell, typeId, nextTier, true, { kind: 'spawner', ...mergedSpawner });
-    scene.inputLocked = false;
+    setLocked(false);
     scene.saveState();
     scene.tryDeliverMeterGold();
     scene.refreshActionTray(

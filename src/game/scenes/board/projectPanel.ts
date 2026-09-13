@@ -431,7 +431,12 @@ export function openProject(scene: BoardScene): void {
     built: scene.builtPieces,
     onSelect: showInspect
   });
-  void scene.roomView.load('rooms/living-room.glb');
+  const loadingRoom = scene.roomView;
+  void loadingRoom.load('rooms/living-room.glb').catch((error) => {
+    if (scene.roomView !== loadingRoom || scene.projectOverlay !== overlay || !overlay.active) return;
+    console.warn('[room] load failed', error);
+    inspect.setText('ROOM COULD NOT LOAD\nCLOSE AND REOPEN TO RETRY').setAlpha(1);
+  });
 
   // Phaser owns input, so the orbit is driven from a Phaser zone rather than
   // from the 3D canvas - which is underneath and never sees a pointer.

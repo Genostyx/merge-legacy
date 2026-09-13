@@ -283,6 +283,12 @@ export function unclaimedMilestones(
       points >= milestone.at && !isMilestoneClaimed(state, event, index));
 }
 
+/** Keeps earned rungs reachable after their playable window closes. */
+export function pendingEventRewards(state: TimedEventState, now: number, events = EVENTS): TimedEventDef | null {
+  return [...events].reverse().find((event) => now >= event.endsAt
+    && unclaimedMilestones(state, event).length > 0) ?? null;
+}
+
 export function isMilestoneClaimed(
   state: TimedEventState, event: TimedEventDef, index: number
 ): boolean {

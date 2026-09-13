@@ -48,7 +48,7 @@ describe('storing and retrieving', () => {
     // Narrowed rather than indexed blind: not every stored kind carries a
     // tier - a Splitter has no fields at all - so the type will not let this
     // reach through without saying which kind it expects.
-    const stored = state.items[0];
+    const stored = state.items[0]!;
     expect(stored.kind).toBe('item');
     if (stored.kind === 'item') expect(stored.tier).toBe(7);
   });
@@ -237,7 +237,7 @@ describe('storing a source', () => {
       slots: 5,
       items: [{ kind: 'spawner', typeId: 'glass', tier: 2 }]
     } as never);
-    const item = state.items[0];
+    const item = state.items[0]!;
     expect(item.kind).toBe('spawner');
     if (item.kind !== 'spawner') return;
     expect(item.charges).toBe(0);

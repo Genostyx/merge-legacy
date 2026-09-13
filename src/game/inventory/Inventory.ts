@@ -40,7 +40,7 @@ export type StoredItem =
 
 export interface InventoryState {
   slots: number;
-  items: StoredItem[];
+  items: Array<StoredItem | null>;
 }
 
 /** Opening slots. Enough to be useful immediately, far too few to hoard with. */
@@ -81,7 +81,8 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
     : INVENTORY_START_SLOTS;
   const items = Array.isArray(raw.items)
     ? raw.items
-        .filter((entry): entry is StoredItem => {
+        .filter((entry): entry is StoredItem | null => {
+          if (entry === null) return true;
           if (!entry || typeof entry !== 'object') return false;
           const e = entry as { kind?: string; typeId?: unknown; tier?: unknown };
           if (e.kind === 'splitter') return true;
@@ -91,7 +92,7 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
           if (e.kind === 'resource-producer') return typeof (entry as { producerId?: unknown }).producerId === 'string' && Number.isFinite((entry as { remaining?: unknown }).remaining);
           return typeof e.typeId === 'string' && Number.isFinite(e.tier);
         })
-        .map((entry) => entry.kind === 'splitter'
+        .map((entry) => entry === null ? null : entry.kind === 'splitter'
           ? { kind: 'splitter' as const }
           : entry.kind === 'facility'
           ? { kind: 'facility' as const, facilityId: entry.facilityId }
@@ -124,11 +125,16 @@ export function normalizeInventory(raw: Partial<InventoryState> | undefined): In
         // Trim rather than drop, in case a save predates a lower cap.
         .slice(0, slots)
     : [];
+  trimEmptyTail(items);
   return { slots, items };
 }
 
+function trimEmptyTail(items: InventoryState['items']): void {
+  while (items.length > 0 && items[items.length - 1] == null) items.pop();
+}
+
 export function freeSlots(state: InventoryState): number {
-  return Math.max(0, state.slots - state.items.length);
+  return Math.max(0, state.slots - state.items.filter((item) => item != null).length);
 }
 
 export function isFull(state: InventoryState): boolean {
@@ -138,14 +144,35 @@ export function isFull(state: InventoryState): boolean {
 /** Puts an item into storage. Returns false when there is no room. */
 export function storeItem(state: InventoryState, item: StoredItem): boolean {
   if (isFull(state)) return false;
-  state.items.push({ ...item });
+  const empty = state.items.findIndex((entry) => entry == null);
+  if (empty >= 0) state.items[empty] = { ...item };
+  else state.items.push({ ...item });
   return true;
 }
 
 /** Removes and returns one stored item, or null if the index is not filled. */
 export function retrieveItem(state: InventoryState, index: number): StoredItem | null {
   if (index < 0 || index >= state.items.length) return null;
-  return state.items.splice(index, 1)[0];
+  const item = state.items[index] ?? null;
+  state.items[index] = null;
+  trimEmptyTail(state.items);
+  return item;
+}
+
+/** Moves to an empty slot or swaps two occupied slots without compacting them. */
+export function moveItem(state: InventoryState, from: number, to: number): boolean {
+  if (!Number.isInteger(from) || !Number.isInteger(to)
+    || from < 0 || to < 0 || from >= state.slots || to >= state.slots
+    || !state.items[from] || from === to) return false;
+  while (state.items.length <= to) state.items.push(null);
+  [state.items[from], state.items[to]] = [state.items[to] ?? null, state.items[from]];
+  trimEmptyTail(state.items);
+  return true;
+}
+
+export function inventoryGesture(dx: number, dy: number, touch: boolean): 'none' | 'scroll' | 'item' {
+  if (Math.hypot(dx, dy) <= 6) return 'none';
+  return touch && Math.abs(dy) > Math.abs(dx) ? 'scroll' : 'item';
 }
 
 export interface SlotPurchase {

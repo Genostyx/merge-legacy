@@ -381,7 +381,7 @@ export function dayIndexFor(now: number): number {
 }
 
 export function dailyAvailable(state: RewardsState, now: number): boolean {
-  return dayIndexFor(now) !== state.lastDailyDay;
+  return dayIndexFor(now) > state.lastDailyDay;
 }
 
 /**
@@ -442,7 +442,7 @@ export function dailyOfferLevel(state: RewardsState, now: number, playerLevel: n
 /** Claims the daily crate, or returns null if today's has already been taken. */
 export function claimDaily(state: RewardsState, now: number, playerLevel = 1): DailyReward | null {
   const today = dayIndexFor(now);
-  if (today === state.lastDailyDay) return null;
+  if (today <= state.lastDailyDay) return null;
   // Priced at the pinned level, so what is handed over is what the panel has
   // been showing - not what the player has levelled up to since.
   const level = dailyOfferLevel(state, now, playerLevel);
