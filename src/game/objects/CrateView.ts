@@ -81,14 +81,7 @@ export class CrateView extends Phaser.GameObjects.Container {
     // above: that number is inflated to compensate for how `drawCrate` scales
     // its box, and feeding it here would throw the shadow most of a cell below
     // the crate.
-    const shadowSize = this.cellSize * 0.9;
-    for (let i = 3; i >= 1; i--) {
-      this.shadow.fillStyle(0x000000, 0.1 * i);
-      this.shadow.fillEllipse(
-        shadowSize * 0.05 * i, shadowSize * 0.3 + shadowSize * 0.03 * i,
-        shadowSize * (0.6 - i * 0.03), shadowSize * 0.16
-      );
-    }
+    // No drop shadow, same as the tiles - see TileView.
     // No correction needed any more: `drawCrate` centres its own drawn box
     // on the origin, projection included. This used to shift left by half the
     // isometric depth, and every other caller had to remember to do the same.

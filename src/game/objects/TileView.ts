@@ -226,6 +226,14 @@ export class TileView extends Phaser.GameObjects.Container {
    */
   private drawContactShadow({ width, centerX, baselineY }: IconFootprint): void {
     this.bg.clear();
+    // NO DROP SHADOW. The board is a sheet of glass with the items
+    // sitting on it, and a soft ellipse under each one read as a
+    // painted smudge on the surface rather than as contact with it.
+    // Kept as a no-op rather than torn out: the footprint maths that
+    // feeds it is what sizes and grounds the icon.
+    void centerX; void baselineY;
+    return;
+    // eslint-disable-next-line no-unreachable
     if (width <= 0) return;
     // Ratios chosen to reproduce the old shadow's weight on a
     // typical-width icon, so this change re-sizes the outliers without

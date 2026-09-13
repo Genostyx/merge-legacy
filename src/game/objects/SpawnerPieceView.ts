@@ -395,11 +395,8 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
 
   private draw(): void {
     const size = this.cellSize * 0.88;
+    // No drop shadow, same as the tiles - see TileView.
     this.shadow.clear();
-    for (let i = 3; i >= 1; i--) {
-      this.shadow.fillStyle(0x000000, 0.08 * i);
-      this.shadow.fillEllipse(size * 0.04 * i, size * 0.29 + size * 0.02 * i, size * (0.56 - i * 0.03), size * 0.12);
-    }
 
     this.art.clear();
     // THE RENDER WHEN IT IS LOADED, the drawing when it is not - the same
