@@ -3117,7 +3117,7 @@ def build_source_building(family: str):
 # to say.
 SPLITTER_STEEL = 0x8e989a
 SPLITTER_HANDLE = 0x9a5fe0
-SPLITTER_OPEN_DEG = 24.0
+SPLITTER_OPEN_DEG = 45.0
 
 
 def _splitter_arm(sign: float):
@@ -3192,7 +3192,19 @@ def build_splitter():
     finish(grips, "splitter-grips", handle, bevel=0.004)
     finish(translate_to(pivot, (0.0, 0.0, -0.026)), "splitter-pivot", steel,
            bevel=0.003)
-    return {1: stack([blades, grips, pivot])}
+    scissors = stack([blades, grips, pivot])
+    # POINTED UP THE SCREEN, like the drawn icon: blades away, handles
+    # toward the viewer, symmetric about the vertical.
+    #
+    # The arms are built along +x. On this camera world (1, -1) is the
+    # axis that projects straight up the frame with no sideways shift,
+    # so the whole pair turns -45 degrees onto it.
+    scissors.rotation_euler = Euler((0.0, 0.0, math.radians(-45.0)))
+    bpy.ops.object.select_all(action='DESELECT')
+    scissors.select_set(True)
+    bpy.context.view_layer.objects.active = scissors
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    return {1: scissors}
 
 
 # ---- the board itself ------------------------------------------------------
