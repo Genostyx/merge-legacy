@@ -3662,6 +3662,11 @@ LOCK_LIGHT_SCALE = 0.30
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
 LOCK_HDRI_STRENGTH = 0.10
+# What the REFLECTIONS see the room at, as opposed to what everything
+# else does. Split apart because they want opposite things: a room
+# worth mirroring is far brighter than a room that should be quietly
+# filling shadows.
+LOCK_HDRI_GLOSSY = 0.85
 LOCK_ROUGHNESS = 0.05
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
@@ -4019,23 +4024,50 @@ def render_locked_plate():
     # the camera's own rotation, so the ceiling fixtures land in frame
     # rather than somewhere behind it.
     world = _board_environment()
-    for node in world.node_tree.nodes:
-        if node.type == 'BACKGROUND':
-            node.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
-        # THE ROOM DOES NOT GET SPUN WITH THE CAMERA.
-        #
-        # `_board_environment` turns the environment by the camera's
-        # whole rotation, which is right for the board - it reproduces
-        # what the viewport does. This camera carries an extra 180
-        # degrees about z, put there so the key lamp reads from the
-        # top of the frame, and that took the room round with it: the
-        # HDRI's bright side landed at the BOTTOM, and it beat the
-        # lamp. Measured, the plate's top chamfer came back #797978
-        # against #8b8c8b at the bottom - lit from below, while every
-        # item standing on the board is lit from above.
+    nodes, links = world.node_tree.nodes, world.node_tree.links
+    background = next(n for n in nodes if n.type == 'BACKGROUND')
+    background.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
+    # THE ROOM, TURNED UP FOR REFLECTIONS ONLY.
+    #
+    # A metal shows the room and nothing else, so the room wants to
+    # be bright - but the same setting also feeds every other ray,
+    # and turning it up flooded the piece and flattened it. They are
+    # separable: a Light Path node knows which kind of ray is asking.
+    #
+    # So there are two copies of the background, and `Is Glossy Ray`
+    # picks between them. Reflections get the room at LOCK_HDRI_GLOSSY
+    # and everything else keeps the dim one. The same trick
+    # `build_lights` already uses to give the gems a lit box to
+    # refract without flooding the studio.
+    mirror = nodes.new("ShaderNodeBackground")
+    mirror.inputs["Color"].default_value = background.inputs["Color"].default_value
+    for link in list(links):
+        if link.to_node is background and link.to_socket.name == "Color":
+            links.new(link.from_socket, mirror.inputs["Color"])
+    mirror.inputs["Strength"].default_value = LOCK_HDRI_GLOSSY
+    path = nodes.new("ShaderNodeLightPath")
+    mix = nodes.new("ShaderNodeMixShader")
+    links.new(path.outputs["Is Glossy Ray"], mix.inputs["Fac"])
+    links.new(background.outputs["Background"], mix.inputs[1])
+    links.new(mirror.outputs["Background"], mix.inputs[2])
+    output = next(n for n in nodes if n.type == 'OUTPUT_WORLD')
+    links.new(mix.outputs["Shader"], output.inputs["Surface"])
+
+    # THE ROOM DOES NOT GET SPUN WITH THE CAMERA.
+    #
+    # `_board_environment` turns the environment by the camera's whole
+    # rotation, which is right for the board - it reproduces what the
+    # viewport does. This camera carries an extra 180 degrees about z,
+    # put there so the key lamp reads from the top of the frame, and
+    # that took the room round with it: the HDRI's bright side landed
+    # at the BOTTOM and it beat the lamp. Measured, the plate's top
+    # chamfer came back #797978 against #8b8c8b at the bottom - lit
+    # from below, while every item on the board is lit from above.
+    for node in nodes:
         if node.type == 'MAPPING':
             node.inputs["Rotation"].default_value = (
                 math.radians(BOARD_TILT_DEG), 0.0, 0.0)
+
     configure_render()
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = LOCK_PX
