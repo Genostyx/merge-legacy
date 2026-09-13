@@ -3263,7 +3263,7 @@ def build_board_slab():
 
 # Which of Blender's own studio HDRIs lights the board, and how hard.
 BOARD_HDRI = "studio.exr"
-BOARD_HDRI_STRENGTH = 0.55
+BOARD_HDRI_STRENGTH = 3.0
 
 
 def _board_environment():
