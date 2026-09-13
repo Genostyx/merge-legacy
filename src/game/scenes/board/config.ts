@@ -390,6 +390,8 @@ export const SOURCE_TEXTURE_PX = potTextureSize(96);
  */
 export const BOARD_ART_FRAME = 9.8;
 export const BOARD_ART_TILT = 3;
+/** How solid the sheet is. The drawn pane it replaced sat at 0.95. */
+export const BOARD_ART_ALPHA = 0.95;
 
 /**
  * How many source tiers each building family has.

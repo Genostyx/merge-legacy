@@ -252,6 +252,7 @@ import {
   ROWS,
   RoomItemDef,
   SAVE_KEY,
+  BOARD_ART_ALPHA,
   BOARD_ART_FRAME,
   BOARD_ART_TILT,
   SOURCE_FAMILIES,
@@ -1405,6 +1406,13 @@ export class BoardScene extends Phaser.Scene {
     // render is one cell on screen, and stretched back by the cosine
     // of the tilt - the camera looks at the sheet slightly from the
     // front, which foreshortens it.
+    //
+    // AND IT IS TRANSLUCENT, as the drawn pane was: the room behind
+    // shows faintly through the glass instead of being hidden by an
+    // opaque panel. Done here rather than in the render because a
+    // transmissive sheet over a transparent film has nothing behind it
+    // to transmit - it comes back black, with the sun refracting into
+    // a caustic at every groove crossing.
     if (this.textures.exists('board-art')) {
       const frame = BOARD_ART_FRAME * this.cellSize;
       this.boardSurface = this.add.image(
@@ -1412,7 +1420,8 @@ export class BoardScene extends Phaser.Scene {
         this.boardOriginY + (ROWS * this.cellSize) / 2,
         'board-art'
       ).setDisplaySize(
-        frame, frame / Math.cos(Phaser.Math.DegToRad(BOARD_ART_TILT)));
+        frame, frame / Math.cos(Phaser.Math.DegToRad(BOARD_ART_TILT))
+      ).setAlpha(BOARD_ART_ALPHA);
     }
 
     // NOTHING DRAWN OVER THE RENDER. The pane, its reflection streak,
