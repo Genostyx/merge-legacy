@@ -598,6 +598,54 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
+def brushed(mat, roughness=0.20, strength=0.55, scale=(1.6, 340.0, 1.6)):
+    """Directional roughness: the thing that makes steel read as steel.
+
+    A metal with one flat roughness value has a single round highlight
+    and nothing else, which is what a snooker ball has - so it reads as
+    shiny PLASTIC no matter how high Metallic goes. Real rolled or
+    machined steel is covered in parallel tool marks, and each one
+    smears the highlight along its own direction. That smear is the
+    cue: it is why a stainless panel looks like metal in a photograph
+    even when there is nothing interesting nearby for it to mirror.
+
+    Built the way `grain` builds timber - noise squashed hard along one
+    axis - but driving ROUGHNESS rather than colour, because a metal
+    has no diffuse colour to vary. The lines run along x, which is the
+    screen horizontal on the plate's own camera.
+    """
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    shader = _shader(mat)
+    noise = nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 5.0
+    noise.inputs["Detail"].default_value = 8.0
+    links.new(_texture_coords(mat, scale), noise.inputs["Vector"])
+    ramp = nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].color = (roughness * (1 - strength),) * 3 + (1.0,)
+    ramp.color_ramp.elements[1].color = (
+        min(1.0, roughness * (1 + strength)),) * 3 + (1.0,)
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    links.new(ramp.outputs["Color"], shader.inputs["Roughness"])
+
+    # And the same lines as relief, faintly. AgX flattens a pure
+    # roughness variation more than it flattens a change in how much
+    # light a surface catches - the lesson `grain` records - so the
+    # streaks are given a little depth as well.
+    bump = nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.10
+    links.new(noise.outputs["Fac"], bump.inputs["Height"])
+    links.new(bump.outputs["Normal"], shader.inputs["Normal"])
+
+    # NO Anisotropic input, however much it sounds like the right one.
+    # Principled needs a tangent field to stretch the highlight ALONG,
+    # and with no UVs on the mesh it falls back to a radial one - so
+    # the smear circles the object's origin and puts a visible vortex
+    # at the middle of the plate, which is exactly where the price is
+    # drawn. The stretched noise already does the job the setting was
+    # for.
+    return mat
+
+
 # THE GLASS RECIPE, kept for the glass family.
 #
 # These settings were built for mineral tiers 7-9 and are wrong there - they
@@ -3588,6 +3636,12 @@ LOCK_MEASURED = 0xaeb7bb
 # shoulder and into the part of the curve that still has slope, which
 # is where its chamfers and its pocket get their contrast back.
 LOCK_LIGHT_SCALE = 0.40
+# How bright the room the plate mirrors is, and how rough its surface.
+#
+# A metal is nothing but its reflections, so this is not a background
+# setting - it is most of the plate's appearance.
+LOCK_HDRI_STRENGTH = 0.55
+LOCK_ROUGHNESS = 0.20
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3669,12 +3723,22 @@ def build_locked_plate():
 
     steel = tier_material("locked-steel", LOCK_STEEL, LOCK_MEASURED,
                           max_gain=1.0)
-    # Held at 0.55, the same place every other metal in this file sits.
-    # The studio is deliberately dim and a fully metallic surface has
-    # no diffuse term to fall back on, so it renders black.
-    _shader(steel).inputs["Metallic"].default_value = 0.55
-    _shader(steel).inputs["Roughness"].default_value = 0.26
-    polished(steel, coat_roughness=0.06)
+    # FULLY METALLIC, AND NO COAT.
+    #
+    # Both of the things that were keeping this from reading as metal.
+    # Half-metallic leaves a diffuse term underneath, and diffuse is
+    # what a painted surface has; the coat then puts a white dielectric
+    # sheen over the top, which is lacquer. Together they are a
+    # description of plastic, and that is what came back.
+    #
+    # Metal has no diffuse at all - everything you see on it is a
+    # reflection - so it can only be made to work by giving it
+    # something worth reflecting. See `_board_environment` in
+    # `render_locked_plate`: that is the other half of this change, and
+    # without it Metallic 1.0 renders black, which is what happened the
+    # last time it was tried.
+    _shader(steel).inputs["Metallic"].default_value = 1.0
+    brushed(steel, roughness=LOCK_ROUGHNESS)
 
     plate = stack([body] + bolts)
     finish(plate, "locked-plate", steel, bevel=0.006 * cell)
@@ -3721,15 +3785,24 @@ def render_locked_plate():
         lamp = bpy.data.objects.get(name)
         if lamp is not None:
             lamp.data.energy *= LOCK_LIGHT_SCALE
-    # The sky comes down with them. Lamp energy does not touch the
-    # world, and a coat mirrors the sky as readily as it mirrors a
-    # lamp - dimming only the lamps leaves the plate propped up on a
-    # floor of reflected background.
-    world = bpy.context.scene.world
-    if world is not None and world.use_nodes:
-        for node in world.node_tree.nodes:
-            if "Strength" in node.inputs:
-                node.inputs["Strength"].default_value *= LOCK_LIGHT_SCALE
+    # A ROOM FOR THE STEEL TO MIRROR, replacing the studio's near-black
+    # sky - and the reason Metallic 1.0 is usable here at all.
+    #
+    # A flat face seen from overhead reflects whatever is directly
+    # above it. Under the item studio that is a sky at 0.055, so a
+    # mirror-finish plate returns almost nothing and comes back as a
+    # black square with two lamp dots on it. The same HDRI the board
+    # experimented with puts a ceiling up there instead, and the plate
+    # gets the broad soft gradient across its face that says polished
+    # metal.
+    #
+    # Called after the camera is placed: it turns the environment by
+    # the camera's own rotation, so the ceiling fixtures land in frame
+    # rather than somewhere behind it.
+    world = _board_environment()
+    for node in world.node_tree.nodes:
+        if node.type == 'BACKGROUND':
+            node.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
     configure_render()
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = LOCK_PX
