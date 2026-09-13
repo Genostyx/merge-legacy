@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { getTierDef } from '../data/chains';
 import { loadedPieceSprite } from './itemSprites';
-import { piecePlacementFor } from './ArtFill';
+import { castShadow, feetOf, piecePlacementFor } from './ArtFill';
 import { Theme, materialLighting, toneForNormal } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
 
@@ -392,6 +392,8 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
 
   /** The rendered part, once its family has one. */
   private sprite: Phaser.GameObjects.Image | null = null;
+  /** Its silhouette, drawn beneath it as a cast shadow. */
+  private cast: Phaser.GameObjects.Image | null = null;
 
   private draw(): void {
     const size = this.cellSize * 0.88;
@@ -413,6 +415,12 @@ export class SpawnerPieceView extends Phaser.GameObjects.Container {
       const { box, offsetY } = piecePlacementFor(this.typeId, this.tier, size);
       this.sprite.setTexture(sprite).setDisplaySize(box, box)
         .setY(offsetY).setVisible(true);
+      // Its own silhouette as its shadow, like the tiles.
+      const key = `piece-${this.typeId}-${this.tier}`;
+      this.cast?.destroy();
+      this.cast = castShadow(this.scene, sprite, key, box,
+        feetOf(key, box, offsetY));
+      this.addAt(this.cast, this.getIndex(this.shadow));
       return;
     }
     this.sprite?.setVisible(false);

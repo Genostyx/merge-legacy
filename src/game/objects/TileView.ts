@@ -8,7 +8,7 @@ import type { IconFootprint } from './TierIcons';
 import { Theme, materialLighting } from '../ui/Theme';
 import type { MaterialLighting } from '../ui/Theme';
 import { loadedItemSprite } from './itemSprites';
-import { itemPlacementFor } from './ArtFill';
+import { castShadow, feetOf, itemPlacementFor } from './ArtFill';
 
 /**
  * A locked tile is drawn as a SILHOUETTE, not as a dimmed version of itself.
@@ -158,7 +158,13 @@ export class TileView extends Phaser.GameObjects.Container {
       art.setDisplaySize(box, box).setY(offsetY);
       if (this.locked) art.setTint(0x555555);
       this.bg.setScale(1).setPosition(0, 0);
-      this.drawContactShadow({ width: size * 0.55, height: size * 0.5, centerX: 0, centerY: 0, baselineY: size * 0.3 });
+      // THE ITEM'S OWN SILHOUETTE AS ITS SHADOW - added first, so it
+      // sits under the art rather than over it.
+      const key = `${this.typeId}-${this.tier}`;
+      const shade = castShadow(this.scene, sprite, key, box,
+        feetOf(key, box, offsetY));
+      this.currencyIcons.push(shade);
+      this.add(shade);
       this.currencyIcons.push(art);
       this.add(art);
       return;

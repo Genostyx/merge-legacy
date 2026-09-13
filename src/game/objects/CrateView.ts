@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GridPosition, TileState } from '../types';
 import { loadedCrateSprite, loadedOpenCrateSprite } from './itemSprites';
 import { CRATE_EXTENT, crateBoxFor, drawCrate } from './TierIcons';
+import { castShadow } from './ArtFill';
 
 /**
  * A crate sitting on the board.
@@ -57,6 +58,8 @@ export class CrateView extends Phaser.GameObjects.Container {
 
   /** The rendered crate, once one exists for this tier. */
   private sprite: Phaser.GameObjects.Image | null = null;
+  /** Its silhouette, drawn beneath it as a cast shadow. */
+  private cast: Phaser.GameObjects.Image | null = null;
   /**
    * Whether the lid is up. Set the first time the crate gives something
    * up and never unset - a chest that shuts itself between taps would
@@ -114,10 +117,17 @@ export class CrateView extends Phaser.GameObjects.Container {
       // ... and lifted by the difference in where each art's feet sit,
       // so the body stays on the same line.
       const feet = this.lidOpen ? CRATE_EXTENT.open.bottom : shut.bottom;
+      const y = (shut.bottom - feet) * box;
       this.sprite.setTexture(sprite)
         .setDisplaySize(box, box)
-        .setY((shut.bottom - feet) * box)
+        .setY(y)
         .setVisible(true);
+      // Its own silhouette as its shadow, like the tiles. Crates are
+      // not in ITEM_EXTENT, so the feet come from CRATE_EXTENT here.
+      this.cast?.destroy();
+      this.cast = castShadow(this.scene, sprite, '', box,
+        y + (feet - 0.5) * box);
+      this.addAt(this.cast, this.getIndex(this.art));
       return;
     }
     this.sprite?.setVisible(false);

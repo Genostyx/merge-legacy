@@ -351,3 +351,56 @@ export function piecePlacementFor(typeId: string, tier: number, cellSize: number
   return itemPlacement(`piece-${typeId}-${tier}`, cellSize, tier,
     PIECE_FAMILIES[typeId] ?? 4);
 }
+
+
+/**
+ * How a board object's cast shadow is shaped.
+ *
+ * The shadow IS the object's own sprite, drawn again underneath it:
+ * tinted black, squashed, and pushed along the light direction. That
+ * makes its outline exactly the object's outline, which is most of
+ * what sells a shadow - a generic ellipse under everything was what
+ * the board had before, and it read as a smudge painted on the glass.
+ *
+ * It is not a true projection: a real one would shear with the
+ * object's height, so a tall narrow piece casts slightly the wrong
+ * shape. At the size these draw, that is not visible.
+ *
+ * Down and to the RIGHT, because everything in this game is lit from
+ * the upper left.
+ */
+const SHADOW_SQUASH = 0.42;
+const SHADOW_SKEW = 0.13;
+const SHADOW_DROP = 0.05;
+const SHADOW_ALPHA = 0.38;
+
+/**
+ * The object's own sprite as its shadow, with its feet on the
+ * object's feet.
+ *
+ * `feetY` is where the art's lowest pixel sits in the view's local
+ * space - the shadow is placed so its own lowest pixel lands there
+ * before the offset, rather than by centring, or a squashed copy
+ * floats up away from the thing casting it.
+ */
+export function castShadow(
+  scene: Phaser.Scene, texture: string, extentKey: string,
+  box: number, feetY: number
+): Phaser.GameObjects.Image {
+  const extent = ITEM_EXTENT[extentKey];
+  const bottom = extent ? extent.bottom : 1;
+  const squashed = box * SHADOW_SQUASH;
+  return scene.add.image(0, 0, texture)
+    .setDisplaySize(box, squashed)
+    .setPosition(
+      box * SHADOW_SKEW,
+      feetY - (bottom - 0.5) * squashed + box * SHADOW_DROP)
+    .setTint(0x000000)
+    .setAlpha(SHADOW_ALPHA);
+}
+
+/** Where an item's art actually meets the board, in local space. */
+export function feetOf(extentKey: string, box: number, offsetY: number): number {
+  const extent = ITEM_EXTENT[extentKey];
+  return offsetY + ((extent ? extent.bottom : 1) - 0.5) * box;
+}
