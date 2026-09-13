@@ -3261,6 +3261,44 @@ def build_board_slab():
     return body
 
 
+# Which of Blender's own studio HDRIs lights the board, and how hard.
+BOARD_HDRI = "studio.exr"
+BOARD_HDRI_STRENGTH = 0.55
+
+
+def _board_environment():
+    """Puts an HDRI behind the board, for the glass to reflect.
+
+    A coat can only mirror what is actually there, and the board pass
+    had two small lamps and a near-black sky - so the sheet came back
+    flat however glossy its material said it was. The viewport looked
+    right because it does not use the scene at all: Material Preview
+    lights with Blender's own studio HDRI, which is a bright
+    environment with big soft sources all round. Those round
+    highlights were that file's lamps.
+
+    So the render borrows the same file.
+    """
+    world = bpy.context.scene.world
+    if world is None:
+        world = bpy.data.worlds.new("BoardWorld")
+        bpy.context.scene.world = world
+    world.use_nodes = True
+    nodes, links = world.node_tree.nodes, world.node_tree.links
+    nodes.clear()
+    output = nodes.new("ShaderNodeOutputWorld")
+    background = nodes.new("ShaderNodeBackground")
+    background.inputs["Strength"].default_value = BOARD_HDRI_STRENGTH
+    environment = nodes.new("ShaderNodeTexEnvironment")
+    path = os.path.join(
+        bpy.utils.system_resource('DATAFILES', path="studiolights/world"),
+        BOARD_HDRI)
+    environment.image = bpy.data.images.load(path, check_existing=True)
+    links.new(environment.outputs["Color"], background.inputs["Color"])
+    links.new(background.outputs["Background"], output.inputs["Surface"])
+    return world
+
+
 def render_board():
     """The board, through its own camera and light."""
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -3328,6 +3366,10 @@ def render_board():
         for node in world.node_tree.nodes:
             if "Strength" in node.inputs:
                 node.inputs["Strength"].default_value *= BOARD_LIGHT_SCALE
+    # THE HDRI GOES ON AFTER THE DIM, so it keeps the strength it is
+    # given - run before it, the same loop scaled it to 0.19 and the
+    # reflections it exists to provide barely showed.
+    _board_environment()
 
     configure_render()
     sc = bpy.context.scene
