@@ -598,7 +598,8 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def brushed(mat, roughness=0.20, strength=0.42, scale=(1.6, 340.0, 1.6)):
+def brushed(mat, roughness=0.20, strength=0.42, anisotropy=0.8,
+            scale=(1.6, 340.0, 1.6)):
     """Directional roughness: the thing that makes steel read as steel.
 
     A metal with one flat roughness value has a single round highlight
@@ -636,13 +637,20 @@ def brushed(mat, roughness=0.20, strength=0.42, scale=(1.6, 340.0, 1.6)):
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], shader.inputs["Normal"])
 
-    # NO Anisotropic input, however much it sounds like the right one.
-    # Principled needs a tangent field to stretch the highlight ALONG,
-    # and with no UVs on the mesh it falls back to a radial one - so
-    # the smear circles the object's origin and puts a visible vortex
-    # at the middle of the plate, which is exactly where the price is
-    # drawn. The stretched noise already does the job the setting was
-    # for.
+    # AND THE REAL THING: Anisotropic, pointed along a UV tangent.
+    #
+    # This was tried once and abandoned after it put a vortex through
+    # the middle of the plate. That was the right symptom and the
+    # wrong conclusion - Principled needs a tangent FIELD to stretch
+    # the highlight along, and Blender's default is RADIAL, which
+    # swirls about the object's origin by construction. A Tangent node
+    # in UV Map mode points it in a straight line instead, which is
+    # what the mesh gets `_flat_uvs` for.
+    if "Anisotropic" in shader.inputs:
+        tangent = nodes.new("ShaderNodeTangent")
+        tangent.direction_type = 'UV_MAP'
+        links.new(tangent.outputs["Tangent"], shader.inputs["Tangent"])
+        shader.inputs["Anisotropic"].default_value = anisotropy
     return mat
 
 
@@ -3607,7 +3615,14 @@ def render_board():
 # Everything here is in CELLS, scaled by BOARD_CELL at build time, so
 # the numbers can be read straight against the drawn version's own
 # fractions of `size`.
-LOCK_STEEL = 0x7e878b
+# A METAL'S BASE COLOUR IS ITS MEASURED REFLECTANCE, not a tint picked
+# to match the drawn art. Real metals sit between 180 and 250 in sRGB
+# - iron (243, 241, 233), chrome (196, 197, 196), titanium (178, 169,
+# 162) - because a conductor reflects almost everything that hits it.
+# This was at (126, 135, 139), darker than any metal that exists, and
+# a metal darker than it can be is exactly what reads as painted
+# plastic. Brushed stainless, so chrome's value.
+LOCK_STEEL = 0xc4c5c4
 LOCK_HEIGHT = 0.22
 # How far the outer chamfer reaches in from the edge. Wide, because
 # from overhead the chamfer is the only part of the plate's edge that
@@ -3623,7 +3638,11 @@ LOCK_BOLT_R = 0.032
 LOCK_BOLT_H = 0.030
 # What the last render measured on the plate's own face, so
 # `tier_material` can scale the base colour back onto LOCK_STEEL.
-LOCK_MEASURED = 0x7e878b
+# Equal to LOCK_STEEL on purpose, so `tier_material`'s gain is 1.0
+# and the base colour stays the physical value above. Calibrating a
+# METAL against its own render is backwards - what it comes out at is
+# a property of the room it is mirroring, not of the surface.
+LOCK_MEASURED = 0xc4c5c4
 # The frame, in cells. Bigger than the plate so the chamfer highlight
 # has somewhere to land instead of being clipped at the image edge;
 # the game multiplies the cell by it, so it is a number both sides
@@ -3642,8 +3661,8 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.45
-LOCK_ROUGHNESS = 0.28
+LOCK_HDRI_STRENGTH = 0.22
+LOCK_ROUGHNESS = 0.30
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
 # far above it sits, and how hard it burns.
@@ -3658,7 +3677,7 @@ LOCK_METALLIC = 1.0
 # a sheen the shape of the piece rather than a disc floating on it.
 LOCK_SOFTBOX_SIZE = 1.10
 LOCK_SOFTBOX_Z = 1.40
-LOCK_SOFTBOX_POWER = 12.0
+LOCK_SOFTBOX_POWER = 6.0
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3735,6 +3754,24 @@ def _lock_frustum(bottom: float, top: float, depth: float, at: float):
     return ob
 
 
+def _flat_uvs(ob):
+    """A planar unwrap, so the anisotropy has a direction to run in.
+
+    Every face is projected along whichever axis it most faces, which
+    on a plate means the top surfaces get U along world x - a single
+    straight direction across the whole face, where the default radial
+    tangent would swirl.
+    """
+    bpy.ops.object.select_all(action='DESELECT')
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.cube_project(cube_size=1.0)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return ob
+
+
 def _lock_bolt(cell: float):
     """One pan-head fastener, sitting proud of the plate's face."""
     r = LOCK_BOLT_R * cell
@@ -3796,7 +3833,7 @@ def build_locked_plate():
     _shader(steel).inputs["Metallic"].default_value = LOCK_METALLIC
     brushed(steel, roughness=LOCK_ROUGHNESS)
 
-    plate = stack([body] + bolts)
+    plate = _flat_uvs(stack([body] + bolts))
     finish(plate, "locked-plate", steel, bevel=0.006 * cell)
     return plate
 
