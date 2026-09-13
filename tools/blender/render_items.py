@@ -598,7 +598,7 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def brushed(mat, roughness=0.20, strength=0.42, anisotropy=0.8,
+def brushed(mat, roughness=0.20, strength=0.22, anisotropy=0.8,
             scale=(1.6, 340.0, 1.6)):
     """Directional roughness: the thing that makes steel read as steel.
 
@@ -3661,8 +3661,8 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.10
-LOCK_ROUGHNESS = 0.16
+LOCK_HDRI_STRENGTH = 0.02
+LOCK_ROUGHNESS = 0.05
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
 # far above it sits, and how hard it burns.
@@ -3675,36 +3675,55 @@ LOCK_METALLIC = 1.0
 # source overhead is what a photographer puts there for the same
 # reason, and a square one because the plate is square: it mirrors as
 # a sheen the shape of the piece rather than a disc floating on it.
-# A STRIP-LIT BOX, not one soft source.
+# A STUDIO BOX, built out of emissive cards.
 #
-# What a metal shows is its surroundings, so an even wash of light
-# gives evenly lit reflections - which is what a matte painted
-# surface looks like, and what this kept coming back as. Product
-# photographers shoot flat metal in front of long STRIP softboxes for
-# exactly this reason: a strip mirrors as a hard-edged bright bar,
-# and bars against dark are what the eye reads as polish.
+# A metal shows you its surroundings and nothing else, so the
+# surroundings are the material. Area lamps cannot be the whole of
+# them: a lamp is a featureless rectangle, so however it is placed it
+# reflects as a flat bright slab on flat dark, which is maximum
+# contrast carrying no information. That is what "nothing is actually
+# reflecting in the metal" looks like.
 #
-# Three sources, each aimed at a different part of the piece:
+# So the plate is put inside a box of emissive planes, hidden from
+# the camera by Cycles' ray visibility - the standard product-shot
+# rig. The cards are GRADED rather than flat, and the grading is the
+# whole point: a falloff across a card is a falloff across the
+# reflection, which is content.
 #
-#  - the PANEL stands off the top of the frame facing the plate. A
-#    45-degree chamfer turns a ray from this camera through ninety
-#    degrees, so chamfers do not mirror anything overhead at all -
-#    they mirror the HORIZON, which is why they kept going black. The
-#    panel is something at the horizon for the top one to find, and
-#    the bottom one faces the other way and stays dark. That pair is
-#    the whole lit-from-above read.
-#  - the STRIPS hang over the plate and land as bars across the flat
-#    floor and land, which is the 56% of the area that was one dead
-#    value.
-#  - the studio KEY stays for the bolt heads.
-LOCK_PANEL_SIZE = (1.00, 0.50)
-LOCK_PANEL_AT = (0.0, -0.60, 0.12)
-LOCK_PANEL_POWER = 4.0
-LOCK_STRIPS = (
-    # (size x, size y, position, power)
-    ((0.90, 0.035), (0.0, -0.050, 0.45), 0.55),
-    ((0.90, 0.020), (0.0, 0.045, 0.55), 0.22),
-)
+# Shaped for this camera specifically. A flat face seen from straight
+# down mirrors what is straight above it, so the floor and the land
+# get the CEILING card. A 45-degree chamfer turns the same ray
+# through ninety degrees, so it mirrors the HORIZON and never sees
+# the ceiling at all - the chamfers get the WALL cards. Bright wall
+# at the top of frame, dark at the bottom, which is the lit-from-
+# above read the drawn plate had.
+LOCK_BOX = 1.60
+LOCK_BOX_Z = 0.46
+LOCK_BOX_DROP = 0.60
+# THE CEILING CARD IS THE FLOOR'S IMAGE, ONE TO ONE.
+#
+# Under an orthographic camera pointed straight down, a flat mirror
+# reflects whatever is directly above each of its points - so the
+# card's pattern lands on the plate at the card's own size, in plan,
+# unchanged. Which makes this the most direct control in the whole
+# rig and also the thing that broke the first attempt: a card 1.6
+# across over a plate 0.22 across shows the plate the middle 14% of
+# its gradient, and 14% of a gradient is a constant. The card has to
+# be roughly the size of the piece.
+LOCK_CEILING_SPAN = 0.34
+LOCK_CEILING_Z = 0.30
+LOCK_CEILING_PEAK = 1.60
+# Stops on the softbox's radial falloff, from its rim inwards. A
+# spherical gradient over centred 0..1 coordinates reads about 0.3 at
+# the card's corners and 1.0 at its middle.
+LOCK_CEILING_RAMP = ((0.00, 0.00), (0.34, 0.04), (0.62, 0.34),
+                     (0.86, 0.88), (1.00, 1.00))
+# And a big dim one well above it, for fill - the small card lights
+# almost nothing on its own.
+LOCK_DOME_Z = 0.95
+LOCK_DOME_STRENGTH = 0.05
+# The four walls, in the order -y (top of frame), +y, -x, +x.
+LOCK_WALLS = (5.00, 0.06, 0.70, 0.70)
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3905,31 +3924,80 @@ def render_locked_plate():
         lamp = bpy.data.objects.get(name)
         if lamp is not None:
             lamp.data.energy *= LOCK_LIGHT_SCALE
-    # THE BOX AROUND IT - see LOCK_PANEL_SIZE.
-    def rect(name, size, loc, power, rotation):
-        data = (bpy.data.lights.get(name)
-                or bpy.data.lights.new(name, type='AREA'))
-        data.type = 'AREA'
-        data.shape = 'RECTANGLE'
-        data.size, data.size_y = size
-        data.energy = power
-        ob = bpy.data.objects.get(name)
-        if ob is None:
-            ob = bpy.data.objects.new(name, data)
-            bpy.context.collection.objects.link(ob)
-        ob.data = data
-        ob.location = loc
+    # THE BOX AROUND IT - see LOCK_BOX.
+    def card(name, width, height, loc, rotation, strength, graded=False):
+        bpy.ops.mesh.primitive_plane_add(size=1.0, location=loc)
+        ob = bpy.context.active_object
+        ob.name = name
+        ob.scale = (width, height, 1.0)
         ob.rotation_euler = rotation
+        # HIDDEN FROM THE CAMERA, seen by everything else. Without
+        # this the cards are simply objects in the shot.
+        ob.visible_camera = False
+        ob.visible_shadow = False
+        mat = bpy.data.materials.get(name)
+        if mat is not None:
+            bpy.data.materials.remove(mat)
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        nodes.clear()
+        out = nodes.new("ShaderNodeOutputMaterial")
+        emit = nodes.new("ShaderNodeEmission")
+        emit.inputs["Strength"].default_value = strength
+        if graded:
+            # A RADIAL FALLOFF, hot in the middle and near nothing at
+            # the edges - which is how a real softbox is built and the
+            # thing every linear ramp here was missing. A flat card
+            # reflects as a flat patch; a card with a hot spot
+            # reflects as a highlight, and a highlight is what reads
+            # as polish. Edges fading rather than cutting is the same
+            # trick: a hard-edged card leaves a hard-edged rectangle
+            # sitting on the metal.
+            #
+            # Mapping is used only to TRANSLATE here. Generated
+            # coordinates run 0..1, so the centre has to be brought to
+            # the origin before a spherical gradient means anything -
+            # and translating them is safe where rotating them is not.
+            coords = nodes.new("ShaderNodeTexCoord")
+            mapping = nodes.new("ShaderNodeMapping")
+            mapping.inputs["Location"].default_value = (-0.5, -0.5, -0.5)
+            links.new(coords.outputs["Generated"], mapping.inputs["Vector"])
+            gradient = nodes.new("ShaderNodeTexGradient")
+            gradient.gradient_type = 'SPHERICAL'
+            links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
+            ramp = nodes.new("ShaderNodeValToRGB")
+            stops = ramp.color_ramp.elements
+            for index, (position, value) in enumerate(LOCK_CEILING_RAMP):
+                element = stops[index] if index < len(stops) else stops.new(position)
+                element.position = position
+                element.color = (value, value, value, 1.0)
+            links.new(gradient.outputs["Fac"], ramp.inputs["Fac"])
+            links.new(ramp.outputs["Color"], emit.inputs["Color"])
+        links.new(emit.outputs["Emission"], out.inputs["Surface"])
+        ob.data.materials.append(mat)
         return ob
 
-    _lock_rig = []
-    # Stood on its edge facing the plate. An area lamp points down its
-    # own -z, so a quarter turn about x aims it at +y.
-    _lock_rig.append(rect("LockPanel", LOCK_PANEL_SIZE, LOCK_PANEL_AT,
-                          LOCK_PANEL_POWER, (math.radians(90), 0.0, 0.0)))
-    for index, (size, loc, power) in enumerate(LOCK_STRIPS):
-        _lock_rig.append(rect("LockStrip%d" % index, size, loc, power,
-                              (0.0, 0.0, 0.0)))
+    _lock_rig = [
+        card("LockCeiling", LOCK_CEILING_SPAN, LOCK_CEILING_SPAN,
+             (0.0, 0.0, LOCK_CEILING_Z), (0.0, 0.0, 0.0),
+             LOCK_CEILING_PEAK, graded=True),
+        card("LockDome", LOCK_BOX, LOCK_BOX, (0.0, 0.0, LOCK_DOME_Z),
+             (0.0, 0.0, 0.0), LOCK_DOME_STRENGTH),
+    ]
+    half = LOCK_BOX / 2
+    for name, loc, rotation, strength in (
+        ("LockWallTop", (0.0, -half, LOCK_BOX_Z / 2),
+         (math.radians(90), 0.0, 0.0), LOCK_WALLS[0]),
+        ("LockWallBottom", (0.0, half, LOCK_BOX_Z / 2),
+         (math.radians(90), 0.0, 0.0), LOCK_WALLS[1]),
+        ("LockWallLeft", (-half, 0.0, LOCK_BOX_Z / 2),
+         (math.radians(90), 0.0, math.radians(90)), LOCK_WALLS[2]),
+        ("LockWallRight", (half, 0.0, LOCK_BOX_Z / 2),
+         (math.radians(90), 0.0, math.radians(90)), LOCK_WALLS[3]),
+    ):
+        _lock_rig.append(card(name, LOCK_BOX, LOCK_BOX_DROP, loc, rotation,
+                              strength))
 
     # A ROOM FOR THE STEEL TO MIRROR, replacing the studio's near-black
     # sky - and the reason Metallic 1.0 is usable here at all.
