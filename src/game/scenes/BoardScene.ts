@@ -1403,10 +1403,15 @@ export class BoardScene extends Phaser.Scene {
         this.boardOriginX, this.boardOriginY,
         COLS * this.cellSize, ROWS * this.cellSize, 'board-cell'
       ).setOrigin(0, 0);
+      const source = surface.texture.getSourceImage();
       surface.setTileScale(
-        this.cellSize / surface.texture.getSourceImage().width,
-        this.cellSize / surface.texture.getSourceImage().height
-      );
+        this.cellSize / source.width, this.cellSize / source.height);
+      // HALF A TILE ACROSS. The render carries its scored lines through
+      // its own middle - on the edges they fall half outside the frame
+      // and come back as nothing - so the tiling is shifted by half a
+      // cell to put them back on the cell boundaries. tilePosition is
+      // in texture pixels, before the scale above.
+      surface.setTilePosition(source.width / 2, source.height / 2);
       this.boardSurface = surface;
     }
 

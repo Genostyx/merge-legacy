@@ -3123,20 +3123,20 @@ def build_source_building(family: str):
 # an area lamp puts a gradient across it and the repeat shows up as a
 # grid of bright patches.
 BOARD_TILE_PX = 256
-BOARD_GLASS = 0x14120f
-BOARD_SCORE_DEPTH = 0.014
-BOARD_SCORE_WIDTH = 0.022
+BOARD_GLASS = 0x332e26
+BOARD_SCORE_DEPTH = 0.030
+BOARD_SCORE_WIDTH = 0.034
 
 
 def build_board_tile():
     """One cell of the board: a glass square scored on two edges.
 
-    HALF A GROOVE PER EDGE, on two edges only. A full groove on all
-    four would double up where tiles meet and draw every line twice as
-    wide as the ones at the board's rim; half on the +x and +y edges
-    meets its other half on the neighbour.
+    THE GROOVES RUN THROUGH THE MIDDLE, not along the edges. On the
+    edges each one is half outside the frame, so the render came back
+    as a plain square with a slightly dark rim. Through the centre the
+    tile carries one whole groove each way; the board offsets its
+    tiling by half a cell to put them back on the cell boundaries.
     """
-    half = 0.5
     body = cube(1.0, 1.0, 0.16, base=False)
 
     cutters = []
@@ -3145,8 +3145,7 @@ def build_board_tile():
             BOARD_SCORE_WIDTH if axis == 0 else 1.2,
             1.2 if axis == 0 else BOARD_SCORE_WIDTH,
             BOARD_SCORE_DEPTH * 2.2, base=False)
-        spot = (half, 0.0, 0.08) if axis == 0 else (0.0, half, 0.08)
-        cutters.append(translate_to(cutter, spot))
+        cutters.append(translate_to(cutter, (0.0, 0.0, 0.08)))
 
     for cutter in cutters:
         modifier = body.modifiers.new("score", 'BOOLEAN')
@@ -3164,7 +3163,12 @@ def build_board_tile():
     shader.inputs["Roughness"].default_value = 0.10
     shader.inputs["Metallic"].default_value = 0.0
     polished(glass, coat_roughness=0.02)
-    finish(body, "board-tile", glass, bevel=0.004)
+    # NO BEVEL, and flat shading. A bevelled top under smooth shading
+    # curves away at the edges, which puts a gradient across the tile -
+    # and a tile with a gradient repeats as a patchwork.
+    finish(body, "board-tile", glass, bevel=0.0)
+    for face in body.data.polygons:
+        face.use_smooth = False
     return body
 
 
@@ -3196,14 +3200,17 @@ def render_board_tile():
             bpy.data.objects.remove(existing, do_unlink=True)
     sun_data = bpy.data.lights.get("BoardSun") or bpy.data.lights.new("BoardSun", type='SUN')
     sun_data.type = 'SUN'
-    sun_data.energy = 3.2
+    sun_data.energy = 7.0
     sun_data.angle = math.radians(8)
     sun = bpy.data.objects.get("BoardSun")
     if sun is None:
         sun = bpy.data.objects.new("BoardSun", sun_data)
         bpy.context.collection.objects.link(sun)
     sun.data = sun_data
-    sun.location = (-2.0, 2.0, 3.0)
+    # 45 DEGREES. Overhead drops no light into a shallow groove and the
+    # score vanishes; grazing lights the groove but barely touches the
+    # flat top, which came back black. Half way does both.
+    sun.location = (-2.4, 2.4, 2.4)
     sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
 
     configure_render()
