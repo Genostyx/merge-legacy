@@ -3187,9 +3187,9 @@ def board_glass_material():
             # same roughness, IOR and transmission - it just stops
             # mirroring the lamps quite so hard.
             if "Coat Weight" in shader.inputs:
-                shader.inputs["Coat Weight"].default_value = 0.18
+                shader.inputs["Coat Weight"].default_value = 0.13
             if "Specular IOR Level" in shader.inputs:
-                shader.inputs["Specular IOR Level"].default_value = 0.28
+                shader.inputs["Specular IOR Level"].default_value = 0.20
             return appended
     glass = tier_material(name, BOARD_GLASS, BOARD_GLASS, max_gain=1.0)
     gemstone(glass, **GLASS_PRESET)
