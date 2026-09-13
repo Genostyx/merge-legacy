@@ -366,12 +366,15 @@ export function piecePlacementFor(typeId: string, tier: number, cellSize: number
  * object's height, so a tall narrow piece casts slightly the wrong
  * shape. At the size these draw, that is not visible.
  *
- * Down and to the RIGHT, because everything in this game is lit from
- * the upper left.
+ * STRAIGHT DOWN. Measured off the item renders rather than assumed:
+ * their top halves are far brighter than their bottoms - mineral 8 is
+ * 153 against 50, wood 6 is 160 against 83 - while left against right
+ * is neutral and disagrees between families. The objects are lit from
+ * overhead, so their shadows fall under them, not off to one side.
  */
 const SHADOW_SQUASH = 0.42;
-const SHADOW_SKEW = 0.13;
-const SHADOW_DROP = 0.05;
+const SHADOW_SKEW = 0.0;
+const SHADOW_DROP = 0.13;
 const SHADOW_ALPHA = 0.38;
 
 /**
