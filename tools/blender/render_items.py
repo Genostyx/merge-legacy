@@ -3133,7 +3133,16 @@ BOARD_TILT_DEG = 3.0
 BOARD_GLASS = 0x0f0d0b
 BOARD_SCORE_DEPTH = 0.055
 BOARD_SCORE_WIDTH = 0.055
-BOARD_THICKNESS = 0.22
+BOARD_THICKNESS = 0.048
+# One cell, in world units.
+#
+# The board is modelled at ITEM SCALE - about an item and a half
+# across - rather than at seven units, so `build_lights` lights it
+# without being moved. That is the whole reason the size matters: the
+# board's shading has to agree with the shading of the objects
+# standing on it, and it cannot if it was lit in a studio of its own
+# with a sun somewhere else.
+BOARD_CELL = 0.22
 # How wide the sheet's own edge is chamfered, in cells.
 BOARD_CHAMFER = 0.10
 
@@ -3186,7 +3195,8 @@ def build_board_slab():
     glass rather than a line cut into it. Sloped walls give each line a
     lit side and a shadowed side.
     """
-    body = cube(BOARD_COLS, BOARD_ROWS, BOARD_THICKNESS, base=False)
+    body = cube(BOARD_COLS * BOARD_CELL, BOARD_ROWS * BOARD_CELL,
+                BOARD_THICKNESS, base=False)
 
     # A CHAMFER ROUND THE SHEET, cut before the grooves so it belongs
     # to the slab rather than to every cell. A square edge turns its
@@ -3195,27 +3205,27 @@ def build_board_slab():
     # the board gets a lit rim - which is most of what says the glass
     # has thickness.
     chamfer = body.modifiers.new("chamfer", 'BEVEL')
-    chamfer.width = BOARD_CHAMFER
+    chamfer.width = BOARD_CHAMFER * BOARD_CELL
     chamfer.segments = 2
     chamfer.limit_method = 'ANGLE'
     bpy.context.view_layer.objects.active = body
     bpy.ops.object.modifier_apply(modifier=chamfer.name)
 
-    reach = BOARD_SCORE_WIDTH * math.sqrt(2)
+    reach = BOARD_SCORE_WIDTH * BOARD_CELL * math.sqrt(2)
     top = BOARD_THICKNESS / 2
-    cut_z = top - BOARD_SCORE_DEPTH + reach * math.sqrt(2) / 2
+    cut_z = top - BOARD_SCORE_DEPTH * BOARD_CELL + reach * math.sqrt(2) / 2
 
     cutters = []
     # Interior boundaries only. A groove on the outer edge would be half
     # a groove against the frame.
     for col in range(1, BOARD_COLS):
-        cutters.append((col - BOARD_COLS / 2, 0.0, 0))
+        cutters.append(((col - BOARD_COLS / 2) * BOARD_CELL, 0.0, 0))
     for row in range(1, BOARD_ROWS):
-        cutters.append((0.0, row - BOARD_ROWS / 2, 1))
+        cutters.append((0.0, (row - BOARD_ROWS / 2) * BOARD_CELL, 1))
 
     for x, y, axis in cutters:
-        cutter = cube(reach if axis == 0 else BOARD_COLS * 1.1,
-                      BOARD_ROWS * 1.1 if axis == 0 else reach,
+        cutter = cube(reach if axis == 0 else BOARD_COLS * BOARD_CELL * 1.1,
+                      BOARD_ROWS * BOARD_CELL * 1.1 if axis == 0 else reach,
                       reach, base=False)
         cutter.rotation_euler = Euler(
             (0.0, math.radians(45), 0.0) if axis == 0
@@ -3237,7 +3247,7 @@ def build_board_slab():
     # `gemstone` sets the lifted base, the transmission, the IOR and the
     # roughness together, which is what GLASS_PRESET exists to stop
     # being re-derived by hand at every site.
-    finish(body, "board-slab", glass, bevel=0.004)
+    finish(body, "board-slab", glass, bevel=0.004 * BOARD_CELL)
     return body
 
 
@@ -3250,7 +3260,7 @@ def render_board():
 
     data = bpy.data.cameras.get("BoardCam") or bpy.data.cameras.new("BoardCam")
     data.type = 'ORTHO'
-    data.ortho_scale = BOARD_FRAME_CELLS
+    data.ortho_scale = BOARD_FRAME_CELLS * BOARD_CELL
     cam = bpy.data.objects.get("BoardCam")
     if cam is None:
         cam = bpy.data.objects.new("BoardCam", data)
@@ -3259,60 +3269,23 @@ def render_board():
     # TILTED BACK, so the sheet is seen slightly from the front rather
     # than dead overhead - enough to catch the far wall of each groove.
     tilt = math.radians(BOARD_TILT_DEG)
-    cam.location = (0.0, -40.0 * math.sin(tilt), 40.0 * math.cos(tilt))
+    reach_back = 6.0
+    cam.location = (0.0, -reach_back * math.sin(tilt), reach_back * math.cos(tilt))
     cam.rotation_euler = (tilt, 0.0, 0.0)
     bpy.context.scene.camera = cam
 
-    for name in ("KeyLight", "FillLight"):
-        existing = bpy.data.objects.get(name)
-        if existing is not None:
-            bpy.data.objects.remove(existing, do_unlink=True)
-    sun_data = bpy.data.lights.get("BoardSun") or bpy.data.lights.new("BoardSun", type='SUN')
-    sun_data.type = 'SUN'
-    sun_data.energy = 11.0
-    sun_data.angle = math.radians(8)
-    sun = bpy.data.objects.get("BoardSun")
-    if sun is None:
-        sun = bpy.data.objects.new("BoardSun", sun_data)
-        bpy.context.collection.objects.link(sun)
-    sun.data = sun_data
-    # LOW AND FROM THE UPPER LEFT, about twenty degrees up. The higher
-    # the sun the less of it reaches into a V, and at 45 the grooves
-    # were only just there. Grazing light is what fills one wall and
-    # shadows the other; it costs the flat face its brightness, which
-    # on a sheet meant to be dark is no loss - the streaks and the
-    # chamfer carry that.
-    sun.location = (-26.0, 26.0, 12.0)
-    sun.rotation_euler = (-Vector(sun.location)).to_track_quat('-Z', 'Y').to_euler()
-
-    # TWO FAINT DIAGONALS IN THE UPPER LEFT, which is what the drawn
-    # pane had: white at 0.018 and 0.024 alpha, running from the top
-    # edge down to the left one. They are the clearest "this is glass"
-    # cue there is, and a sun cannot make them - a flat sheet under an
-    # orthographic camera reflects a distant light uniformly or not at
-    # all. These are close and narrow, so each one lands as a band
-    # rather than covering the sheet.
-    for index, (size, size_y, energy, spot) in enumerate((
-        (4.6, 0.40, 4.5, (-2.6, 3.5, 2.2)),
-        (3.2, 0.30, 5.5, (-2.0, 2.6, 2.2)),
-    )):
-        name = "BoardStreak%d" % index
-        data = bpy.data.lights.get(name) or bpy.data.lights.new(name, type='AREA')
-        data.type = 'AREA'
-        data.shape = 'RECTANGLE'
-        data.size = size
-        data.size_y = size_y
-        data.energy = energy
-        streak = bpy.data.objects.get(name)
-        if streak is None:
-            streak = bpy.data.objects.new(name, data)
-            bpy.context.collection.objects.link(streak)
-        streak.data = data
-        streak.location = spot
-        streak.rotation_euler = (0.0, 0.0, 0.0)
-        # Turned to run down-left across the sheet, the way the drawn
-        # streaks did.
-        streak.rotation_euler.rotate_axis("Z", math.radians(-52))
+    # THE ITEM STUDIO'S OWN LAMPS, not a board-only sun.
+    #
+    # This is the whole reason the board is modelled at item scale. Its
+    # shading has to agree with the shading of the objects standing on
+    # it, and it cannot if it was lit somewhere else - a sheet lit from
+    # one side under items lit from another reads as a photograph of a
+    # board with stickers on it.
+    for name in ("BoardSun", "BoardSheen", "BoardStreak0", "BoardStreak1"):
+        stale = bpy.data.objects.get(name)
+        if stale is not None:
+            bpy.data.objects.remove(stale, do_unlink=True)
+    build_lights()
 
     configure_render()
     sc = bpy.context.scene
