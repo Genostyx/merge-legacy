@@ -3,6 +3,8 @@ import type { BoardScene } from '../BoardScene';
 import {
   COLS,
   LOCK_ART_FRAME,
+  LOCK_PLATE_DEPTH,
+  LOCK_PRICE_DEPTH,
   LOCK_ART_TINT_HIDDEN,
   LOCK_ART_TINT_READY,
   LOCK_ART_TINT_WAITING,
@@ -88,13 +90,13 @@ export function buildBoardExpansionLocks(scene: BoardScene): void {
       const pos = { col, row };
       if (!scene.grid.isBlocked(pos)) continue;
       const world = scene.cellToWorld(pos);
-      const bg = scene.add.graphics().setDepth(4);
+      const bg = scene.add.graphics().setDepth(LOCK_PLATE_DEPTH);
       // THE RENDERED PLATE, when it is loaded. The graphics object
       // stays either way - it is the fallback, and `refresh` leaves it
       // cleared when the render is there rather than drawing a second
       // plate under the first.
       const plate = scene.textures.exists('locked-plate')
-        ? scene.add.image(world.x, world.y, 'locked-plate').setDepth(4)
+        ? scene.add.image(world.x, world.y, 'locked-plate').setDepth(LOCK_PLATE_DEPTH)
         : null;
       const price = scene.add.text(world.x, world.y, '', {
         resolution: textResolution,
@@ -103,8 +105,8 @@ export function buildBoardExpansionLocks(scene: BoardScene): void {
         fontStyle: 'bold',
         color: hex(Theme.currencyCredit),
         align: 'center'
-      }).setOrigin(0.5, 0).setDepth(6);
-      const mark = scene.add.image(0, 0, 'currency-coin').setDepth(6);
+      }).setOrigin(0.5, 0).setDepth(LOCK_PRICE_DEPTH);
+      const mark = scene.add.image(0, 0, 'currency-coin').setDepth(LOCK_PRICE_DEPTH);
       const zone = scene.add.zone(world.x, world.y, scene.cellSize, scene.cellSize)
         .setDepth(7)
         .setInteractive({ useHandCursor: true });

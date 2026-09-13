@@ -598,7 +598,7 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def brushed(mat, roughness=0.20, strength=0.55, scale=(1.6, 340.0, 1.6)):
+def brushed(mat, roughness=0.20, strength=0.42, scale=(1.6, 340.0, 1.6)):
     """Directional roughness: the thing that makes steel read as steel.
 
     A metal with one flat roughness value has a single round highlight
@@ -3640,8 +3640,8 @@ LOCK_LIGHT_SCALE = 0.40
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.55
-LOCK_ROUGHNESS = 0.20
+LOCK_HDRI_STRENGTH = 0.72
+LOCK_ROUGHNESS = 0.09
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 

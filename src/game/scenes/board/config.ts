@@ -419,6 +419,25 @@ export const BOARD_ART_TINT = 0x808080;
 export const LOCK_ART_FRAME = 1.25;
 
 /**
+ * Where the board surface and the locked plates sit in the stack.
+ *
+ * BELOW THE TILES, which is the whole point of them being named. A
+ * tile view takes Phaser's default depth of 0, and the locked cells
+ * used to be drawn at 4 - so anything crossing a locked row passed
+ * BEHIND the plate and vanished: an item flying out of a dispenser, a
+ * reward arcing to its slot, a piece being dragged over the bottom
+ * two rows. A plate is part of the board, and nothing that moves over
+ * the board should go under it.
+ *
+ * Three steps rather than one, because the order within them matters
+ * too: the board's own sheet is under the plates, and a plate is
+ * under its own price.
+ */
+export const BOARD_SURFACE_DEPTH = -3;
+export const LOCK_PLATE_DEPTH = -2;
+export const LOCK_PRICE_DEPTH = -1;
+
+/**
  * The three states, as multiplies over the one render.
  *
  * Taken as ratios off the drawn plate this replaces: its face was

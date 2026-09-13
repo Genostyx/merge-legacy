@@ -254,6 +254,7 @@ import {
   SAVE_KEY,
   BOARD_ART_ALPHA,
   BOARD_ART_FRAME,
+  BOARD_SURFACE_DEPTH,
   BOARD_ART_TINT,
   BOARD_ART_TILT,
   SOURCE_FAMILIES,
@@ -1426,7 +1427,8 @@ export class BoardScene extends Phaser.Scene {
         'board-art'
       ).setDisplaySize(
         frame, frame / Math.cos(Phaser.Math.DegToRad(BOARD_ART_TILT))
-      ).setAlpha(BOARD_ART_ALPHA).setTint(BOARD_ART_TINT);
+      ).setAlpha(BOARD_ART_ALPHA).setTint(BOARD_ART_TINT)
+        .setDepth(BOARD_SURFACE_DEPTH);
     }
 
     // NOTHING DRAWN OVER THE RENDER. The pane, its reflection streak,
@@ -1436,7 +1438,7 @@ export class BoardScene extends Phaser.Scene {
     // and the hairlines draw every scored line twice.
     if (this.boardSurface) return;
 
-    const g = this.add.graphics();
+    const g = this.add.graphics().setDepth(BOARD_SURFACE_DEPTH);
     g.fillStyle(0x0f0d0b, 0.95);
     g.fillRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
     g.lineStyle(1, Theme.borderOnDark, 0.5);
