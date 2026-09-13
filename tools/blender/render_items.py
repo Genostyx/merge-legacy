@@ -2950,7 +2950,7 @@ SOURCE_ROOF = {
 }
 # Pale blue-grey daylight in the windows, warmer and paler on the glass
 # houses, whose whole envelope is glazing.
-SOURCE_GLAZING = {"wood": 0x93a4a5, "mineral": 0x8b9aa4, "glass": 0xeef6f4}
+SOURCE_GLAZING = {"wood": 0x93a4a5, "mineral": 0x8b9aa4, "glass": 0xf7fcfb}
 # The mullions and fascias. Cool white on wood and stone.
 #
 # Glass was originally coded cream here too, on the assumption the whole
@@ -3156,16 +3156,27 @@ GLASS_ROOF_MULLION = 0.009
 GLASS_ROOF_RIDGE = 0.005
 # How hard the interior floor glows. It is a light source rather than
 # a lit surface - see the note where it is built.
-GLASS_FLOOR_GLOW = 0.62
+GLASS_FLOOR_GLOW = 1.45
+# ONE PANE IS ROUGHLY THIS WIDE, and the bay count follows from the
+# wall's length rather than being a fixed three. The drawings keep the
+# pane a constant size and let a bigger building simply have more of
+# them - tier two reads as about five bays on its long face and four
+# on its short, where a fixed three gave every tier the same coarse
+# grid whatever its size.
+GLASS_PANE = 0.175
 
 
-def _glass_face(along, height, thickness, centre, axis, glazing, frames):
-    """One glazed face: a pane, a heavy border, two mullions, a transom.
+def _glass_face(along, height, thickness, centre, axis, glazing, frames,
+                door=False):
+    """One glazed face: a pane, a heavy border, mullions, a transom.
 
     `axis` is 0 for the face whose width runs along x, 1 for the one
-    running along y - the two the camera can see.
+    running along y - the two the camera can see. Bay count comes from
+    the wall's own length, so a pane stays about GLASS_PANE wide
+    whatever the building does.
     """
     cx, cy, cz = centre
+    bays = max(2, int(round(along / GLASS_PANE)))
 
     def bar(long_side, thick, tall, at):
         size = ((long_side, thick, tall) if axis == 0
@@ -3187,20 +3198,29 @@ def _glass_face(along, height, thickness, centre, axis, glazing, frames):
                 else (thickness * 1.5, e, height))
         frames.append(translate_to(cube(*size, base=False), at))
 
-    # TWO MULLIONS, thin - three wide bays, not five narrow ribs.
     m = GLASS_FRAME_MULLION
-    for k in (-1, 1):
-        at = offset(k * along / 6)
+    for k in range(1, bays):
+        at = offset(along * (k / bays - 0.5))
         size = ((m, thickness * 1.5, height * 0.94) if axis == 0
                 else (thickness * 1.5, m, height * 0.94))
         frames.append(translate_to(cube(*size, base=False), at))
-    # And the transom the reference carries near the head of the glazing.
     frames.append(bar(along * 0.97, thickness * 1.5, m,
                       (cx, cy, cz + height * 0.30)))
 
+    # THE DOOR, as a frame panel filling one bay. The reference puts a
+    # dark full-height leaf just off centre on its short face, and it
+    # is most of what stops the tier reading as an empty vitrine.
+    if door:
+        bay = along / bays
+        at = offset(bay * (0.5 if bays % 2 == 0 else 0.0))
+        size = ((bay * 0.92, thickness * 2.2, height * 0.86) if axis == 0
+                else (thickness * 2.2, bay * 0.92, height * 0.86))
+        frames.append(translate_to(cube(*size, base=False),
+                                   (at[0], at[1], cz - height * 0.05)))
+
 
 def _glass_volume(width, depth, storeys, base_z, origin, glazing, frames,
-                  floor, roof_glazing, roof_frames):
+                  floor, roof_glazing, roof_frames, inner):
     """One glass volume: a full-envelope greenhouse, walls AND roof glazed.
 
     `_glazed_volume` clads one bay and leaves the roof an opaque blade,
@@ -3218,7 +3238,18 @@ def _glass_volume(width, depth, storeys, base_z, origin, glazing, frames,
         _glass_face(width, storey_h, t, (ox, oy + depth / 2, mid), 0,
                     glazing, frames)
         _glass_face(depth, storey_h, t, (ox - width / 2, oy, mid), 1,
-                    glazing, frames)
+                    glazing, frames, door=(storey == 0))
+        # THE FAR WALLS, SOLID AND CREAM. The reference is a room seen
+        # through glass, not an empty case: the two faces away from the
+        # camera are pale render rather than glazing, and they are most
+        # of the warmth inside it.
+        inset = 0.012
+        inner.append(translate_to(
+            cube(width - inset * 2, 0.014, storey_h * 0.96, base=False),
+            (ox, oy - depth / 2 + inset, mid)))
+        inner.append(translate_to(
+            cube(0.014, depth - inset * 2, storey_h * 0.96, base=False),
+            (ox + width / 2 - inset, oy, mid)))
         # A FLOOR BAND ONLY BETWEEN STOREYS. At the base it is the
         # terrace's job, and banding every level turned the first pass
         # into a layer cake.
@@ -3253,14 +3284,16 @@ def _glass_volume(width, depth, storeys, base_z, origin, glazing, frames,
         roof_frames.append(translate_to(
             cube(width, GLASS_FRAME_EDGE, ridge * 1.6, base=False),
             (ox, oy + side * depth / 2, z)))
-    for gx in (-1, 1):
+    bays_x = max(2, int(round(width / GLASS_PANE)))
+    bays_y = max(2, int(round(depth / GLASS_PANE)))
+    for k in range(1, bays_x):
         roof_frames.append(translate_to(
             cube(m, depth * 0.99, ridge, base=False),
-            (ox + gx * width / 6, oy, z)))
-    for gy in (-1, 1):
+            (ox + width * (k / bays_x - 0.5), oy, z)))
+    for k in range(1, bays_y):
         roof_frames.append(translate_to(
             cube(width * 0.99, m, ridge, base=False),
-            (ox, oy + gy * depth / 6, z)))
+            (ox, oy + depth * (k / bays_y - 0.5), z)))
     return top + roof_h + ridge
 
 
@@ -3306,9 +3339,9 @@ def build_glass_source():
         #
         # No coat, no metal, and transmission up where architectural
         # glass actually sits.
-        glazing_shader.inputs["Transmission Weight"].default_value = 0.95
+        glazing_shader.inputs["Transmission Weight"].default_value = 0.99
         glazing_shader.inputs["Metallic"].default_value = 0.0
-        glazing_shader.inputs["Roughness"].default_value = 0.04
+        glazing_shader.inputs["Roughness"].default_value = 0.02
         # IOR 1.0 - REFRACTION OFF, transmission kept.
         #
         # Isolated by control render: the floor was visible all along,
@@ -3367,24 +3400,49 @@ def build_glass_source():
         _shader(plinth_mat).inputs["Roughness"].default_value = 0.66
         _tone(plinth_mat, "terrace")
 
-        glazing, frames, floor, roof_glazing, roof_frames = [], [], [], [], []
+        # THE FAR WALLS GET THEIR OWN, DIMMER TONE.
+        #
+        # They were sharing the floor's card, so floor and wall met at
+        # exactly the same value and the interior had no corner in it -
+        # a flat cream fill behind every pane, which is what made
+        # fully-clear glass still read as frosted. The glass was never
+        # the problem; there was simply nothing behind it with depth.
+        inner_mat = bpy.data.materials.get("source-glass-inner-%d" % tier)
+        if inner_mat is not None:
+            bpy.data.materials.remove(inner_mat)
+        inner_mat = bpy.data.materials.new("source-glass-inner-%d" % tier)
+        inner_mat.use_nodes = True
+        inodes, ilinks = inner_mat.node_tree.nodes, inner_mat.node_tree.links
+        inodes.clear()
+        iout = inodes.new("ShaderNodeOutputMaterial")
+        iemit = inodes.new("ShaderNodeEmission")
+        iemit.inputs["Color"].default_value = (
+            *(srgb_to_linear((SOURCE_FLOOR_GLASS >> shift) & 255) * 0.82
+              for shift in (16, 8, 0)), 1.0)
+        iemit.inputs["Strength"].default_value = GLASS_FLOOR_GLOW * 0.62
+        ilinks.new(iemit.outputs["Emission"], iout.inputs["Surface"])
+
+        glazing, frames, floor, roof_glazing, roof_frames, inner = (
+            [], [], [], [], [], [])
         plinth = [translate_to(
             cube(width * 1.30, depth * 1.22, SOURCE_PLINTH, base=False),
             (width * 0.06, -depth * 0.04, SOURCE_PLINTH / 2))]
 
         _glass_volume(width, depth, storeys, SOURCE_PLINTH, (0.0, 0.0),
-                     glazing, frames, floor, roof_glazing, roof_frames)
+                     glazing, frames, floor, roof_glazing, roof_frames, inner)
         if wing:
             w_w, w_d, w_s = wing
             spot = (-(width + w_w) / 2 + 0.02, depth * 0.16)
             _glass_volume(w_w, w_d, w_s, SOURCE_PLINTH, spot,
-                         glazing, frames, floor, roof_glazing, roof_frames)
+                         glazing, frames, floor, roof_glazing, roof_frames,
+                         inner)
 
         parts = []
         for name, group, material in (
             ("glazing", glazing + roof_glazing, glazing_mat),
             ("frame", frames + roof_frames, frame_mat),
             ("floor", floor, floor_mat),
+            ("inner", inner, inner_mat),
             ("plinth", plinth, plinth_mat),
         ):
             if not group:
