@@ -598,7 +598,7 @@ def weathered(mat, strength=0.30, scale=48.0):
     return mat
 
 
-def brushed(mat, roughness=0.20, strength=0.22, anisotropy=0.8,
+def brushed(mat, roughness=0.20, strength=0.42, anisotropy=0.8,
             scale=(1.6, 340.0, 1.6)):
     """Directional roughness: the thing that makes steel read as steel.
 
@@ -635,6 +635,29 @@ def brushed(mat, roughness=0.20, strength=0.22, anisotropy=0.8,
     bump = nodes.new("ShaderNodeBump")
     bump.inputs["Strength"].default_value = 0.10
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
+
+    # WAVINESS, and this is the one that makes an environment show up.
+    #
+    # A flat face under an orthographic camera reflects in ONE
+    # direction at every point on it, so however much is in the room
+    # the whole face samples a single patch of it and comes back as
+    # one tone. Measured twice, on two different environments:
+    # raising either only lifted the darks (p5 127 to 219) while the
+    # median barely moved. Nothing to see, just more light.
+    #
+    # Curvature is what sweeps a room across a surface, and real
+    # rolled sheet is never flat - it has a slow, shallow waviness
+    # that is exactly why a steel panel shimmers instead of sitting
+    # there. Low frequency, tiny amplitude, chained ahead of the
+    # brush so the fine grain rides on top of it.
+    wave = nodes.new("ShaderNodeTexNoise")
+    wave.inputs["Scale"].default_value = 18.0
+    wave.inputs["Detail"].default_value = 1.0
+    links.new(_texture_coords(mat), wave.inputs["Vector"])
+    swell = nodes.new("ShaderNodeBump")
+    swell.inputs["Strength"].default_value = 0.50
+    links.new(wave.outputs["Fac"], swell.inputs["Height"])
+    links.new(swell.outputs["Normal"], bump.inputs["Normal"])
     links.new(bump.outputs["Normal"], shader.inputs["Normal"])
 
     # AND THE REAL THING: Anisotropic, pointed along a UV tangent.
@@ -3661,13 +3684,27 @@ LOCK_LIGHT_SCALE = 0.30
 #
 # A metal is nothing but its reflections, so this is not a background
 # setting - it is most of the plate's appearance.
-LOCK_HDRI_STRENGTH = 0.10
-# What the REFLECTIONS see the room at, as opposed to what everything
-# else does. Split apart because they want opposite things: a room
-# worth mirroring is far brighter than a room that should be quietly
-# filling shadows.
-LOCK_HDRI_GLOSSY = 0.85
-LOCK_ROUGHNESS = 0.05
+LOCK_HDRI_STRENGTH = 0.03
+# What the REFLECTIONS see the room at, as opposed to everything
+# else. Split apart because they want opposite things: a room worth
+# mirroring is far brighter than one that should quietly fill
+# shadows, and a single strength can only ever serve one of them.
+LOCK_HDRI_GLOSSY = 0.35
+# STUDIO, NOT INTERIOR - and measured rather than picked.
+#
+# The board uses interior.exr and there is a note above explaining
+# why, but it is the wrong file for a mirror. Sampled across every
+# world Blender ships, interior's MEDIAN is 0.291: an evenly lit
+# room, so turning it up for reflections only ever filled the
+# shadows - p5 went 144, 169, 185, 197 across a sweep while the
+# median sat still. Nothing to see, just more light.
+#
+# studio.exr has a median of 0.005 and sources to 471. That is a
+# black room with bright panels in it, which is what a lightbox IS,
+# and the only kind of environment a polished surface can show you
+# anything of.
+LOCK_HDRI = "studio.exr"
+LOCK_ROUGHNESS = 0.12
 LOCK_METALLIC = 1.0
 # The softbox directly over the plate: its size in world units, how
 # far above it sits, and how hard it burns.
@@ -3680,55 +3717,36 @@ LOCK_METALLIC = 1.0
 # source overhead is what a photographer puts there for the same
 # reason, and a square one because the plate is square: it mirrors as
 # a sheen the shape of the piece rather than a disc floating on it.
-# A STUDIO BOX, built out of emissive cards.
+# A STRIP-LIT BOX, not one soft source.
 #
-# A metal shows you its surroundings and nothing else, so the
-# surroundings are the material. Area lamps cannot be the whole of
-# them: a lamp is a featureless rectangle, so however it is placed it
-# reflects as a flat bright slab on flat dark, which is maximum
-# contrast carrying no information. That is what "nothing is actually
-# reflecting in the metal" looks like.
+# What a metal shows is its surroundings, so an even wash of light
+# gives evenly lit reflections - which is what a matte painted
+# surface looks like, and what this kept coming back as. Product
+# photographers shoot flat metal in front of long STRIP softboxes for
+# exactly this reason: a strip mirrors as a hard-edged bright bar,
+# and bars against dark are what the eye reads as polish.
 #
-# So the plate is put inside a box of emissive planes, hidden from
-# the camera by Cycles' ray visibility - the standard product-shot
-# rig. The cards are GRADED rather than flat, and the grading is the
-# whole point: a falloff across a card is a falloff across the
-# reflection, which is content.
+# Three sources, each aimed at a different part of the piece:
 #
-# Shaped for this camera specifically. A flat face seen from straight
-# down mirrors what is straight above it, so the floor and the land
-# get the CEILING card. A 45-degree chamfer turns the same ray
-# through ninety degrees, so it mirrors the HORIZON and never sees
-# the ceiling at all - the chamfers get the WALL cards. Bright wall
-# at the top of frame, dark at the bottom, which is the lit-from-
-# above read the drawn plate had.
-LOCK_BOX = 1.60
-LOCK_BOX_Z = 0.46
-LOCK_BOX_DROP = 0.60
-# THE CEILING CARD IS THE FLOOR'S IMAGE, ONE TO ONE.
-#
-# Under an orthographic camera pointed straight down, a flat mirror
-# reflects whatever is directly above each of its points - so the
-# card's pattern lands on the plate at the card's own size, in plan,
-# unchanged. Which makes this the most direct control in the whole
-# rig and also the thing that broke the first attempt: a card 1.6
-# across over a plate 0.22 across shows the plate the middle 14% of
-# its gradient, and 14% of a gradient is a constant. The card has to
-# be roughly the size of the piece.
-LOCK_CEILING_SPAN = 0.34
-LOCK_CEILING_Z = 0.30
-LOCK_CEILING_PEAK = 2.20
-# The bands across the softbox, top of frame to bottom - and screen
-# up is world -y here, so the first stop is the top edge.
-LOCK_CEILING_RAMP = ((0.00, 0.30), (0.13, 1.00), (0.33, 0.26),
-                     (0.49, 0.72), (0.60, 0.22), (0.76, 0.50),
-                     (0.88, 0.20))
-# And a big dim one well above it, for fill - the small card lights
-# almost nothing on its own.
-LOCK_DOME_Z = 0.95
-LOCK_DOME_STRENGTH = 0.10
-# The four walls, in the order -y (top of frame), +y, -x, +x.
-LOCK_WALLS = (5.00, 0.06, 0.70, 0.70)
+#  - the PANEL stands off the top of the frame facing the plate. A
+#    45-degree chamfer turns a ray from this camera through ninety
+#    degrees, so chamfers do not mirror anything overhead at all -
+#    they mirror the HORIZON, which is why they kept going black. The
+#    panel is something at the horizon for the top one to find, and
+#    the bottom one faces the other way and stays dark. That pair is
+#    the whole lit-from-above read.
+#  - the STRIPS hang over the plate and land as bars across the flat
+#    floor and land, which is the 56% of the area that was one dead
+#    value.
+#  - the studio KEY stays for the bolt heads.
+LOCK_PANEL_SIZE = (1.00, 0.50)
+LOCK_PANEL_AT = (0.0, -0.60, 0.12)
+LOCK_PANEL_POWER = 0.60
+LOCK_STRIPS = (
+    # (size x, size y, position, power)
+    ((0.90, 0.035), (0.0, -0.050, 0.45), 0.10),
+    ((0.90, 0.020), (0.0, 0.045, 0.55), 0.05),
+)
 LOCK_FRAME_CELLS = 1.25
 LOCK_PX = 512
 
@@ -3929,85 +3947,31 @@ def render_locked_plate():
         lamp = bpy.data.objects.get(name)
         if lamp is not None:
             lamp.data.energy *= LOCK_LIGHT_SCALE
-    # THE BOX AROUND IT - see LOCK_BOX.
-    def card(name, width, height, loc, rotation, strength, graded=False):
-        bpy.ops.mesh.primitive_plane_add(size=1.0, location=loc)
-        ob = bpy.context.active_object
-        ob.name = name
-        ob.scale = (width, height, 1.0)
+    # THE BOX AROUND IT - see LOCK_PANEL_SIZE.
+    def rect(name, size, loc, power, rotation):
+        data = (bpy.data.lights.get(name)
+                or bpy.data.lights.new(name, type='AREA'))
+        data.type = 'AREA'
+        data.shape = 'RECTANGLE'
+        data.size, data.size_y = size
+        data.energy = power
+        ob = bpy.data.objects.get(name)
+        if ob is None:
+            ob = bpy.data.objects.new(name, data)
+            bpy.context.collection.objects.link(ob)
+        ob.data = data
+        ob.location = loc
         ob.rotation_euler = rotation
-        # HIDDEN FROM THE CAMERA, seen by everything else. Without
-        # this the cards are simply objects in the shot.
-        ob.visible_camera = False
-        ob.visible_shadow = False
-        mat = bpy.data.materials.get(name)
-        if mat is not None:
-            bpy.data.materials.remove(mat)
-        mat = bpy.data.materials.new(name)
-        mat.use_nodes = True
-        nodes, links = mat.node_tree.nodes, mat.node_tree.links
-        nodes.clear()
-        out = nodes.new("ShaderNodeOutputMaterial")
-        emit = nodes.new("ShaderNodeEmission")
-        emit.inputs["Strength"].default_value = strength
-        if graded:
-            # HARD-EDGED BANDS, not a falloff.
-            #
-            # A mirror shows you what is in front of it. A card that
-            # is a smooth radial blob reflects as a smooth radial
-            # blob, which is indistinguishable from a matte surface -
-            # that is what the last two passes produced. What reads
-            # as polish is an EDGE: a bright band that stops.
-            #
-            # The gem family's sky in `build_lights` has known this
-            # all along and its ramp is all hard stops - white at
-            # 0.33, down to 0.09 at 0.50, bright again at 0.78. Same
-            # idea here, and CONSTANT interpolation so the stops
-            # really are steps rather than ramps.
-            #
-            # The card is plate-sized, so these bands land on the
-            # floor at their own width, in plan.
-            coords = nodes.new("ShaderNodeTexCoord")
-            axis = nodes.new("ShaderNodeSeparateXYZ")
-            links.new(coords.outputs["Generated"], axis.inputs["Vector"])
-            ramp = nodes.new("ShaderNodeValToRGB")
-            ramp.color_ramp.interpolation = 'CONSTANT'
-            # The two elements a fresh ramp already has are set in
-            # place; the rest are added and held by REFERENCE. They
-            # cannot be indexed - `new()` inserts in sorted order and
-            # moving an element re-sorts the list, so `stops[i]`
-            # stops meaning what it did a line ago.
-            stops = ramp.color_ramp.elements
-            for index, (position, value) in enumerate(LOCK_CEILING_RAMP):
-                element = stops[index] if index < 2 else stops.new(position)
-                element.position = position
-                element.color = (value, value, value, 1.0)
-            links.new(axis.outputs["Y"], ramp.inputs["Fac"])
-            links.new(ramp.outputs["Color"], emit.inputs["Color"])
-        links.new(emit.outputs["Emission"], out.inputs["Surface"])
-        ob.data.materials.append(mat)
         return ob
 
-    _lock_rig = [
-        card("LockCeiling", LOCK_CEILING_SPAN, LOCK_CEILING_SPAN,
-             (0.0, 0.0, LOCK_CEILING_Z), (0.0, 0.0, 0.0),
-             LOCK_CEILING_PEAK, graded=True),
-        card("LockDome", LOCK_BOX, LOCK_BOX, (0.0, 0.0, LOCK_DOME_Z),
-             (0.0, 0.0, 0.0), LOCK_DOME_STRENGTH),
-    ]
-    half = LOCK_BOX / 2
-    for name, loc, rotation, strength in (
-        ("LockWallTop", (0.0, -half, LOCK_BOX_Z / 2),
-         (math.radians(90), 0.0, 0.0), LOCK_WALLS[0]),
-        ("LockWallBottom", (0.0, half, LOCK_BOX_Z / 2),
-         (math.radians(90), 0.0, 0.0), LOCK_WALLS[1]),
-        ("LockWallLeft", (-half, 0.0, LOCK_BOX_Z / 2),
-         (math.radians(90), 0.0, math.radians(90)), LOCK_WALLS[2]),
-        ("LockWallRight", (half, 0.0, LOCK_BOX_Z / 2),
-         (math.radians(90), 0.0, math.radians(90)), LOCK_WALLS[3]),
-    ):
-        _lock_rig.append(card(name, LOCK_BOX, LOCK_BOX_DROP, loc, rotation,
-                              strength))
+    _lock_rig = []
+    # Stood on its edge facing the plate. An area lamp points down its
+    # own -z, so a quarter turn about x aims it at +y.
+    _lock_rig.append(rect("LockPanel", LOCK_PANEL_SIZE, LOCK_PANEL_AT,
+                          LOCK_PANEL_POWER, (math.radians(90), 0.0, 0.0)))
+    for index, (size, loc, power) in enumerate(LOCK_STRIPS):
+        _lock_rig.append(rect("LockStrip%d" % index, size, loc, power,
+                              (0.0, 0.0, 0.0)))
 
     # A ROOM FOR THE STEEL TO MIRROR, replacing the studio's near-black
     # sky - and the reason Metallic 1.0 is usable here at all.
@@ -4027,47 +3991,48 @@ def render_locked_plate():
     nodes, links = world.node_tree.nodes, world.node_tree.links
     background = next(n for n in nodes if n.type == 'BACKGROUND')
     background.inputs["Strength"].default_value = LOCK_HDRI_STRENGTH
-    # THE ROOM, TURNED UP FOR REFLECTIONS ONLY.
+    # A SECOND, BRIGHTER COPY OF THE ROOM, FOR REFLECTIONS ONLY.
     #
     # A metal shows the room and nothing else, so the room wants to
-    # be bright - but the same setting also feeds every other ray,
-    # and turning it up flooded the piece and flattened it. They are
-    # separable: a Light Path node knows which kind of ray is asking.
-    #
-    # So there are two copies of the background, and `Is Glossy Ray`
-    # picks between them. Reflections get the room at LOCK_HDRI_GLOSSY
-    # and everything else keeps the dim one. The same trick
+    # be bright - but one strength feeds every ray, and turning it up
+    # floods the piece and flattens it. A Light Path node knows which
+    # kind of ray is asking, so glossy rays get the room at
+    # LOCK_HDRI_GLOSSY and the rest keep the dim one. The same split
     # `build_lights` already uses to give the gems a lit box to
     # refract without flooding the studio.
     mirror = nodes.new("ShaderNodeBackground")
-    mirror.inputs["Color"].default_value = background.inputs["Color"].default_value
     for link in list(links):
         if link.to_node is background and link.to_socket.name == "Color":
             links.new(link.from_socket, mirror.inputs["Color"])
     mirror.inputs["Strength"].default_value = LOCK_HDRI_GLOSSY
+    for node in nodes:
+        if node.type == 'TEX_ENVIRONMENT':
+            node.image = bpy.data.images.load(
+                os.path.join(bpy.utils.system_resource(
+                    'DATAFILES', path="studiolights/world"), LOCK_HDRI),
+                check_existing=True)
     path = nodes.new("ShaderNodeLightPath")
     mix = nodes.new("ShaderNodeMixShader")
     links.new(path.outputs["Is Glossy Ray"], mix.inputs["Fac"])
     links.new(background.outputs["Background"], mix.inputs[1])
     links.new(mirror.outputs["Background"], mix.inputs[2])
-    output = next(n for n in nodes if n.type == 'OUTPUT_WORLD')
-    links.new(mix.outputs["Shader"], output.inputs["Surface"])
-
-    # THE ROOM DOES NOT GET SPUN WITH THE CAMERA.
-    #
-    # `_board_environment` turns the environment by the camera's whole
-    # rotation, which is right for the board - it reproduces what the
-    # viewport does. This camera carries an extra 180 degrees about z,
-    # put there so the key lamp reads from the top of the frame, and
-    # that took the room round with it: the HDRI's bright side landed
-    # at the BOTTOM and it beat the lamp. Measured, the plate's top
-    # chamfer came back #797978 against #8b8c8b at the bottom - lit
-    # from below, while every item on the board is lit from above.
+    links.new(mix.outputs["Shader"],
+              next(n for n in nodes if n.type == 'OUTPUT_WORLD').inputs["Surface"])
     for node in nodes:
+        # THE ROOM DOES NOT GET SPUN WITH THE CAMERA.
+        #
+        # `_board_environment` turns the environment by the camera's
+        # whole rotation, which is right for the board - it reproduces
+        # what the viewport does. This camera carries an extra 180
+        # degrees about z, put there so the key lamp reads from the
+        # top of the frame, and that took the room round with it: the
+        # HDRI's bright side landed at the BOTTOM, and it beat the
+        # lamp. Measured, the plate's top chamfer came back #797978
+        # against #8b8c8b at the bottom - lit from below, while every
+        # item standing on the board is lit from above.
         if node.type == 'MAPPING':
             node.inputs["Rotation"].default_value = (
                 math.radians(BOARD_TILT_DEG), 0.0, 0.0)
-
     configure_render()
     sc = bpy.context.scene
     sc.render.resolution_x = sc.render.resolution_y = LOCK_PX
