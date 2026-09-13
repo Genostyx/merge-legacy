@@ -3117,7 +3117,7 @@ def build_source_building(family: str):
 # to say.
 SPLITTER_STEEL = 0x8e989a
 SPLITTER_HANDLE = 0x9a5fe0
-SPLITTER_OPEN_DEG = 45.0
+SPLITTER_OPEN_DEG = 16.0
 
 
 def _splitter_arm(sign: float):
@@ -3193,13 +3193,16 @@ def build_splitter():
     finish(translate_to(pivot, (0.0, 0.0, -0.026)), "splitter-pivot", steel,
            bevel=0.003)
     scissors = stack([blades, grips, pivot])
-    # POINTED UP THE SCREEN, like the drawn icon: blades away, handles
-    # toward the viewer, symmetric about the vertical.
+    # LEFT LYING ACROSS THE FRAME, which is the one that reads.
     #
-    # The arms are built along +x. On this camera world (1, -1) is the
-    # axis that projects straight up the frame with no sideways shift,
-    # so the whole pair turns -45 degrees onto it.
-    scissors.rotation_euler = Euler((0.0, 0.0, math.radians(-45.0)))
+    # World (1, -1) projects straight up the screen here, so turning
+    # the pair onto it - the drawn icon's upward X - is exactly the
+    # direction the blades foreshorten hardest in. At -45 the handles
+    # overlap and it stops being scissors at board size; at -22 one
+    # blade is compressed to a stub while the other runs long, which
+    # is worse than either. Across the frame both blades keep their
+    # length and the X is unmistakable.
+    scissors.rotation_euler = Euler((0.0, 0.0, 0.0))
     bpy.ops.object.select_all(action='DESELECT')
     scissors.select_set(True)
     bpy.context.view_layer.objects.active = scissors
