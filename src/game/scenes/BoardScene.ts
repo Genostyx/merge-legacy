@@ -1419,61 +1419,18 @@ export class BoardScene extends Phaser.Scene {
       this.boardSurface = surface;
     }
 
+    // NOTHING DRAWN OVER THE RENDER. The pane, its reflection streak,
+    // its lit and shadowed rim and its grid of hairlines were all
+    // standing in for a surface that now exists - left on top of it
+    // they are a second board's worth of highlights over the first,
+    // and the hairlines draw every scored line twice.
+    if (this.boardSurface) return;
+
     const g = this.add.graphics();
-
-    // Translucent glass body - lets the room show through faintly instead
-    // of hiding it behind an opaque panel. Darkened on both axes: a deeper
-    // tone AND more of it, so the backdrop reads as further behind the glass
-    // and the item art has more contrast to sit against.
-    if (!this.boardSurface) {
-      g.fillStyle(0x0f0d0b, 0.95);
-      g.fillRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
-    }
-
-    // Diagonal reflection streak, the single clearest "this is glass" cue.
-    // Points stay a few px inset from the panel edges so the streak doesn't
-    // poke past the rounded corners (simpler than masking for a radius this
-    // small, and avoids Graphics API pitfalls with save/restore, which
-    // Phaser's Graphics doesn't have - only the canvas 2D context does).
-    const inset = Theme.radiusPanel + 2;
-    g.fillStyle(0xffffff, 0.018);
-    g.beginPath();
-    g.moveTo(x0 + bw * 0.08, y0 + inset * 0.3);
-    g.lineTo(x0 + bw * 0.28, y0 + inset * 0.3);
-    g.lineTo(x0 + inset * 0.3, y0 + bh * 0.5);
-    g.lineTo(x0 + inset * 0.3, y0 + bh * 0.28);
-    g.closePath();
-    g.fillPath();
-    g.fillStyle(0xffffff, 0.024);
-    g.beginPath();
-    g.moveTo(x0 + bw * 0.34, y0 + inset * 0.3);
-    g.lineTo(x0 + bw * 0.5, y0 + inset * 0.3);
-    g.lineTo(x0 + inset * 0.3, y0 + bh * 0.72);
-    g.lineTo(x0 + inset * 0.3, y0 + bh * 0.52);
-    g.closePath();
-    g.fillPath();
-
-    // Rim - bright on the lit upper-left edge, dim on the shadowed
-    // lower-right edge, same convention as materialLighting.
-    g.lineStyle(Theme.borderWidth, 0xf4f0e8, 0.5);
-    g.beginPath();
-    g.moveTo(x0, y0 + bh * 0.4);
-    g.lineTo(x0, y0);
-    g.lineTo(x0 + bw * 0.4, y0);
-    g.strokePath();
-    g.lineStyle(Theme.borderWidth, Theme.borderOnDark, 0.9);
-    g.beginPath();
-    g.moveTo(x0 + bw, y0 + bh * 0.4);
-    g.lineTo(x0 + bw, y0 + bh);
-    g.lineTo(x0 + bw * 0.4, y0 + bh);
-    g.strokePath();
+    g.fillStyle(0x0f0d0b, 0.95);
+    g.fillRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
     g.lineStyle(1, Theme.borderOnDark, 0.5);
     g.strokeRoundedRect(x0, y0, bw, bh, Theme.radiusPanel);
-
-    // Etched grid - thin pale lines, not dark rules. Only when the
-    // render is absent: the tile carries its own scored lines, and
-    // drawing these over them doubles every boundary.
-    if (this.boardSurface) return;
     g.lineStyle(1, 0xf4f0e8, 0.11);
     for (let c = 1; c < COLS; c++) {
       const x = this.boardOriginX + c * this.cellSize;
