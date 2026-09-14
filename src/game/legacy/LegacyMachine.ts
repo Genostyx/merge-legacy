@@ -240,11 +240,10 @@ export function legacyGearCount(state: LegacyMachineState): number {
   return LEGACY_BASE_GEARS + Math.max(0, state.torqueLevel);
 }
 
-export function legacyUpgradeCost(level: number): { credits: number; gems: number; energy: number } {
+export function legacyUpgradeCost(level: number): { credits: number; gems: number } {
   return {
     credits: Math.round(250 * (level + 1) * (1 + level * 0.45)),
-    gems: 4 + level * 2,
-    energy: 10 + level * 5
+    gems: 4 + level * 2
   };
 }
 

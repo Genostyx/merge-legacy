@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { advanceLegacyMachine, normalizeLegacyMachine, legacyRotationsPerHour,
-  LEGACY_MAX_LEVEL, LEGACY_MAX_RPH, legacyUnlocked } from './LegacyMachine';
+  LEGACY_MAX_LEVEL, LEGACY_MAX_RPH, legacyUnlocked, legacyUpgradeCost } from './LegacyMachine';
 
 describe('machine clock', () => {
+  it('keeps credit and gem prices without charging energy at any speed level', () => {
+    for (let level = 0; level < LEGACY_MAX_LEVEL; level++) {
+      expect(legacyUpgradeCost(level)).toEqual({
+        credits: Math.round(250 * (level + 1) * (1 + level * 0.45)),
+        gems: 4 + level * 2
+      });
+    }
+  });
   it('reaches the advertised speed cap at the final speed upgrade', () => {
     expect(legacyRotationsPerHour(LEGACY_MAX_LEVEL)).toBe(LEGACY_MAX_RPH);
     expect(legacyRotationsPerHour(LEGACY_MAX_LEVEL - 1)).toBeLessThan(LEGACY_MAX_RPH);

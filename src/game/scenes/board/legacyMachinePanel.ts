@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import type { BoardScene } from '../BoardScene';
 import { spendCoinsGeneric, spendGems } from '../../economy/Economy';
-import { spendEnergy } from '../../economy/Energy';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyPill, currencyChipOptions } from '../../ui/CurrencyGlyph';
 import { CRATE_LABELS } from '../../rewards/Rewards';
@@ -304,12 +303,11 @@ export function openLegacyMachine(scene: BoardScene): void {
     const maxed = state.gearOneLevel >= LEGACY_MAX_LEVEL;
     const torque = legacyTorqueCost(state.torqueLevel);
     const cost = maxed
-      ? { credits: torque.credits, gems: torque.gems, energy: 0 }
+      ? torque
       : legacyUpgradeCost(state.gearOneLevel);
     const upgradeW = Math.min(342 * s, w - 30 * s);
     const affordable = scene.economy.coins >= cost.credits
-      && scene.economy.gems >= cost.gems
-      && scene.energy.current >= cost.energy;
+      && scene.economy.gems >= cost.gems;
     const up = scene.add.graphics();
     const upColor = affordable ? Theme.currencyXp : Theme.panelAlt;
     const lighting = materialLighting(upColor, affordable ? 5 : 2);
@@ -333,10 +331,7 @@ export function openLegacyMachine(scene: BoardScene): void {
       const costRow = scene.add.container(w / 2, upgradeY + 12 * s);
       const pills = [
         currencyPill(scene, cost.credits.toLocaleString(), 'credit', { ...currencyChipOptions('credit'), height: 18 * s, fontSize: 9 * s, iconSize: 13 * s }),
-        currencyPill(scene, String(cost.gems), 'gem', { ...currencyChipOptions('gem'), height: 18 * s, fontSize: 9 * s, iconSize: 13 * s }),
-        ...(cost.energy
-          ? [currencyPill(scene, String(cost.energy), 'energy', { ...currencyChipOptions('energy'), height: 18 * s, fontSize: 9 * s, iconSize: 13 * s })]
-          : [])
+        currencyPill(scene, String(cost.gems), 'gem', { ...currencyChipOptions('gem'), height: 18 * s, fontSize: 9 * s, iconSize: 13 * s })
       ];
       let x = -pills.reduce((sum, pill) => sum + pill.width, 0) / 2 - 8 * s;
       for (const pill of pills) {
@@ -354,18 +349,13 @@ export function openLegacyMachine(scene: BoardScene): void {
         const atCap = scene.legacyMachine.gearOneLevel >= LEGACY_MAX_LEVEL;
         const nextTorque = legacyTorqueCost(scene.legacyMachine.torqueLevel);
         const current = atCap
-          ? { credits: nextTorque.credits, gems: nextTorque.gems, energy: 0 }
+          ? nextTorque
           : legacyUpgradeCost(scene.legacyMachine.gearOneLevel);
-        // CHECKED BEFORE ANY OF IT IS SPENT. Spending three currencies in
-        // sequence and hand-refunding the earlier two on each failure was
-        // three chances to leave the wallet wrong; there is nothing to
-        // unwind if nothing is taken until all three are known good.
+        // Check both currencies before spending either one.
         if (scene.economy.coins < current.credits
-          || scene.economy.gems < current.gems
-          || scene.energy.current < current.energy) return;
+          || scene.economy.gems < current.gems) return;
         spendCoinsGeneric(scene.economy, current.credits);
         spendGems(scene.economy, current.gems);
-        spendEnergy(scene.energy, current.energy);
         if (atCap) {
           scene.legacyMachine.torqueLevel++;
           syncLegacyGears(scene.legacyMachine);
@@ -373,7 +363,6 @@ export function openLegacyMachine(scene: BoardScene): void {
           scene.legacyMachine.gearOneLevel++;
         }
         scene.updateCurrencyText();
-        scene.updateEnergyText();
         scene.saveState();
         redraw();
       });
