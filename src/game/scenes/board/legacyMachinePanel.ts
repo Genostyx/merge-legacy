@@ -318,8 +318,9 @@ export function openLegacyMachine(scene: BoardScene): void {
     content.add(up);
     content.add(scene.add.text(
       w / 2, maxed ? upgradeY : upgradeY - 8 * s,
-      maxed ? `ADD GEAR ${legacyGearCount(state) + 1}`
-        : state.gearOneLevel === 0 ? 'START THE MACHINE' : 'UPGRADE GEAR 1',
+      (maxed ? `ADD GEAR ${legacyGearCount(state) + 1}`
+        : state.gearOneLevel === 0 ? 'START THE MACHINE' : 'UPGRADE GEAR 1')
+        + ` · LV ${state.gearOneLevel}`,
       {
         resolution: textResolution, fontFamily: Theme.fontHeading,
         fontSize: `${Math.round(13 * s)}px`, fontStyle: 'bold',
