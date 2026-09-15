@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { advanceLegacyMachine, normalizeLegacyMachine, legacyRotationsPerHour,
-  LEGACY_MAX_LEVEL, LEGACY_MAX_RPH, legacyUnlocked, legacyUpgradeCost } from './LegacyMachine';
+  LEGACY_MAX_LEVEL, LEGACY_MAX_RPH, legacyUnlocked, legacyUpgradeCost,
+  createDefaultLegacyMachine, claimableLegacyMilestones, markLegacyClaimed,
+  nextLegacyMilestone, syncLegacyGears, legacyRepeatInterval } from './LegacyMachine';
 
 describe('machine clock', () => {
   it('keeps credit and gem prices without charging energy at any speed level', () => {
@@ -28,5 +30,66 @@ describe('machine clock', () => {
     expect(state.lastTickAt).toBe(3_601_000);
     advanceLegacyMachine(state, 3_601_000);
     expect(state.turns[0]).toBe(turns);
+  });
+});
+
+describe('repeatable final rewards', () => {
+  it('keeps the first-time sequence and repeats only its final reward', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 1200;
+    syncLegacyGears(state);
+    const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 0);
+    expect(claims.map(entry => entry.milestone)).toEqual([1, 5, 25, 100, 400, 800, 1200]);
+    expect(claims.slice(-2).map(entry => entry.reward)).toEqual([
+      { kind: 'crate', tier: 'bronze' }, { kind: 'crate', tier: 'bronze' }
+    ]);
+    for (const entry of claims) markLegacyClaimed(state, entry.gear, entry.milestone);
+    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 0)).toEqual([]);
+    expect(state.claimed[0]).toEqual([1, 5, 25, 100, 400]);
+    expect(state.repeatPaid[0]).toBe(3);
+    state.turns[0] = 1400;
+    expect(nextLegacyMilestone(state, 0)).toEqual({ milestone: 1600, progress: 0.5 });
+  });
+
+  it('repeats shipping rewards once per rotation on the final gear', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 3 * 4 ** 7;
+    syncLegacyGears(state);
+    const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 7);
+    expect(claims.map(entry => entry.milestone)).toEqual([1, 2, 3]);
+    expect(claims.every(entry => entry.reward.kind === 'crate' && entry.reward.tier === 'shipping')).toBe(true);
+  });
+
+  it('pays multiple offline cycles once and retains the counter across saving', () => {
+    const state = createDefaultLegacyMachine();
+    state.gearOneLevel = LEGACY_MAX_LEVEL;
+    state.lastTickAt = 1000;
+    const now = 1000 + 6 * 3_600_000;
+    const produced = advanceLegacyMachine(state, now).filter(entry => entry.gear === 0);
+    expect(produced.map(entry => entry.milestone)).toEqual([1, 5, 25, 100, 400, 800, 1200]);
+    const restored = normalizeLegacyMachine(JSON.parse(JSON.stringify(state)));
+    expect(advanceLegacyMachine(restored, now)).toEqual([]);
+    expect(claimableLegacyMilestones(restored)).toEqual([]);
+    expect(restored.repeatPaid[0]).toBe(3);
+    expect(advanceLegacyMachine(restored, now + 2 * 3_600_000).filter(entry => entry.gear === 0)
+      .map(entry => entry.milestone)).toEqual([1600]);
+  });
+
+  it('preserves old saves without retroactive repeat payouts', () => {
+    const state = normalizeLegacyMachine({ turns: [1250], claimed: [[1, 5, 25, 100, 400]] });
+    expect(state.turns[0]).toBe(1250);
+    expect(state.repeatPaid[0]).toBe(3);
+    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 0)).toEqual([]);
+    expect(nextLegacyMilestone(state, 0)).toEqual({ milestone: 1600, progress: 0.125 });
+  });
+
+  it('handles torque gears with the same repeating shipping interval', () => {
+    const state = createDefaultLegacyMachine();
+    state.torqueLevel = 1;
+    state.turns[0] = 2 * 4 ** 8;
+    syncLegacyGears(state);
+    expect(legacyRepeatInterval(8)).toBe(1);
+    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 8)
+      .map(entry => entry.milestone)).toEqual([1, 2]);
   });
 });

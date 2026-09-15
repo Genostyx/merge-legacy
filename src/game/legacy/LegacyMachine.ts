@@ -23,6 +23,8 @@ export interface LegacyMachineState {
   torqueLevel: number;
   turns: number[];
   claimed: number[][];
+  /** Highest paid final-reward cycle per gear; avoids growing claim arrays. */
+  repeatPaid: number[];
   /** When the machine was last wound forward. 0 until it is started. */
   lastTickAt: number;
 }
@@ -149,6 +151,7 @@ export function createDefaultLegacyMachine(): LegacyMachineState {
     torqueLevel: 0,
     turns: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
     claimed: Array.from({ length: LEGACY_BASE_GEARS }, () => []),
+    repeatPaid: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
     lastTickAt: 0
   };
 }
@@ -190,6 +193,14 @@ export function normalizeLegacyMachine(raw: unknown): LegacyMachineState {
   // written before a ratio change would otherwise keep its old numbers and
   // the train would disagree with itself.
   syncLegacyGears(state);
+  // Old saves keep their progress without back-paying cycles from before
+  // repeatable rewards existed. Time away since the saved tick still earns.
+  for (let gear = 0; gear < gears; gear++) {
+    const saved = Array.isArray(candidate.repeatPaid) ? candidate.repeatPaid[gear] : undefined;
+    state.repeatPaid[gear] = Number.isFinite(saved)
+      ? Math.max(0, Math.floor(saved!))
+      : Math.floor(state.turns[gear] / legacyRepeatInterval(gear));
+  }
   return state;
 }
 
@@ -198,6 +209,7 @@ export function syncLegacyGears(state: LegacyMachineState): void {
   const gears = legacyGearCount(state);
   while (state.turns.length < gears) state.turns.push(0);
   while (state.claimed.length < gears) state.claimed.push([]);
+  while (state.repeatPaid.length < gears) state.repeatPaid.push(0);
   for (let i = 1; i < gears; i++) {
     state.turns[i] = state.turns[0] / LEGACY_GEAR_RATIO ** i;
   }
@@ -391,6 +403,12 @@ export function legacyReward(gear: number, milestone: number): LegacyReward {
   return row[index] ?? row[row.length - 1];
 }
 
+/** After the first-time sequence, its final reward repeats each interval. */
+export function legacyRepeatInterval(gear: number): number {
+  const milestones = legacyMilestones(gear);
+  return milestones[milestones.length - 1];
+}
+
 export function claimableLegacyMilestones(state: LegacyMachineState): Array<{ gear: number; milestone: number; reward: LegacyReward }> {
   const claims: Array<{ gear: number; milestone: number; reward: LegacyReward }> = [];
   for (let gear = 0; gear < legacyGearCount(state); gear++) {
@@ -405,11 +423,17 @@ export function claimableLegacyMilestones(state: LegacyMachineState): Array<{ ge
       if (turns < milestone || claimed.includes(milestone)) continue;
       claims.push({ gear, milestone, reward: legacyReward(gear, milestone) });
     }
+    const interval = legacyRepeatInterval(gear);
+    const earned = Math.floor(turns / interval);
+    for (let cycle = Math.max(2, (state.repeatPaid[gear] ?? 0) + 1); cycle <= earned; cycle++) {
+      const milestone = cycle * interval;
+      claims.push({ gear, milestone, reward: legacyReward(gear, interval) });
+    }
   }
   return claims;
 }
 
-/** The next milestone a gear is working toward, or null once it is done. */
+/** Next first-time reward, or the next repeating final-reward cycle. */
 export function nextLegacyMilestone(
   state: LegacyMachineState, gear: number
 ): { milestone: number; progress: number } | null {
@@ -421,10 +445,21 @@ export function nextLegacyMilestone(
       progress: Math.max(0, Math.min(1, (state.turns[gear] ?? 0) / milestone))
     };
   }
-  return null;
+  const interval = legacyRepeatInterval(gear);
+  const milestone = (Math.max(1, state.repeatPaid[gear] ?? 0) + 1) * interval;
+  return {
+    milestone,
+    progress: Math.max(0, Math.min(1, ((state.turns[gear] ?? 0) - (milestone - interval)) / interval))
+  };
 }
 
 export function markLegacyClaimed(state: LegacyMachineState, gear: number, milestone: number): void {
   if (!state.claimed[gear]) state.claimed[gear] = [];
-  if (!state.claimed[gear].includes(milestone)) state.claimed[gear].push(milestone);
+  if (legacyMilestones(gear).includes(milestone) && !state.claimed[gear].includes(milestone)) {
+    state.claimed[gear].push(milestone);
+  }
+  const interval = legacyRepeatInterval(gear);
+  if (milestone >= interval && milestone % interval === 0) {
+    state.repeatPaid[gear] = Math.max(state.repeatPaid[gear] ?? 0, milestone / interval);
+  }
 }
