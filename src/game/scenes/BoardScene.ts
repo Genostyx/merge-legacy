@@ -540,6 +540,18 @@ export class BoardScene extends Phaser.Scene {
     openEvent?: boolean;
   } =
     { active: false, slot: -1, startX: 0, startScroll: 0, moved: 0, describe: null };
+  /**
+   * The family the tray is describing on behalf of an ORDER CARD, rather
+   * than a board selection.
+   *
+   * Tapping an item on an order clears `selectedItemKey`, since nothing on
+   * the board is selected - so `familyForSelection` had nothing to answer
+   * with and the `i` hid itself on exactly the screen where a player is
+   * most likely to be asking what a family is. This holds the answer for
+   * as long as that message is up: every other tray refresh clears it,
+   * because they all run through `refreshActionTrayBody`.
+   */
+  private orderItemFamily: { typeId: string; kind: LadderKind } | null = null;
   dispenserCollectCount = 0;
   headerRight = 0;
   /** Where a board drag began, to tell a tap from a move that returned home. */
@@ -2403,7 +2415,9 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
     if (rushed instanceof SpawnerView) {
       return { typeId: rushed.spawner.typeId, kind: 'sources' };
     }
-    return null;
+    // AN ORDER CARD ASKS ABOUT ITEMS. Nothing is selected on the board in
+    // this case, but the tray is describing a specific item all the same.
+    return this.orderItemFamily;
   }
 
   /**
@@ -2451,6 +2465,9 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
   }
 
   private refreshActionTrayBody(message?: string): void {
+    // Any refresh but the order card's own drops the order family - see
+    // `orderItemFamily`. `describeOrderItem` sets it again afterwards.
+    this.orderItemFamily = null;
     this.refreshBoardExpansionLocks();
     this.clearOrderRewardTexts();
     this.actionText
@@ -3662,7 +3679,14 @@ TAP THE EVENT CARD TO SPEND IT`
   orderCardWorldCenter(position: number): { x: number; y: number } | null { return orderCardWorldCenterExt(this, position); }
   orderBarMetrics(): { cardH: number; y: number; viewW: number } { return orderBarMetricsExt(this); }
   showOrderDetails(order: OrderDef, current: number, target: number): void { showOrderDetailsExt(this, order, current, target); }
-  describeOrderItem(typeId: string, tier: number): void { describeOrderItemExt(this, typeId, tier); }
+  describeOrderItem(typeId: string, tier: number): void {
+    describeOrderItemExt(this, typeId, tier);
+    // AFTER, not before: `describeOrderItemExt` refreshes the tray, and
+    // that refresh is what clears this.
+    if (isCurrencyChain(typeId)) return;
+    this.orderItemFamily = { typeId, kind: 'items' };
+    this.layoutInfoButton();
+  }
   clearOrderRewardTexts(): void { clearOrderRewardTextsExt(this); }
   submitOrderSlot(queueSlot: number): void { submitOrderSlotExt(this, queueSlot); }
   completeOrder(index: number, order: OrderDef, position: number): void { completeOrderExt(this, index, order, position); }
