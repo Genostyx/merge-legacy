@@ -65,6 +65,41 @@ function turnsLabel(gear: number): string {
     + `${Math.round(gearOneTurnsFor(gear, 1)).toLocaleString()} OF GEAR 1’S`;
 }
 
+/**
+ * A gear count that fits its column.
+ *
+ * The counts sit in a row of narrow columns, one per gear, and gear
+ * one runs to seven figures once the machine has been going a while -
+ * `toLocaleString` put "2,187,000" where about five characters fit, so
+ * the deep gears' numbers ran into each other. Thousands and millions
+ * get a suffix; the small end keeps its decimals, because the whole
+ * point of gear eight is watching it crawl from 0.00.
+ */
+function compactTurns(turns: number): string {
+  if (turns >= 1_000_000) return `${(turns / 1_000_000).toFixed(turns >= 10_000_000 ? 0 : 1)}M`;
+  if (turns >= 10_000) return `${Math.round(turns / 1000)}k`;
+  if (turns >= 1000) return `${(turns / 1000).toFixed(1)}k`;
+  if (turns >= 100) return Math.round(turns).toString();
+  if (turns >= 1) return turns.toFixed(1);
+  return turns.toFixed(2);
+}
+
+/**
+ * 1ST, 2ND, 3RD, 4TH - and 11TH through 13TH, which are the ones a
+ * naive rule gets wrong.
+ *
+ * The milestone line used `n === 1 ? 'ST' : 'TH'`, so every reward
+ * after the first read "2TH", "3TH", "22TH". Repeating rewards made it
+ * constant rather than occasional: those land on every interval, so
+ * the wrong suffix was on screen most of the time.
+ */
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}TH`;
+  const suffix = { 1: 'ST', 2: 'ND', 3: 'RD' }[n % 10] ?? 'TH';
+  return `${n}${suffix}`;
+}
+
 export function openLegacyMachine(scene: BoardScene): void {
   if (scene.modalOpen || scene.inputLocked) return;
   scene.modalOpen = true;
@@ -239,8 +274,7 @@ export function openLegacyMachine(scene: BoardScene): void {
       }).setOrigin(0.5, 1));
       content.add(scene.add.text(
         countLeft + countStep * i, countY + 2 * s,
-        turns >= 100 ? Math.round(turns).toLocaleString()
-          : turns >= 1 ? turns.toFixed(1) : turns.toFixed(2),
+        compactTurns(turns),
         {
           resolution: textResolution, fontFamily: Theme.fontNumeric,
           fontSize: `${Math.round(9 * s)}px`, fontStyle: 'bold',
@@ -249,11 +283,14 @@ export function openLegacyMachine(scene: BoardScene): void {
       ).setOrigin(0.5, 0));
     }
 
-    // WHAT THE MACHINE IS DOING RIGHT NOW, one line: the shallowest gear
-    // still working toward something, and how far along it is.
+    // Show the soonest reward, including repeating rewards.
     let focus = 0;
+    let remaining = Infinity;
     for (let i = 0; i < legacyGearCount(state); i++) {
-      if (nextLegacyMilestone(state, i)) { focus = i; break; }
+      const candidate = nextLegacyMilestone(state, i);
+      if (!candidate) continue;
+      const turnsLeft = Math.max(0, gearOneTurnsFor(i, candidate.milestone) - state.turns[0]);
+      if (turnsLeft < remaining) { focus = i; remaining = turnsLeft; }
     }
     const next = nextLegacyMilestone(state, focus);
     const barW = Math.min(340 * s, w - 28 * s);
@@ -272,7 +309,7 @@ export function openLegacyMachine(scene: BoardScene): void {
         ? (rph === 0
           ? 'BUY THE FIRST UPGRADE TO START GEAR 1'
           : `NEXT REWARD AT GEAR ${focus + 1}’S `
-            + `${next.milestone}${next.milestone === 1 ? 'ST' : 'TH'} ROTATION`
+            + `${ordinal(next.milestone)} ROTATION`
             + `  ·  ${Math.round(next.progress * 100)}% THERE`)
         : 'EVERY GEAR HAS PAID OUT',
       {
@@ -403,7 +440,7 @@ export function openLegacyMachine(scene: BoardScene): void {
     loop: true,
     callback: () => {
       const next = JSON.stringify([
-        scene.legacyMachine.turns, scene.legacyMachine.claimed,
+        scene.legacyMachine.turns, scene.legacyMachine.claimed, scene.legacyMachine.repeatPaid,
         scene.legacyMachine.gearOneLevel, scene.legacyMachine.torqueLevel,
         scene.economy.coins, scene.economy.gems, scene.energy.current
       ]);
