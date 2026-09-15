@@ -7,7 +7,7 @@ import type { CratePayloadEntry } from '../../Grid';
 import { Theme, hex, materialLighting, textResolution } from '../../ui/Theme';
 import { currencyPill, currencyTexture } from '../../ui/CurrencyGlyph';
 import type { CurrencyKind } from '../../ui/CurrencyGlyph';
-import { CRATE_DRAWN, crateArt, drawBriefcase, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
+import { CRATE_DRAWN, SOURCE_DRAWN_TARGET, crateArt, drawBriefcase, drawCrate, drawSourceBuilding, drawTierIcon, iconPresentation, sourcePalette } from '../../objects/TierIcons';
 import { drawSpawnerPieceIcon, SpawnerPieceView } from '../../objects/SpawnerPieceView';
 import { drawSplitterIcon, SplitterView } from '../../objects/SplitterView';
 import { TileView } from '../../objects/TileView';
@@ -33,7 +33,7 @@ import {
 } from '../../inventory/Inventory';
 import { loadedPieceSprite } from '../../objects/itemSprites';
 import { loadedItemSprite } from '../../objects/itemSprites';
-import { itemDisplaySize, pieceDisplaySize } from '../../objects/ArtFill';
+import { itemDisplaySize, pieceDisplaySize, sourceBoxForCell } from '../../objects/ArtFill';
 
 /**
  * inventoryPanel, lifted out of BoardScene whole.
@@ -445,8 +445,17 @@ export function showInventory(scene: BoardScene, initialScroll = 0): void {
         visual = image;
         content.add(image);
       } else if (item.kind === 'spawner') {
-        drawSourceBuilding(icon, item.typeId, item.tier, size * 0.42, sourcePalette(item.typeId), true);
-        icon.setPosition(cx, cy);
+        const textureKey = `source-${item.typeId}-${item.tier}`;
+        if (scene.textures.exists(textureKey)) {
+          const framing = item.typeId === 'glass' && item.tier === 1 ? 0.92 : 1;
+          const imageSize = sourceBoxForCell(textureKey, size * SOURCE_DRAWN_TARGET, size) * framing;
+          const image = scene.add.image(cx, cy, textureKey).setDisplaySize(imageSize, imageSize);
+          visual = image;
+          content.add(image);
+        } else {
+          drawSourceBuilding(icon, item.typeId, item.tier, size * 0.42, sourcePalette(item.typeId), true);
+          icon.setPosition(cx, cy);
+        }
       } else if (item.kind === 'facility') {
         drawFacilityIcon(icon, item.facilityId, size);
         icon.setPosition(cx, cy);
