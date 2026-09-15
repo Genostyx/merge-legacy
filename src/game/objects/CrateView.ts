@@ -58,6 +58,8 @@ export class CrateView extends Phaser.GameObjects.Container {
 
   /** The rendered crate, once one exists for this tier. */
   private sprite: Phaser.GameObjects.Image | null = null;
+  private spriteScaleX = 1;
+  private spriteScaleY = 1;
   /** Its silhouette, drawn beneath it as a cast shadow. */
   private cast: Phaser.GameObjects.Image | null = null;
   /**
@@ -122,6 +124,8 @@ export class CrateView extends Phaser.GameObjects.Container {
         .setDisplaySize(box, box)
         .setY(y)
         .setVisible(true);
+      this.spriteScaleX = this.sprite.scaleX;
+      this.spriteScaleY = this.sprite.scaleY;
       // Its own silhouette as its shadow, like the tiles. Crates are
       // not in ITEM_EXTENT, so the feet come from CRATE_EXTENT here.
       this.cast?.destroy();
@@ -195,6 +199,7 @@ export class CrateView extends Phaser.GameObjects.Container {
     this.lidOpen = true;
     this.draw();
     if (!this.sprite?.visible) return;
+    this.scene.tweens.killTweensOf(this.sprite);
     this.scene.tweens.add({
       targets: this.sprite,
       scaleX: { from: this.sprite.scaleX * 1.06, to: this.sprite.scaleX },
@@ -206,18 +211,20 @@ export class CrateView extends Phaser.GameObjects.Container {
 
   /** A short pop when the crate gives something up, so each tap lands. */
   playDispensePulse(): void {
-    // RELATIVE TO WHATEVER IT IS ON. The Graphics sits at scale 1, but
-    // the sprite is scaled by `setDisplaySize`, so squashing it from a
-    // hard 1 would resize the chest to a fraction of a cell.
+    // Restart from the drawn size, never from an unfinished tap's squash.
     const target = this.sprite?.visible ? this.sprite : this.art;
-    const { scaleX, scaleY } = target;
+    const scaleX = target === this.sprite ? this.spriteScaleX : 1;
+    const scaleY = target === this.sprite ? this.spriteScaleY : 1;
+    this.scene.tweens.killTweensOf(target);
+    target.setScale(scaleX, scaleY);
     this.scene.tweens.add({
       targets: target,
       scaleX: { from: scaleX, to: scaleX * 1.16 },
       scaleY: { from: scaleY, to: scaleY * 0.86 },
       duration: 90,
       yoyo: true,
-      ease: 'Quad.Out'
+      ease: 'Quad.Out',
+      onComplete: () => target.setScale(scaleX, scaleY)
     });
   }
 
