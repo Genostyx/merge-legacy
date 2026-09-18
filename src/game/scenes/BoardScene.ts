@@ -2089,6 +2089,15 @@ export class BoardScene extends Phaser.Scene {
         if (this.selectedItemKey === key) this.selectedItemKey = null;
         void view.playEmptyAndDestroy();
       } else {
+        // SELECTED, so the tray can describe it and offer SELL.
+        //
+        // The dispense path below re-selects the producer and this one
+        // did not, which is the whole bug: a producer is never routed
+        // through `selectItem` at all - the tap chain sends it here
+        // instead - so this is the only place its selection can be set.
+        // Without it the tray falls through to the branch that hides
+        // every sell control.
+        this.selectedItemKey = this.keyOf(view.gridPos);
         this.grid.set(view.gridPos, cell);
       }
       this.saveState();
