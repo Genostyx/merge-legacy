@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { advanceLegacyMachine, normalizeLegacyMachine, legacyRotationsPerHour,
   LEGACY_MAX_LEVEL, LEGACY_MAX_RPH, legacyUnlocked, legacyUpgradeCost,
   createDefaultLegacyMachine, claimableLegacyMilestones, markLegacyClaimed,
-  nextLegacyMilestone, syncLegacyGears, legacyRepeatInterval } from './LegacyMachine';
+  nextLegacyMilestone, syncLegacyGears, legacyRepeatInterval,
+  buyLegacyGear, legacyGearCount, LEGACY_GEAR_RATIO } from './LegacyMachine';
 
 describe('machine clock', () => {
   it('keeps credit and gem prices without charging energy at any speed level', () => {
@@ -91,5 +92,57 @@ describe('repeatable final rewards', () => {
     expect(legacyRepeatInterval(8)).toBe(1);
     expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 8)
       .map(entry => entry.milestone)).toEqual([1, 2]);
+  });
+});
+
+describe('gears bought one at a time', () => {
+  it('starts a newly bought gear from a standstill', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 100_000;
+    syncLegacyGears(state);
+
+    buyLegacyGear(state);
+    const bought = legacyGearCount(state) - 1;
+
+    // It arrives at zero rather than inheriting gear one's history.
+    expect(state.turns[bought]).toBe(0);
+    expect(state.gearStartTurns[bought]).toBe(100_000);
+  });
+
+  it('counts only the turns since the gear was bought', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 100_000;
+    syncLegacyGears(state);
+    buyLegacyGear(state);
+    const bought = legacyGearCount(state) - 1;
+
+    state.turns[0] += LEGACY_GEAR_RATIO ** bought * 3;
+    syncLegacyGears(state);
+
+    expect(state.turns[bought]).toBeCloseTo(3, 6);
+  });
+
+  it('leaves the base gears measuring from zero', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 4096;
+    syncLegacyGears(state);
+    for (let gear = 1; gear < 8; gear++) {
+      expect(state.turns[gear]).toBeCloseTo(4096 / LEGACY_GEAR_RATIO ** gear, 6);
+    }
+  });
+
+  it('takes nothing away from a save written before gearStartTurns', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 100_000;
+    state.torqueLevel = 2;
+    syncLegacyGears(state);
+    const legacy = JSON.parse(JSON.stringify(state));
+    delete legacy.gearStartTurns;
+
+    const restored = normalizeLegacyMachine(legacy);
+    expect(restored.gearStartTurns.every(v => v === 0)).toBe(true);
+    for (let gear = 1; gear < legacyGearCount(restored); gear++) {
+      expect(restored.turns[gear]).toBeCloseTo(100_000 / LEGACY_GEAR_RATIO ** gear, 6);
+    }
   });
 });

@@ -25,6 +25,17 @@ export interface LegacyMachineState {
   claimed: number[][];
   /** Highest paid final-reward cycle per gear; avoids growing claim arrays. */
   repeatPaid: number[];
+  /**
+   * What gear one's total read when each gear STARTED TURNING.
+   *
+   * Without it a gear bought today is credited with every rotation gear
+   * one has ever made, because its turns are derived from gear one's:
+   * buy the ninth gear after a month and it arrives already part-way to
+   * its own rewards, which is the opposite of buying them one at a time.
+   *
+   * The base gears have always been turning, so theirs stay 0.
+   */
+  gearStartTurns: number[];
   /** When the machine was last wound forward. 0 until it is started. */
   lastTickAt: number;
 }
@@ -152,6 +163,7 @@ export function createDefaultLegacyMachine(): LegacyMachineState {
     turns: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
     claimed: Array.from({ length: LEGACY_BASE_GEARS }, () => []),
     repeatPaid: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
+    gearStartTurns: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
     lastTickAt: 0
   };
 }
@@ -195,6 +207,14 @@ export function normalizeLegacyMachine(raw: unknown): LegacyMachineState {
   syncLegacyGears(state);
   // Old saves keep their progress without back-paying cycles from before
   // repeatable rewards existed. Time away since the saved tick still earns.
+  // A SAVE FROM BEFORE `gearStartTurns` KEEPS EVERY GEAR AT 0, so nothing
+  // a player already owns is retroactively wound back to a standstill.
+  // Only gears bought from here on get a real starting point.
+  for (let gear = 0; gear < gears; gear++) {
+    const start = Array.isArray(candidate.gearStartTurns)
+      ? candidate.gearStartTurns[gear] : undefined;
+    state.gearStartTurns[gear] = Number.isFinite(start) ? Math.max(0, start!) : 0;
+  }
   for (let gear = 0; gear < gears; gear++) {
     const saved = Array.isArray(candidate.repeatPaid) ? candidate.repeatPaid[gear] : undefined;
     state.repeatPaid[gear] = Number.isFinite(saved)
@@ -210,8 +230,14 @@ export function syncLegacyGears(state: LegacyMachineState): void {
   while (state.turns.length < gears) state.turns.push(0);
   while (state.claimed.length < gears) state.claimed.push([]);
   while (state.repeatPaid.length < gears) state.repeatPaid.push(0);
+  while (state.gearStartTurns.length < gears) state.gearStartTurns.push(0);
+  // MEASURED FROM WHERE THE GEAR STARTED, not from zero. A gear that has
+  // been on the machine since the beginning started at 0 and so is
+  // unaffected; one bought later only counts the turns since it was
+  // bought. See `gearStartTurns`.
   for (let i = 1; i < gears; i++) {
-    state.turns[i] = state.turns[0] / LEGACY_GEAR_RATIO ** i;
+    const since = state.turns[0] - (state.gearStartTurns[i] ?? 0);
+    state.turns[i] = Math.max(0, since) / LEGACY_GEAR_RATIO ** i;
   }
 }
 
@@ -250,6 +276,20 @@ export function legacyIsRunning(state: LegacyMachineState): boolean {
  */
 export function legacyGearCount(state: LegacyMachineState): number {
   return LEGACY_BASE_GEARS + Math.max(0, state.torqueLevel);
+}
+
+/**
+ * Adds a gear to the far end, starting from a standstill.
+ *
+ * The purchase has to go through here rather than incrementing
+ * `torqueLevel` directly, because the moment of buying is the only time
+ * the new gear's starting point is knowable.
+ */
+export function buyLegacyGear(state: LegacyMachineState): void {
+  state.torqueLevel++;
+  syncLegacyGears(state);
+  state.gearStartTurns[legacyGearCount(state) - 1] = state.turns[0];
+  syncLegacyGears(state);
 }
 
 export function legacyUpgradeCost(level: number): { credits: number; gems: number } {

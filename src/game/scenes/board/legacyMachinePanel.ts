@@ -19,7 +19,7 @@ import {
   legacySpeed,
   legacyUpgradeCost,
   markLegacyClaimed,
-  syncLegacyGears,
+  buyLegacyGear,
   nextLegacyMilestone,
   type LegacyReward
 } from '../../legacy/LegacyMachine';
@@ -151,7 +151,14 @@ export function openLegacyMachine(scene: BoardScene): void {
 
   if (scene.textures.exists(GEAR_TEXTURE)) {
     const stages = legacyGearCount(scene.legacyMachine);
-    const plates = 26;
+    // ONE PLATE PER GEAR YOU ACTUALLY OWN.
+    //
+    // This was a flat 26, so the barrel looked identical whether you had
+    // the base eight or had bought twenty - the whole point of buying
+    // them one at a time was invisible. It now grows by one plate per
+    // purchase, and every measurement below is derived from the count,
+    // so the barrel rescales to fit rather than running off the panel.
+    const plates = stages;
 
     // STRAIGHT UP THE SCREEN, near end at the bottom, the two barrels
     // side by side. Running them diagonally made the pair drift apart
@@ -395,8 +402,7 @@ export function openLegacyMachine(scene: BoardScene): void {
         spendCoinsGeneric(scene.economy, current.credits);
         spendGems(scene.economy, current.gems);
         if (atCap) {
-          scene.legacyMachine.torqueLevel++;
-          syncLegacyGears(scene.legacyMachine);
+          buyLegacyGear(scene.legacyMachine);
         } else {
           scene.legacyMachine.gearOneLevel++;
         }
