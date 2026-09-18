@@ -41,14 +41,24 @@ export function selectItem(scene: BoardScene, key: string): void {
     if (previous instanceof TileView || previous instanceof SpawnerPieceView) previous.setSelected(false);
   }
   const next = scene.views.get(key);
-  // Selectable but not "picked up": a crate, a facility and a splitter all
-  // have something the info box needs to say - a meter, a count, what the
-  // machine eats - and none of them take the selected outline a tile does.
+  // Selectable but not "picked up": a crate, a facility, a splitter and a
+  // producer all have something the info box needs to say - a meter, a
+  // count, what the machine eats, what is left inside - and none of them
+  // take the selected outline a tile does.
+  //
   // The facility and splitter branches in `refreshActionTray` were
   // unreachable before this: anything that was not a tile or a source piece
   // cleared the selection on tap, so the two machines were the only things
   // on the board that explained nothing when touched.
-  if (next instanceof CrateView || next instanceof FacilityView || next instanceof SplitterView) {
+  //
+  // THE PRODUCER WAS MISSED BY THAT SAME FIX, and its branch was equally
+  // unreachable - it only ever appeared to work because
+  // `tapResourceProducer` re-selects the producer AFTER dispensing. So the
+  // SELL button was residue from a dispense rather than a response to the
+  // tap, and any path that did not dispense - a full board sending the drop
+  // to the vault - showed no button at all.
+  if (next instanceof CrateView || next instanceof FacilityView
+      || next instanceof SplitterView || next instanceof ResourceProducerView) {
     scene.selectedItemKey = key;
     scene.rushTargetKey = null;
     scene.refreshActionTray();

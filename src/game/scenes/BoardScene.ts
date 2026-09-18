@@ -2527,8 +2527,15 @@ ${spawned.length} ENERGY AND GEM ITEMS DROPPED`
       const cell = this.grid.get(selected.gridPos);
       const remaining = cell?.kind === 'resource-producer' ? cell.remaining : 0;
       const value = this.resourceProducerSellValue(selected);
+      // A CALLER'S MESSAGE WINS, because the one moment a producer
+      // most needs to say something is the one this branch would
+      // otherwise talk over: `tapResourceProducer` reports that a full
+      // board sent the drop to the vault, and `message` is only read by
+      // the fall-through branch at the bottom - which the producer no
+      // longer reaches now that it selects properly.
       this.actionText.setText(
-        `${RESOURCE_PRODUCERS[selected.producerId].label.toUpperCase()}  ·  ${remaining} LEFT\nTAP IT TO RELEASE ONE RESOURCE ITEM`
+        message
+        ?? `${RESOURCE_PRODUCERS[selected.producerId].label.toUpperCase()}  ·  ${remaining} LEFT\nTAP IT TO RELEASE ONE RESOURCE ITEM`
       );
       this.setSellButton('SELL', `+${value}`, 'credit', Theme.currencyCredit);
       return;
