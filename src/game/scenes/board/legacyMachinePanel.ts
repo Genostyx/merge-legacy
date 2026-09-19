@@ -225,7 +225,11 @@ export function openLegacyMachine(scene: BoardScene): void {
       // MESHING WHEELS COUNTER-ROTATE, and since the chain alternates
       // sides, the sense alternates with it.
       gear.setData('sense', side);
-      gears.push(gear);
+      // BY INDEX, NOT PUSHED. The loop runs from the far end down so the
+      // near wheels are drawn last and overlap correctly, which meant a
+      // pushed array came out reversed - `gears[0]` was the FARTHEST
+      // wheel, and every label read off it landed on the wrong gear.
+      gears[i] = gear;
       art.add(gear);
     }
   };
@@ -299,26 +303,42 @@ export function openLegacyMachine(scene: BoardScene): void {
         color: hex(Theme.textOnDarkMuted)
       }
     ).setOrigin(0.5, 1));
-    // The machine GROWS, so the row is laid out from its current length.
-    const gears = legacyGearCount(state);
-    const countStep = Math.min(46 * s, (w - 30 * s) / gears);
-    const countLeft = w / 2 - (countStep * (gears - 1)) / 2;
-    for (let i = 0; i < gears; i++) {
-      const turns = state.turns[i] ?? 0;
-      content.add(scene.add.text(countLeft + countStep * i, countY, `GEAR ${i + 1}`, {
-        resolution: textResolution, fontFamily: Theme.fontMono,
-        fontSize: `${Math.round(7 * s)}px`, fontStyle: 'bold',
-        color: hex(Theme.textOnDarkMuted)
-      }).setOrigin(0.5, 1));
+    // BESIDE EACH WHEEL, not in a row underneath.
+    //
+    // The row divided the panel's width by the gear count, so it
+    // tightened with every purchase - by twelve the labels were
+    // touching and read as one run-on string. The train alternates
+    // shafts, so every wheel already has clear space on its own side;
+    // a label there is anchored to the thing it describes and cannot
+    // crowd, however long the train gets.
+    //
+    // `gears` here is the ARRAY OF WHEELS from `buildGears`, which is
+    // why the count is no longer called that - it used to shadow it.
+    const gearCount = legacyGearCount(state);
+    // OUTSIDE THE TRAIN, not against each rim. The wheels overlap, so a
+    // wheel's own outer edge is over its neighbours - a label there sits
+    // on spokes and teeth and is the hardest thing on the panel to read.
+    // The margins either side of the barrels are empty; the label lines
+    // up with its wheel's height and lives out there.
+    const trainLeft = gearCount
+      ? Math.min(...gears.map((gg) => gg.x - gg.displayWidth * 0.43)) : 0;
+    const trainRight = gearCount
+      ? Math.max(...gears.map((gg) => gg.x + gg.displayWidth * 0.43)) : 0;
+    for (let i = 0; i < gearCount; i++) {
+      const wheel = gears[i];
+      if (!wheel) continue;
+      // Even gears sit on the left shaft - see `side` in `buildGears`.
+      const onLeft = i % 2 === 0;
       content.add(scene.add.text(
-        countLeft + countStep * i, countY + 2 * s,
-        compactTurns(turns),
+        onLeft ? trainLeft - 6 * s : trainRight + 6 * s,
+        wheel.y,
+        `GEAR ${i + 1}  ${compactTurns(state.turns[i] ?? 0)}`,
         {
-          resolution: textResolution, fontFamily: Theme.fontNumeric,
-          fontSize: `${Math.round(9 * s)}px`, fontStyle: 'bold',
-          color: hex(i === 0 ? Theme.currencyXp : Theme.textOnDark)
+          resolution: textResolution, fontFamily: Theme.fontMono,
+          fontSize: `${Math.round(8 * s)}px`, fontStyle: 'bold',
+          color: hex(i === 0 ? Theme.currencyXp : Theme.textOnDarkMuted)
         }
-      ).setOrigin(0.5, 0));
+      ).setOrigin(onLeft ? 1 : 0, 0.5));
     }
 
     // Show the soonest reward, including repeating rewards.
