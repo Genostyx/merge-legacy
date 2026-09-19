@@ -149,10 +149,26 @@ export function openLegacyMachine(scene: BoardScene): void {
   // and on a dark panel it reads as a white card the machine is stuck to
   // rather than as a surface it stands on.
 
-  if (scene.textures.exists(GEAR_TEXTURE)) {
+  let builtGearCount = -1;
+
+  /**
+   * The train, rebuilt only when the NUMBER of gears changes.
+   *
+   * `art` sits outside `redraw` on purpose - see above - so the gears
+   * keep turning while the panel is rebuilt under them. The cost of that
+   * was that buying a gear never drew it: the art was built once when the
+   * panel opened and the new gear only appeared after a reload. Keying
+   * the rebuild to the count pays the stutter exactly once, on the one
+   * redraw that has something new to show.
+   */
+  const buildGears = (): void => {
     const stages = legacyGearCount(scene.legacyMachine);
+    art.removeAll(true);
+    gears.length = 0;
+    builtGearCount = stages;
+
     // AN EMPTY MACHINE IS A LOT OF NOTHING. With no gears there is no
-    // barrel to draw, and the panel is mostly void - which reads as
+    // train to draw, and the panel is mostly void - which reads as
     // broken rather than as a machine waiting to be built.
     if (stages === 0) {
       art.add(scene.add.text(w / 2, h * 0.42, 'NO GEARS YET', {
@@ -166,68 +182,56 @@ export function openLegacyMachine(scene: BoardScene): void {
         fontSize: `${Math.round(9 * s)}px`,
         color: hex(Theme.textOnDarkMuted)
       }).setOrigin(0.5));
+      return;
     }
-    // ONE PLATE PER GEAR YOU ACTUALLY OWN.
-    //
-    // This was a flat 26, so the barrel looked identical whether you had
-    // the base eight or had bought twenty - the whole point of buying
-    // them one at a time was invisible. It now grows by one plate per
-    // purchase, and every measurement below is derived from the count,
-    // so the barrel rescales to fit rather than running off the panel.
-    const plates = stages;
 
-    // STRAIGHT UP THE SCREEN, near end at the bottom, the two barrels
-    // side by side. Running them diagonally made the pair drift apart
-    // across the frame; vertical keeps them parallel and lets them sit
-    // close enough that driving each other is believable.
-    const barrelSpans = 0.13 * (plates - 1) + 1;
-    // Sized to fill the band rather than sit in the middle of it. Every
-    // other measurement here is derived from `near`, so raising it scales
-    // the step and the centre distance with it and the mesh holds.
-    const near = Math.min(
-      (w * 0.92) / 1.95,
-      (h * 0.56) / barrelSpans
-    );
+    // ONE GEAR PER GEAR, ALTERNATING SIDES.
+    //
+    // This drew TWO stacks of `stages` plates, which was right when the
+    // count was a fixed 26 and the pair read as two barrels in mesh -
+    // but with one plate per gear it simply doubled them, so buying the
+    // second gear put four on screen. A gear train is a CHAIN: each
+    // wheel meshes the next and the line zigzags as it climbs, which is
+    // both what the reference machine does and the only arrangement
+    // where the count on screen is the count you own.
+    const spans = 0.449 * (stages - 1) + 1;
+    // THE BAND STOPS CLEAR OF THE HEADER. 0.56 was tuned for the old
+    // dense stack, whose real extent was shorter than its nominal span;
+    // a chain with this spacing uses the whole budget and ran the top
+    // wheel up behind the title.
+    const near = Math.min((w * 0.92) / 1.95, (h * 0.40) / spans);
     // The sprite is padded: the drawn wheel fills 0.863 of its canvas, so
-    // spacing has to be measured on the tooth circle, not the box.
+    // spacing is measured on the tooth circle, not the box.
     const toothed = near * 0.863;
-    const step = toothed * 0.13;
-    // Just inside one tooth circle, so the two barrels overlap slightly
-    // and read as being in mesh rather than as two separate stacks.
-    const gap = toothed * 0.94;
+    const step = toothed * 0.52;
     const baseY = h * 0.58;
 
-    for (let i = plates - 1; i >= 0; i--) {
+    for (let i = stages - 1; i >= 0; i--) {
       // Receding, so the far end is smaller - the only depth cue left
-      // once the barrels are square to the screen.
+      // once the train is square to the screen.
       const shrink = 0.982 ** i;
-      // THE SPACING SHRINKS WITH THE PLATES. Held at the near end's
-      // distance it left a gap that widened all the way up the barrel -
-      // the first two wheels looked like they drove each other and
-      // nothing above them did. Two shafts converge as they recede, so
-      // the centre distance has to take the same falloff the diameter
-      // does.
-      const halfGap = (gap * shrink) / 2;
-      for (let row = 0; row < 2; row++) {
-        const gear = scene.add.image(
-          w * 0.5 + (row ? halfGap : -halfGap),
-          baseY - step * i,
-          GEAR_TEXTURE
-        ).setDisplaySize(near * shrink, near * shrink);
-        gear.setData('stage', Math.min(i, stages - 1));
-        // Meshing rows COUNTER-ROTATE, which is what two gears in mesh
-        // actually do - the driven row runs backwards against the driver.
-        gear.setData('sense', row ? -1 : 1);
-        gears.push(gear);
-        art.add(gear);
-      }
+      const side = i % 2 ? 1 : -1;
+      const gear = scene.add.image(
+        w * 0.5 + side * toothed * 0.44 * shrink,
+        baseY - step * i,
+        GEAR_TEXTURE
+      ).setDisplaySize(near * shrink, near * shrink);
+      gear.setData('stage', i);
+      // MESHING WHEELS COUNTER-ROTATE, and since the chain alternates
+      // sides, the sense alternates with it.
+      gear.setData('sense', side);
+      gears.push(gear);
+      art.add(gear);
     }
+  };
+
+  if (scene.textures.exists(GEAR_TEXTURE)) {
+    buildGears();
 
     // DRIVEN BY REAL ELAPSED TIME, not by an assumed tick length. At a
     // fixed 16ms per step the machine ran slow whenever a frame took
-    // longer than that, so the barrel and the "rotations per hour" on
-    // the header quietly disagreed. Now a gear that says 250 an hour
-    // turns 250 times an hour, and the deeper ones divide exactly.
+    // longer than that, so the train and the "rotations per hour" on
+    // the header quietly disagreed.
     let last = scene.time.now;
     spin = scene.time.addEvent({
       delay: 16,
@@ -248,10 +252,16 @@ export function openLegacyMachine(scene: BoardScene): void {
     });
   }
 
+
   const content = scene.add.container(0, 0);
   const redraw = (): void => {
     content.removeAll(true);
     const state = scene.legacyMachine;
+    // A PURCHASE HAS TO REACH THE ART. `content` is all this used to
+    // clear, and the gears live in `art`, so buying one drew nothing
+    // until the panel was opened again. Only a change in the count
+    // rebuilds, so claiming a reward still leaves the train turning.
+    if (legacyGearCount(state) !== builtGearCount) buildGears();
     const rph = legacyRotationsPerHour(state.gearOneLevel);
     subtitle.setText(
       rph === 0
