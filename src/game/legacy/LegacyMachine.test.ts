@@ -3,7 +3,22 @@ import { advanceLegacyMachine, normalizeLegacyMachine, legacyRotationsPerHour,
   LEGACY_MAX_LEVEL, LEGACY_MAX_RPH, legacyUnlocked, legacyUpgradeCost,
   createDefaultLegacyMachine, claimableLegacyMilestones, markLegacyClaimed,
   nextLegacyMilestone, syncLegacyGears, legacyRepeatInterval,
-  buyLegacyGear, legacyGearCount, LEGACY_GEAR_RATIO } from './LegacyMachine';
+  buyLegacyGear, legacyGearCount, LEGACY_GEAR_RATIO,
+  LEGACY_PRE_BOUGHT_GEARS, type LegacyMachineState } from './LegacyMachine';
+
+/**
+ * A machine that already owns `gears` gears.
+ *
+ * The machine ships EMPTY now - every gear is bought - so a test that
+ * wants a train has to say so. These arrive having started at zero,
+ * which is what the old free eight were.
+ */
+function machineWithGears(gears: number): LegacyMachineState {
+  const state = createDefaultLegacyMachine();
+  state.torqueLevel = gears;
+  syncLegacyGears(state);
+  return state;
+}
 
 describe('machine clock', () => {
   it('keeps credit and gem prices without charging energy at any speed level', () => {
@@ -36,7 +51,7 @@ describe('machine clock', () => {
 
 describe('repeatable final rewards', () => {
   it('keeps the first-time sequence and repeats only its final reward', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.turns[0] = 1200;
     syncLegacyGears(state);
     const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 0);
@@ -53,7 +68,7 @@ describe('repeatable final rewards', () => {
   });
 
   it('repeats shipping rewards once per rotation on the final gear', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.turns[0] = 3 * 4 ** 7;
     syncLegacyGears(state);
     const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 7);
@@ -62,7 +77,7 @@ describe('repeatable final rewards', () => {
   });
 
   it('pays multiple offline cycles once and retains the counter across saving', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.gearOneLevel = LEGACY_MAX_LEVEL;
     state.lastTickAt = 1000;
     const now = 1000 + 6 * 3_600_000;
@@ -85,8 +100,10 @@ describe('repeatable final rewards', () => {
   });
 
   it('handles torque gears with the same repeating shipping interval', () => {
-    const state = createDefaultLegacyMachine();
-    state.torqueLevel = 1;
+    // Nine gears, so index 8 is the deep one under test. This used to
+    // read `torqueLevel = 1` back when that meant one ON TOP of a free
+    // eight.
+    const state = machineWithGears(9);
     state.turns[0] = 2 * 4 ** 8;
     syncLegacyGears(state);
     expect(legacyRepeatInterval(8)).toBe(1);
@@ -97,7 +114,7 @@ describe('repeatable final rewards', () => {
 
 describe('gears bought one at a time', () => {
   it('starts a newly bought gear from a standstill', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.turns[0] = 100_000;
     syncLegacyGears(state);
 
@@ -110,7 +127,7 @@ describe('gears bought one at a time', () => {
   });
 
   it('counts only the turns since the gear was bought', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.turns[0] = 100_000;
     syncLegacyGears(state);
     buyLegacyGear(state);
@@ -123,7 +140,7 @@ describe('gears bought one at a time', () => {
   });
 
   it('leaves the base gears measuring from zero', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.turns[0] = 4096;
     syncLegacyGears(state);
     for (let gear = 1; gear < 8; gear++) {
@@ -132,7 +149,7 @@ describe('gears bought one at a time', () => {
   });
 
   it('takes nothing away from a save written before gearStartTurns', () => {
-    const state = createDefaultLegacyMachine();
+    const state = machineWithGears(8);
     state.turns[0] = 100_000;
     state.torqueLevel = 2;
     syncLegacyGears(state);
@@ -144,5 +161,35 @@ describe('gears bought one at a time', () => {
     for (let gear = 1; gear < legacyGearCount(restored); gear++) {
       expect(restored.turns[gear]).toBeCloseTo(100_000 / LEGACY_GEAR_RATIO ** gear, 6);
     }
+  });
+});
+
+describe('the machine starts empty', () => {
+  it('ships with no gears at all', () => {
+    const state = createDefaultLegacyMachine();
+    expect(legacyGearCount(state)).toBe(0);
+    expect(state.turns).toEqual([]);
+  });
+
+  it('does not turn before a gear is bought, whatever the speed', () => {
+    const state = createDefaultLegacyMachine();
+    state.gearOneLevel = LEGACY_MAX_LEVEL;
+    state.lastTickAt = 1;
+    expect(advanceLegacyMachine(state, 1 + 3_600_000)).toEqual([]);
+    expect(state.turns[0] ?? 0).toBe(0);
+  });
+
+  it('gives a save from before the change its free eight back as purchases', () => {
+    // Written when `torqueLevel` counted gears ADDED to a free eight.
+    const old = { gearOneLevel: 3, torqueLevel: 2, turns: [4096], claimed: [], lastTickAt: 5 };
+    const restored = normalizeLegacyMachine(old);
+    expect(legacyGearCount(restored)).toBe(LEGACY_PRE_BOUGHT_GEARS + 2);
+    expect(restored.turns[0]).toBe(4096);
+  });
+
+  it('leaves an already-migrated save alone', () => {
+    const state = machineWithGears(9);
+    const restored = normalizeLegacyMachine(JSON.parse(JSON.stringify(state)));
+    expect(legacyGearCount(restored)).toBe(9);
   });
 });

@@ -151,6 +151,22 @@ export function openLegacyMachine(scene: BoardScene): void {
 
   if (scene.textures.exists(GEAR_TEXTURE)) {
     const stages = legacyGearCount(scene.legacyMachine);
+    // AN EMPTY MACHINE IS A LOT OF NOTHING. With no gears there is no
+    // barrel to draw, and the panel is mostly void - which reads as
+    // broken rather than as a machine waiting to be built.
+    if (stages === 0) {
+      art.add(scene.add.text(w / 2, h * 0.42, 'NO GEARS YET', {
+        resolution: textResolution, fontFamily: Theme.fontHeading,
+        fontSize: `${Math.round(15 * s)}px`, fontStyle: 'bold',
+        color: hex(Theme.textOnDarkMuted)
+      }).setOrigin(0.5));
+      art.add(scene.add.text(w / 2, h * 0.42 + 20 * s,
+        'EVERY GEAR IS BOUGHT, STARTING WITH THE FIRST', {
+        resolution: textResolution, fontFamily: Theme.fontMono,
+        fontSize: `${Math.round(9 * s)}px`,
+        color: hex(Theme.textOnDarkMuted)
+      }).setOrigin(0.5));
+    }
     // ONE PLATE PER GEAR YOU ACTUALLY OWN.
     //
     // This was a flat 26, so the barrel looked identical whether you had
@@ -312,12 +328,15 @@ export function openLegacyMachine(scene: BoardScene): void {
     content.add(bar);
     content.add(scene.add.text(
       w / 2, barY + 16 * s,
-      next
+      legacyGearCount(state) === 0
+        ? 'BUY THE FIRST GEAR TO BUILD THE MACHINE'
+        : next
         ? (rph === 0
           ? 'BUY THE FIRST UPGRADE TO START GEAR 1'
           : `NEXT REWARD AT GEAR ${focus + 1}’S `
             + `${ordinal(next.milestone)} ROTATION`
             + `  ·  ${Math.round(next.progress * 100)}% THERE`)
+        : legacyGearCount(state) === 0 ? 'BUY THE FIRST GEAR TO START THE MACHINE'
         : 'EVERY GEAR HAS PAID OUT',
       {
         resolution: textResolution, fontFamily: Theme.fontMono,
@@ -340,78 +359,91 @@ export function openLegacyMachine(scene: BoardScene): void {
       }).setOrigin(0.5));
     }
 
-    // ---- the upgrade ----
-    // ONE BUTTON, TWO TRACKS. Speed while the teeth can take it, torque
-    // after - which is the point of the cap: the machine stops getting
-    // faster and starts getting longer, and the upgrade never runs out.
-    const maxed = state.gearOneLevel >= LEGACY_MAX_LEVEL;
-    const torque = legacyTorqueCost(state.torqueLevel);
-    const cost = maxed
-      ? torque
-      : legacyUpgradeCost(state.gearOneLevel);
-    const upgradeW = Math.min(342 * s, w - 30 * s);
-    const affordable = scene.economy.coins >= cost.credits
-      && scene.economy.gems >= cost.gems;
-    const up = scene.add.graphics();
-    const upColor = affordable ? Theme.currencyXp : Theme.panelAlt;
-    const lighting = materialLighting(upColor, affordable ? 5 : 2);
-    up.fillGradientStyle(lighting.highlight, lighting.light, lighting.dark, lighting.shadow, 1);
-    up.fillRoundedRect(w / 2 - upgradeW / 2, upgradeY - 25 * s, upgradeW, 50 * s, Theme.radiusChip);
-    up.lineStyle(1.5, affordable ? Theme.currencyXp : Theme.borderOnDark, 0.95);
-    up.strokeRoundedRect(w / 2 - upgradeW / 2, upgradeY - 25 * s, upgradeW, 50 * s, Theme.radiusChip);
-    content.add(up);
-    content.add(scene.add.text(
-      w / 2, maxed ? upgradeY : upgradeY - 8 * s,
-      (maxed ? `ADD GEAR ${legacyGearCount(state) + 1}`
-        : state.gearOneLevel === 0 ? 'START THE MACHINE' : 'UPGRADE GEAR 1')
-        + ` · LV ${state.gearOneLevel}`,
-      {
+    // ---- the two purchases ----
+    // SEPARATE BUTTONS, not one that switches. Speed and length are
+    // different things to spend on, and folding them into a single
+    // button meant the machine decided for you - it sold speed until
+    // the teeth capped and only then let you lengthen the train. Side
+    // by side at the same Y, so the panel's vertical layout is
+    // untouched.
+    const gearsOwned = legacyGearCount(state);
+    const half = Math.min(342 * s, w - 30 * s) / 2 - 4 * s;
+
+    const buyButton = (
+      cx: number, title: string, cost: { credits: number; gems: number },
+      enabled: boolean, onBuy: () => void
+    ): void => {
+      const affordable = enabled
+        && scene.economy.coins >= cost.credits
+        && scene.economy.gems >= cost.gems;
+      const box = scene.add.graphics();
+      const color = affordable ? Theme.currencyXp : Theme.panelAlt;
+      const lighting = materialLighting(color, affordable ? 5 : 2);
+      box.fillGradientStyle(lighting.highlight, lighting.light, lighting.dark, lighting.shadow, 1);
+      box.fillRoundedRect(cx - half / 2, upgradeY - 25 * s, half, 50 * s, Theme.radiusChip);
+      box.lineStyle(1.5, affordable ? Theme.currencyXp : Theme.borderOnDark, 0.95);
+      box.strokeRoundedRect(cx - half / 2, upgradeY - 25 * s, half, 50 * s, Theme.radiusChip);
+      content.add(box);
+      content.add(scene.add.text(cx, upgradeY - 9 * s, title, {
         resolution: textResolution, fontFamily: Theme.fontHeading,
-        fontSize: `${Math.round(13 * s)}px`, fontStyle: 'bold',
+        fontSize: `${Math.round(11 * s)}px`, fontStyle: 'bold',
         color: hex(affordable ? Theme.bg : Theme.textOnDarkMuted)
-      }
-    ).setOrigin(0.5));
+      }).setOrigin(0.5));
 
-    {
-      const costRow = scene.add.container(w / 2, upgradeY + 12 * s);
-      const pills = [
-        currencyPill(scene, cost.credits.toLocaleString(), 'credit', { ...currencyChipOptions('credit'), height: 18 * s, fontSize: 9 * s, iconSize: 13 * s }),
-        currencyPill(scene, String(cost.gems), 'gem', { ...currencyChipOptions('gem'), height: 18 * s, fontSize: 9 * s, iconSize: 13 * s })
-      ];
-      let x = -pills.reduce((sum, pill) => sum + pill.width, 0) / 2 - 8 * s;
-      for (const pill of pills) {
-        x += pill.width / 2 + 4 * s;
-        pill.setPosition(x, 0);
-        x += pill.width / 2 + 4 * s;
-        costRow.add(pill);
-      }
-      content.add(costRow);
-    }
-
-    if (affordable) {
-      const zone = scene.add.zone(w / 2, upgradeY, upgradeW, 50 * s).setInteractive({ useHandCursor: true });
-      zone.on('pointerdown', () => {
-        const atCap = scene.legacyMachine.gearOneLevel >= LEGACY_MAX_LEVEL;
-        const nextTorque = legacyTorqueCost(scene.legacyMachine.torqueLevel);
-        const current = atCap
-          ? nextTorque
-          : legacyUpgradeCost(scene.legacyMachine.gearOneLevel);
-        // Check both currencies before spending either one.
-        if (scene.economy.coins < current.credits
-          || scene.economy.gems < current.gems) return;
-        spendCoinsGeneric(scene.economy, current.credits);
-        spendGems(scene.economy, current.gems);
-        if (atCap) {
-          buyLegacyGear(scene.legacyMachine);
-        } else {
-          scene.legacyMachine.gearOneLevel++;
+      if (enabled) {
+        const costRow = scene.add.container(cx, upgradeY + 11 * s);
+        const pills = [
+          currencyPill(scene, cost.credits.toLocaleString(), 'credit', { ...currencyChipOptions('credit'), height: 16 * s, fontSize: 8 * s, iconSize: 11 * s }),
+          currencyPill(scene, String(cost.gems), 'gem', { ...currencyChipOptions('gem'), height: 16 * s, fontSize: 8 * s, iconSize: 11 * s })
+        ];
+        let x = -pills.reduce((sum, pill) => sum + pill.width, 0) / 2 - 6 * s;
+        for (const pill of pills) {
+          x += pill.width / 2 + 3 * s;
+          pill.setPosition(x, 0);
+          x += pill.width / 2 + 3 * s;
+          costRow.add(pill);
         }
+        content.add(costRow);
+      }
+
+      if (!affordable) return;
+      const zone = scene.add.zone(cx, upgradeY, half, 50 * s).setInteractive({ useHandCursor: true });
+      zone.on('pointerdown', () => {
+        if (scene.economy.coins < cost.credits || scene.economy.gems < cost.gems) return;
+        spendCoinsGeneric(scene.economy, cost.credits);
+        spendGems(scene.economy, cost.gems);
+        onBuy();
         scene.updateCurrencyText();
         scene.saveState();
         redraw();
       });
       content.add(zone);
-    }
+    };
+
+    // LENGTH. Always available - it is the machine's first purchase and
+    // never runs out.
+    buyButton(
+      w / 2 - half / 2 - 4 * s,
+      `ADD GEAR ${gearsOwned + 1}`,
+      legacyTorqueCost(state.torqueLevel),
+      true,
+      () => buyLegacyGear(scene.legacyMachine)
+    );
+
+    // SPEED. Nothing to drive until a gear exists, and capped once the
+    // teeth can take no more.
+    const speedCapped = state.gearOneLevel >= LEGACY_MAX_LEVEL;
+    buyButton(
+      w / 2 + half / 2 + 4 * s,
+      gearsOwned === 0 ? 'NEEDS A GEAR'
+        : speedCapped ? `GEAR 1 AT LV ${state.gearOneLevel}`
+        : state.gearOneLevel === 0 ? 'START GEAR 1'
+        : `SPEED UP  ·  LV ${state.gearOneLevel}`,
+      legacyUpgradeCost(state.gearOneLevel),
+      gearsOwned > 0 && !speedCapped,
+      () => { scene.legacyMachine.gearOneLevel++; }
+    );
+
 
     // NO CLAIM LIST. Rewards are delivered the moment a gear reaches a
     // milestone - on a fifteen-second tick while the game is open, and

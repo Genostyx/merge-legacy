@@ -38,6 +38,8 @@ export interface LegacyMachineState {
   gearStartTurns: number[];
   /** When the machine was last wound forward. 0 until it is started. */
   lastTickAt: number;
+  /** Save shape, so migration knows what it is looking at. */
+  schema: number;
 }
 
 /**
@@ -82,7 +84,18 @@ export const LEGACY_UNLOCK_NOTE = 'FINISH FIRST\nHOME RENOVATION';
 export const LEGACY_UNLOCK_LINE = 'FINISH YOUR FIRST HOME RENOVATION';
 
 /** Gears the machine ships with. TORQUE adds more - see `legacyGearCount`. */
-export const LEGACY_BASE_GEARS = 8;
+/**
+ * THE MACHINE ARRIVES EMPTY. Every gear is bought, starting with the
+ * first - there is no free train to inherit.
+ *
+ * `LEGACY_PRE_BOUGHT_GEARS` is what this used to be, kept only so a save
+ * written when the eight were free can be given them as purchases. See
+ * `normalizeLegacyMachine`.
+ */
+export const LEGACY_BASE_GEARS = 0;
+export const LEGACY_PRE_BOUGHT_GEARS = 8;
+/** Bumped when the save shape changes in a way migration has to know about. */
+export const LEGACY_SCHEMA = 1;
 
 /**
  * SPEED IS ROTATIONS PER HOUR, and the ceiling is a real one.
@@ -164,6 +177,7 @@ export function createDefaultLegacyMachine(): LegacyMachineState {
     claimed: Array.from({ length: LEGACY_BASE_GEARS }, () => []),
     repeatPaid: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
     gearStartTurns: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
+    schema: LEGACY_SCHEMA,
     lastTickAt: 0
   };
 }
@@ -181,6 +195,17 @@ export function normalizeLegacyMachine(raw: unknown): LegacyMachineState {
   state.torqueLevel = Number.isFinite(candidate.torqueLevel)
     ? Math.max(0, Math.floor(candidate.torqueLevel!))
     : 0;
+  // A SAVE FROM WHEN THE FIRST EIGHT WERE FREE KEEPS THEM, as purchases.
+  //
+  // `torqueLevel` used to count gears ADDED to a free eight and now
+  // counts every gear there is, so loading an old save without this
+  // would quietly take eight gears off the end of the train - along with
+  // every reward still owed on them.
+  state.schema = Number.isFinite(candidate.schema)
+    ? Math.max(0, Math.floor(candidate.schema!))
+    : 0;
+  if (state.schema < 1) state.torqueLevel += LEGACY_PRE_BOUGHT_GEARS;
+  state.schema = LEGACY_SCHEMA;
   // The arrays are grown to whatever the torque level says the machine is
   // now, THEN filled - a save written at eight gears loads into a twelve
   // gear machine without losing a turn, and one written at twelve loads
@@ -260,7 +285,7 @@ export function legacySpeed(state: LegacyMachineState): number {
 
 /** Whether the machine is running at all. */
 export function legacyIsRunning(state: LegacyMachineState): boolean {
-  return state.gearOneLevel > 0;
+  return state.gearOneLevel > 0 && legacyGearCount(state) > 0;
 }
 
 /**
@@ -307,9 +332,16 @@ export function legacyUpgradeCost(level: number): { credits: number; gems: numbe
  * purchase instead of getting cheaper in real terms the deeper it goes.
  */
 export function legacyTorqueCost(level: number): { credits: number; gems: number } {
+  // REBASED BY THE EIGHT THAT USED TO BE FREE, so the ninth gear still
+  // costs what it was tuned to cost and only the new early rungs are
+  // filled in. The ratio is unchanged, which is the point: a gear's
+  // price tracks its worth, and an early gear is worth very little, so
+  // the first ones are nearly free and that is correct rather than
+  // generous. A floor keeps them from printing as single digits.
+  const step = level - LEGACY_PRE_BOUGHT_GEARS;
   return {
-    credits: Math.round(120_000 * LEGACY_GEAR_RATIO ** level),
-    gems: 40 + level * 25
+    credits: Math.max(250, Math.round(120_000 * LEGACY_GEAR_RATIO ** step)),
+    gems: Math.max(2, 40 + step * 25)
   };
 }
 
@@ -329,7 +361,9 @@ export function legacyTorqueCost(level: number): { credits: number; gems: number
 export function advanceLegacyMachine(
   state: LegacyMachineState, now: number
 ): Array<{ gear: number; milestone: number; reward: LegacyReward }> {
-  if (state.gearOneLevel <= 0) {
+  // Speed with nothing to drive is not motion. Until the first gear is
+  // bought the machine has no train at all.
+  if (state.gearOneLevel <= 0 || legacyGearCount(state) <= 0) {
     state.lastTickAt = Math.max(state.lastTickAt, now);
     return [];
   }
