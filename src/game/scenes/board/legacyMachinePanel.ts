@@ -185,7 +185,7 @@ export function openLegacyMachine(scene: BoardScene): void {
       return;
     }
 
-    // ONE GEAR PER GEAR, ALTERNATING SIDES.
+    // ONE GEAR PER GEAR, ON ALTERNATING SHAFTS.
     //
     // This drew TWO stacks of `stages` plates, which was right when the
     // count was a fixed 26 and the pair read as two barrels in mesh -
@@ -194,16 +194,21 @@ export function openLegacyMachine(scene: BoardScene): void {
     // wheel meshes the next and the line zigzags as it climbs, which is
     // both what the reference machine does and the only arrangement
     // where the count on screen is the count you own.
-    const spans = 0.449 * (stages - 1) + 1;
+    const spans = 0.1467 * (stages - 1) + 1;
     // THE BAND STOPS CLEAR OF THE HEADER. 0.56 was tuned for the old
     // dense stack, whose real extent was shorter than its nominal span;
     // a chain with this spacing uses the whole budget and ran the top
     // wheel up behind the title.
-    const near = Math.min((w * 0.92) / 1.95, (h * 0.40) / spans);
+    const near = Math.min((w * 0.92) / 1.95, (h * 0.43) / spans);
     // The sprite is padded: the drawn wheel fills 0.863 of its canvas, so
     // spacing is measured on the tooth circle, not the box.
     const toothed = near * 0.863;
-    const step = toothed * 0.52;
+    // TIGHT, so the two shafts read as dense interleaved barrels
+    // rather than a ladder. This was widened to make the meshing
+    // legible and that pulled the stacks apart - the reference
+    // machine packs its wheels nearly touching, and the interlock
+    // is the whole of what it reads as.
+    const step = toothed * 0.17;
     const baseY = h * 0.58;
 
     for (let i = stages - 1; i >= 0; i--) {
@@ -212,7 +217,7 @@ export function openLegacyMachine(scene: BoardScene): void {
       const shrink = 0.982 ** i;
       const side = i % 2 ? 1 : -1;
       const gear = scene.add.image(
-        w * 0.5 + side * toothed * 0.44 * shrink,
+        w * 0.5 + side * toothed * 0.45 * shrink,
         baseY - step * i,
         GEAR_TEXTURE
       ).setDisplaySize(near * shrink, near * shrink);
