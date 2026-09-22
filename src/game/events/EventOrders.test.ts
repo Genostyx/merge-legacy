@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EVENT_ORDER_BANDS,
+  EVENT_ORDER_TIERS,
   EVENT_ORDER_SLOTS,
   eventOrderPayout,
   drawEventOrder,
-  isRoundComplete,
-  isSlotFilled,
   findEventItem,
   rollEventOrders,
   submitEventOrder,
@@ -28,51 +26,58 @@ describe('event orders', () => {
   it('can ask for every tier in the chain, unlocked or not', () => {
     // Nothing here consults what the player has built: an order for a piece
     // they have not made yet is a target, not a locked door.
-    const askable = new Set(EVENT_ORDER_BANDS.flat());
     for (let tier = 1; tier <= EVENT_MAX_TIER; tier++) {
-      expect(askable.has(tier)).toBe(true);
+      expect(EVENT_ORDER_TIERS).toContain(tier);
     }
   });
 
-  it('deals every slot from inside its own band', () => {
-    for (const roll of [() => 0, () => 0.5, () => 0.999]) {
-      rollEventOrders(createDefaultEventBoardState(), roll).forEach((tier, slot) => {
-        expect(EVENT_ORDER_BANDS[slot]).toContain(tier);
-      });
+  it('lets any slot ask for any tier', () => {
+    // The slots used to draw from disjoint bands, so slot 0 could only ever
+    // ask for a 1 or a 2. Every slot now reaches the whole chain.
+    const seen = EVENT_ORDER_TIERS.map(() => new Set<number>());
+    const state = createDefaultEventBoardState();
+    for (let i = 0; i < 400; i++) {
+      rollEventOrders(state).forEach((tier, slot) => seen[slot].add(tier));
     }
-  });
-
-  it('deals a whole band before repeating any of it', () => {
-    // THE FAIRNESS RULE. Independent rolls let one player be dealt the dear
-    // end of a band over and over while another gets the cheap end, which
-    // with material set aside is an advantage nobody earned. Two players
-    // filling at the same rate now see the same set in the same number of
-    // fills; only the order inside a cycle is luck.
     for (let slot = 0; slot < EVENT_ORDER_SLOTS; slot++) {
-      const band = EVENT_ORDER_BANDS[slot];
-      const state = createDefaultEventBoardState();
-      const cycle = band.map(() => drawEventOrder(state, slot));
-      expect([...cycle].sort()).toEqual([...band].sort());
-
-      // ...and the next cycle is a fresh pass over the same band, not a
-      // continuation of the last one.
-      const next = band.map(() => drawEventOrder(state, slot));
-      expect([...next].sort()).toEqual([...band].sort());
+      // Not every tier every time - two are excluded on any given deal as
+      // the other cards' - but across 400 deals a slot must reach the ends.
+      expect(seen[slot].has(1)).toBe(true);
+      expect(seen[slot].has(EVENT_MAX_TIER)).toBe(true);
     }
   });
 
-  it('gives the slots disjoint bands, so two cards can never ask alike', () => {
-    // THE GUARANTEE, by construction rather than by logic. Overlapping bands
-    // put the same piece on two cards a fifth of the time, and dodging it
-    // afterwards only reached 13% because the bags are too short to always
-    // have a swap partner.
-    const seen = new Set<number>();
-    for (const band of EVENT_ORDER_BANDS) {
-      for (const tier of band) {
-        expect(seen.has(tier)).toBe(false);
-        seen.add(tier);
-      }
+  it('deals the whole chain before repeating any of it', () => {
+    // THE FAIRNESS RULE. Independent rolls let one player be dealt the dear
+    // end over and over while another gets the cheap end, which with material
+    // set aside is an advantage nobody earned. Two players filling at the
+    // same rate now see the same set in the same number of fills; only the
+    // order inside a cycle is luck.
+    for (let slot = 0; slot < EVENT_ORDER_SLOTS; slot++) {
+      // On its own, so the collision skip does not exclude anything.
+      const state = createDefaultEventBoardState();
+      state.orders = [];
+      const cycle = EVENT_ORDER_TIERS.map(() => drawEventOrder(state, slot));
+      expect([...cycle].sort((a, b) => a - b)).toEqual([...EVENT_ORDER_TIERS]);
+
+      const next = EVENT_ORDER_TIERS.map(() => drawEventOrder(state, slot));
+      expect([...next].sort((a, b) => a - b)).toEqual([...EVENT_ORDER_TIERS]);
     }
+  });
+
+  it('puts a skipped collision back rather than eating it', () => {
+    // Dodging a duplicate must not quietly consume the tier out of this
+    // pass, or the rest of the cycle is biased toward whatever is left.
+    const state = createDefaultEventBoardState();
+    state.orders = [0, 4, 7];
+    const drawn = new Set<number>();
+    for (let i = 0; i < EVENT_ORDER_TIERS.length - 2; i++) {
+      state.orders[0] = 0;
+      drawn.add(drawEventOrder(state, 0));
+    }
+    // Six draws with 4 and 7 excluded must be the other six, each once.
+    expect([...drawn].sort((a, b) => a - b))
+      .toEqual(EVENT_ORDER_TIERS.filter((t) => t !== 4 && t !== 7));
   });
 
   it('never deals the same tier to two slots at once', () => {
@@ -83,11 +88,11 @@ describe('event orders', () => {
     }
   });
 
-  it('rebuilds a bag left over from different bands', () => {
-    // A save written before the bands changed would otherwise deal a tier the
-    // slot can no longer ask for.
+  it('rebuilds a bag left over from the old bands', () => {
+    // A save written before the bands were removed would otherwise deal a
+    // tier that is not on the chain at all.
     const state = { ...createDefaultEventBoardState(), orderBags: [[99]] };
-    expect(EVENT_ORDER_BANDS[0]).toContain(drawEventOrder(state, 0));
+    expect(EVENT_ORDER_TIERS).toContain(drawEventOrder(state, 0));
   });
 
   it('refuses, and changes nothing, when the board cannot pay', () => {
@@ -105,7 +110,7 @@ describe('event orders', () => {
     expect(submitEventOrder(stateWith([3, 4, 6]), grid, 0)).toBeNull();
   });
 
-  it('takes the item and pays, but does NOT replace the card', () => {
+  it('takes the item, pays, and replaces that card on the spot', () => {
     const grid = createEventGrid();
     put(grid, 1, 2, 2);
     const state = stateWith([2, 4, 6]);
@@ -113,44 +118,65 @@ describe('event orders', () => {
 
     expect(result?.from).toEqual({ col: 1, row: 2 });
     expect(result?.points).toBe(eventPointsForTier(2));
+    expect(result?.tier).toBe(2);
     expect(grid.get({ col: 1, row: 2 })).toBeNull();
-    expect(result?.roundComplete).toBe(false);
-    // The row is untouched: a filled slot is a receipt until the round ends.
-    expect(state.orders).toEqual([2, 4, 6]);
-    expect(isSlotFilled(state, 0)).toBe(true);
+    // Only slot 0 moves. The neighbours are untouched.
+    expect(state.orders[1]).toBe(4);
+    expect(state.orders[2]).toBe(6);
+    expect(EVENT_ORDER_TIERS).toContain(state.orders[0]);
   });
 
-  it('refuses a slot that is already filled this round', () => {
-    // Without this the cheap slot could be handed a second item and paid
-    // again, which is the farming the round exists to stop.
+  it('replaces a filled order with one at least a tier higher', () => {
     const grid = createEventGrid();
-    put(grid, 0, 0, 2);
+    // Band 1 is [3, 4, 5], so filling a 3 must be answered with a 4 or a 5.
+    put(grid, 0, 0, 3);
+    const state = stateWith([2, 3, 6]);
+    const result = submitEventOrder(state, grid, 1, () => 0);
+    expect(result?.steppedUp).toBe(true);
+    expect(state.orders[1]).toBeGreaterThan(3);
+    expect(state.orderFloor[1]).toBe(3);
+  });
+
+  it('resets to a free draw once the stepped-up order is filled', () => {
+    const grid = createEventGrid();
+    put(grid, 0, 0, 3);
+    const state = stateWith([2, 3, 6]);
+    submitEventOrder(state, grid, 1, () => 0);
+    const raised = state.orders[1];
+    expect(raised).toBeGreaterThan(3);
+
+    // Hand in the stepped-up one; the slot is free again, so the next draw
+    // may be anything in the band - including back down to a 3.
+    put(grid, 0, 0, raised);
+    const second = submitEventOrder(state, grid, 1, () => 0);
+    expect(second?.steppedUp).toBe(false);
+    expect(state.orderFloor[1]).toBe(0);
+    expect(EVENT_ORDER_TIERS).toContain(state.orders[1]);
+  });
+
+  it('falls straight back to free at the top of the chain', () => {
+    // Filling the last tier has no rung above it, so the step is skipped
+    // rather than stalling the slot on a constraint it cannot meet.
+    const grid = createEventGrid();
+    put(grid, 0, 0, EVENT_MAX_TIER);
+    const state = stateWith([EVENT_MAX_TIER, 4, 6]);
+    const result = submitEventOrder(state, grid, 0, () => 0);
+    expect(result?.steppedUp).toBe(false);
+    expect(state.orderFloor[0]).toBe(0);
+    expect(EVENT_ORDER_TIERS).toContain(state.orders[0]);
+  });
+
+  it('lets the same slot be filled again immediately', () => {
+    // The round used to refuse this - it was the anti-farm rule. A slot now
+    // refills on the spot, so a second item CAN be handed in at once; what
+    // stops it being the same cheap order is the step up, not a refusal.
+    const grid = createEventGrid();
+    put(grid, 0, 0, 1);
+    const state = stateWith([1, 4, 6]);
+    expect(submitEventOrder(state, grid, 0, () => 0)).not.toBeNull();
+    expect(state.orders[0]).toBe(2);
     put(grid, 1, 0, 2);
-    const state = stateWith([2, 4, 6]);
-    expect(submitEventOrder(state, grid, 0)).not.toBeNull();
-    expect(submitEventOrder(state, grid, 0)).toBeNull();
-    // ...and the second item is still on the board, not consumed.
-    expect(findEventItem(grid, 2)).not.toBeNull();
-  });
-
-  it('deals a fresh three only when all three are in', () => {
-    const grid = createEventGrid();
-    put(grid, 0, 0, 2);
-    put(grid, 1, 0, 4);
-    put(grid, 2, 0, 6);
-    const state = stateWith([2, 4, 6]);
-
-    expect(submitEventOrder(state, grid, 0)?.roundComplete).toBe(false);
-    expect(submitEventOrder(state, grid, 1)?.roundComplete).toBe(false);
-    expect(state.orders).toEqual([2, 4, 6]);
-
-    const last = submitEventOrder(state, grid, 2);
-    expect(last?.roundComplete).toBe(true);
-    // A new round: nothing filled, and every slot asking again.
-    expect(isRoundComplete(state)).toBe(false);
-    state.orders.forEach((tier, slot) => {
-      expect(EVENT_ORDER_BANDS[slot]).toContain(tier);
-    });
+    expect(submitEventOrder(state, grid, 0, () => 0)).not.toBeNull();
   });
 
   it('retargets the hardest slot the moment a top-tier item exists', () => {

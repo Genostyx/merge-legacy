@@ -87,13 +87,18 @@ export interface EventBoardState {
    */
   orders: number[];
   /**
-   * Which slots have been filled in the CURRENT round.
+   * Per slot: the tier the NEXT order there has to beat. 0 means free.
    *
-   * A round is all three orders. A filled slot stays filled until its two
-   * neighbours are done too, and only then do all three refresh together -
-   * see `submitEventOrder`.
+   * This replaces the old `filled` round. A slot refills the instant it is
+   * handed in, and the order that replaces it must be at least one tier
+   * above the one just completed - then, once THAT one is filled, the slot
+   * resets to a free draw. So each slot walks free, step up, free, step up.
+   *
+   * Saved because the step is a promise made to the player when they filled
+   * the card: reloading between the two halves of it must not hand them a
+   * cheap order they were not owed.
    */
-  filled: boolean[];
+  orderFloor: number[];
   /**
    * The undealt remainder of each slot's shuffled bag.
    *
@@ -119,7 +124,7 @@ export interface EventBoardState {
 
 export function createDefaultEventBoardState(): EventBoardState {
   return {
-    eventId: null, energy: 0, grid: [], seeded: false, orders: [], orderBags: [], filled: [],
+    eventId: null, energy: 0, grid: [], seeded: false, orders: [], orderBags: [], orderFloor: [],
     seenTier: 0, overflowPaid: 0
   };
 }
@@ -156,8 +161,9 @@ export function normalizeEventBoardState(
         .filter((tier): tier is number => Number.isFinite(tier))
         .map((tier) => Math.min(EVENT_MAX_TIER, Math.max(1, Math.floor(tier)))));
   }
-  if (Array.isArray(raw.filled)) {
-    state.filled = raw.filled.map((done) => done === true);
+  if (Array.isArray(raw.orderFloor)) {
+    state.orderFloor = raw.orderFloor.map((tier) =>
+      Number.isFinite(tier) ? Math.min(EVENT_MAX_TIER, Math.max(0, Math.floor(tier))) : 0);
   }
   if (Number.isFinite(raw.seenTier)) {
     state.seenTier = Math.min(EVENT_MAX_TIER, Math.max(0, Math.floor(raw.seenTier as number)));

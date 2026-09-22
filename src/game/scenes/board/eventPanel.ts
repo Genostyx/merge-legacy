@@ -16,7 +16,7 @@ import {
   markOverflowPaid, noteEventTierSeen, overflowCratesOwed, seedEventBoard, spendEventEnergy
 } from '../../events/EventBoard';
 import {
-  EVENT_ORDER_SLOTS, eventOrderPayout, findEventItem, isSlotFilled, rollEventOrders,
+  EVENT_ORDER_SLOTS, eventOrderPayout, findEventItem, rollEventOrders,
   submitEventOrder, visibleEventOrders
 } from '../../events/EventOrders';
 import {
@@ -358,7 +358,6 @@ function buildChrome(
 
     hit.on('pointerup', () => {
       if (!state.canAct() || state.inputLocked) return;
-      if (isSlotFilled(scene.eventBoard, slot)) return;
       const asking = visibleEventOrders(scene.eventBoard, state.grid)[slot];
       const from = asking ? findEventItem(state.grid, asking) : null;
       if (!from) {
@@ -389,11 +388,12 @@ function buildChrome(
       floatPayout(scene, layer, root.x + cardW / 2, ordersY + 8, result.points);
       const finished = payEventPoints(scene, result.points);
       opts.onSave();
-      // The whole ROW leaves when the round closes - three cards out, three
-      // in. A single card departing would say this slot was replaced, which
-      // is the thing that is no longer true.
-      if (result.roundComplete) deck.slice().forEach((c) => requeue(c));
-      else refresh();
+      // ONE CARD LEAVES, and its replacement walks in from the right. This
+      // is what `requeue` was written for and never got to do: the row used
+      // to refresh three at a time, so a single fill could only repaint in
+      // place. Now that a slot really is replaced the moment it is handed
+      // in, the card that departs is saying exactly what happened.
+      requeue(cards[slot]);
       // Only ever fires once - `addEventProgress` reports completion on the
       // call that crosses the goal and never again.
       if (finished) track.celebrate();
@@ -472,8 +472,7 @@ function buildChrome(
 
     // Order cards, laid out in queue order rather than by slot.
     const asking = visibleEventOrders(scene.eventBoard, state.grid);
-    const fillable = cards.map((c) =>
-      !isSlotFilled(scene.eventBoard, c.slot) && !!findEventItem(state.grid, asking[c.slot]));
+    const fillable = cards.map((c) => !!findEventItem(state.grid, asking[c.slot]));
     deck.forEach((card, position) => slideTo(card, slotX(position)));
 
     cards.forEach((card) => {
@@ -490,10 +489,10 @@ function buildChrome(
       // a card and then discovering you cannot pay it is the difference
       // between a board that answers you and one you have to interrogate.
       const canFill = fillable[slot];
-      // A FILLED CARD IS A RECEIPT. It keeps showing what it took - dimmed,
-      // unlit, untappable - so the row reads as "one of three done" rather
-      // than as a card that has gone quiet for no reason.
-      const done = isSlotFilled(scene.eventBoard, slot);
+      // NO RECEIPT STATE ANY MORE. A card used to stay on the row dimmed and
+      // untappable until its two neighbours were filled; slots refill on the
+      // spot now, so there is never a finished card sitting there to dim.
+      const done = false;
       card.bg.clear();
       card.bg.fillStyle(canFill ? Theme.bg : Theme.bgElevated, done ? 0.45 : 1);
       card.bg.fillRoundedRect(0, 0, cardW, ORDER_CARD_H, Theme.radiusChip);
