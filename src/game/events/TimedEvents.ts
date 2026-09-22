@@ -2,19 +2,16 @@ import type { CrateTier } from '../rewards/Rewards';
 /**
  * TIMED EVENTS - the spine only.
  *
- * Deliberately inert: `EVENTS` ships empty, nothing imports this yet, and it
- * touches no save, no board and no economy. Adding it changes the running
- * game not at all, which is the point - it is somewhere to build from without
- * a half-finished feature sitting in the player's way.
- *
  * What is decided here, so later work does not have to relitigate it:
  *
  *  - A window is two ABSOLUTE epoch timestamps, never a duration. The daily
  *    claim and the crate restocks already learned this: a remaining-time
  *    field stops counting while the game is closed and restarts on load.
+ *  - Those timestamps are DERIVED FROM THE WEEK rather than authored, so the
+ *    event recurs forever and cannot lapse. See `eventsInPlay`.
  *  - Events do not overlap. `activeEvent` returns the FIRST match, so if two
- *    windows are ever authored across each other the earlier one wins rather
- *    than the game picking arbitrarily.
+ *    windows ever cross, the earlier one wins rather than the game picking
+ *    arbitrarily.
  *  - Progress is stored per event id, not as one running number, so an old
  *    event's progress can never be inherited by the next one.
  *
@@ -57,20 +54,46 @@ export type EventMilestone =
   | { at: number; kind: 'gems'; amount: number };
 
 /**
- * The authored schedule. An event exists only while its own window contains
- * the clock, so a past entry is inert without being deleted - which is what
- * keeps its claimed rungs meaningful in a save (see `normalizeTimedEventState`,
- * which prunes only ids that are gone from this list entirely).
+ * THE WEEK IS THE EVENT. Nothing here is authored with a date.
+ *
+ * A hand-written window is a thing that expires: `verdigris-1` ran for
+ * three days in September and then the feature went dark, with the whole
+ * spine still built and nothing left for it to show. Every merge game in
+ * the genre runs its event on a repeating weekly reset instead, and that
+ * is what this is - the window is computed from the clock, so there is no
+ * schedule to keep topped up and no way for the game to run out of event.
+ *
+ * MONDAY 00:00 UTC, which is where the genre has settled, and where the
+ * week starts on the calendar the player already has.
+ *
+ * UTC rather than local: an event is the same event for everybody, and a
+ * local reset would hand one timezone a head start on a track they are
+ * implicitly compared against.
  */
-export const EVENTS: readonly TimedEventDef[] = [
+export const EVENT_WEEK_MS = 7 * 86_400_000;
+
+/**
+ * One week's event, before it knows which week it is.
+ *
+ * The rotation is a LIST so a second event can be added without touching
+ * anything else. With one entry the same event returns every week, which
+ * is the intended state rather than a placeholder: the weekly slot is one
+ * recurring event whose contents reroll, and the contents come from the
+ * order bags, not from this table.
+ */
+export interface TimedEventTemplate {
+  /** Stable across weeks. The dated id is built from this. */
+  slug: string;
+  title: string;
+  minLevel?: number;
+  goal: number;
+  milestones: EventMilestone[];
+}
+
+export const EVENT_ROTATION: readonly TimedEventTemplate[] = [
   {
-    id: 'verdigris-1',
+    slug: 'verdigris',
     title: 'Verdigris',
-    // Absolute, and deliberately short. A three-day window is the length the
-    // genre has settled on: long enough that one missed evening does not lose
-    // it, short enough that the track still reads as something to finish.
-    startsAt: Date.UTC(2026, 8, 10),
-    endsAt: Date.UTC(2026, 8, 13),
     minLevel: 5,
     // 140 points, at a point per tier. What a player is DEALT cannot swing
     // this: each slot walks a shuffled bag of its whole band, so two players
@@ -89,6 +112,53 @@ export const EVENTS: readonly TimedEventDef[] = [
     ]
   }
 ];
+
+/** Monday 00:00 UTC of the week containing `now`. */
+export function eventWeekStart(now: number): number {
+  const at = new Date(now);
+  // getUTCDay is 0 on Sunday, so shift it to put Monday at zero.
+  const sinceMonday = (at.getUTCDay() + 6) % 7;
+  return Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate())
+    - sinceMonday * 86_400_000;
+}
+
+/**
+ * The event for one week, its id stamped with that week's Monday.
+ *
+ * THE DATE IN THE ID is what resets progress, with no resetting code
+ * anywhere: progress and claimed rungs are both keyed by event id, so a
+ * new week is simply an id nothing has been recorded against. It also
+ * makes it impossible for one week's rewards to be inherited by the next,
+ * which is the mistake a single running counter eventually makes.
+ */
+export function eventForWeek(weekStart: number): TimedEventDef {
+  const template = EVENT_ROTATION[
+    Math.floor(weekStart / EVENT_WEEK_MS) % EVENT_ROTATION.length
+  ];
+  return {
+    id: `${template.slug}-${new Date(weekStart).toISOString().slice(0, 10)}`,
+    title: template.title,
+    startsAt: weekStart,
+    endsAt: weekStart + EVENT_WEEK_MS,
+    minLevel: template.minLevel,
+    goal: template.goal,
+    milestones: template.milestones
+  };
+}
+
+/**
+ * The weeks that still matter: the one running, and the one before it.
+ *
+ * LAST WEEK IS KEPT deliberately. Rungs stay claimable after their window
+ * shuts - see `claimMilestone` - and `normalizeTimedEventState` prunes any
+ * id this does not list, so dropping last week would delete rewards earned
+ * on Sunday night from a player who next opens the game on Monday. One
+ * week of grace, then it goes.
+ */
+export function eventsInPlay(now: number = Date.now()): readonly TimedEventDef[] {
+  const week = eventWeekStart(now);
+  return [eventForWeek(week - EVENT_WEEK_MS), eventForWeek(week)];
+}
 
 /**
  * Tokens per source tap. THE ONLY SOURCE OF THEM.
@@ -110,7 +180,7 @@ export const EVENTS: readonly TimedEventDef[] = [
 export const EVENT_TOKENS_PER_TAP = 0.12;
 
 export interface TimedEventState {
-  /** Progress by event id. Ids absent from EVENTS are pruned on normalize. */
+  /** Progress by event id. Ids no longer in play are pruned on normalize. */
   progress: Record<string, number>;
   /**
    * Rungs already taken, as `<eventId>:<milestone index>`.
@@ -137,7 +207,7 @@ export function createDefaultTimedEventState(): TimedEventState {
  */
 export function normalizeTimedEventState(
   raw: Partial<TimedEventState> | undefined,
-  events: readonly TimedEventDef[] = EVENTS
+  events: readonly TimedEventDef[] = eventsInPlay()
 ): TimedEventState {
   const known = new Set(events.map((event) => event.id));
   const state = createDefaultTimedEventState();
@@ -160,7 +230,7 @@ export function normalizeTimedEventState(
 /** The event whose window contains `now`, or null. */
 export function activeEvent(
   now: number,
-  events: readonly TimedEventDef[] = EVENTS
+  events: readonly TimedEventDef[] = eventsInPlay(now)
 ): TimedEventDef | null {
   return events.find((event) => now >= event.startsAt && now < event.endsAt) ?? null;
 }
@@ -184,7 +254,7 @@ export const EVENT_START_LEVEL = 10;
  * its own bug.
  */
 export function activeEventFor(
-  now: number, level: number, events: readonly TimedEventDef[] = EVENTS
+  now: number, level: number, events: readonly TimedEventDef[] = eventsInPlay(now)
 ): TimedEventDef | null {
   const event = activeEvent(now, events);
   if (!event) return null;
@@ -202,7 +272,7 @@ export function activeEventFor(
  * feature for the first time on the day it became theirs.
  */
 export function visibleEventFor(
-  now: number, events: readonly TimedEventDef[] = EVENTS
+  now: number, events: readonly TimedEventDef[] = eventsInPlay(now)
 ): TimedEventDef | null {
   return activeEvent(now, events);
 }
@@ -284,7 +354,9 @@ export function unclaimedMilestones(
 }
 
 /** Keeps earned rungs reachable after their playable window closes. */
-export function pendingEventRewards(state: TimedEventState, now: number, events = EVENTS): TimedEventDef | null {
+export function pendingEventRewards(
+  state: TimedEventState, now: number, events = eventsInPlay(now)
+): TimedEventDef | null {
   return [...events].reverse().find((event) => now >= event.endsAt
     && unclaimedMilestones(state, event).length > 0) ?? null;
 }

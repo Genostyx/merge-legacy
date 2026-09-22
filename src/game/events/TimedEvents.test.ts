@@ -3,7 +3,10 @@ import {
   EVENT_START_LEVEL,
   eventsStartedFor,
   visibleEventFor,
-  EVENTS,
+  eventsInPlay,
+  eventWeekStart,
+  eventForWeek,
+  EVENT_WEEK_MS,
   activeEvent,
   activeEventFor,
   addEventProgress,
@@ -29,23 +32,72 @@ const evt = (over: Partial<TimedEventDef> = {}): TimedEventDef => ({
 });
 
 describe('timed events', () => {
-  it('authors every event with a window that opens before it shuts', () => {
+  it('builds every week with a window that opens before it shuts', () => {
     // Reversed or zero-length windows are the authoring slip that would make
     // an event silently never happen, and nothing else would catch it.
-    for (const event of EVENTS) {
+    for (const event of eventsInPlay(Date.UTC(2026, 8, 19))) {
       expect(event.endsAt).toBeGreaterThan(event.startsAt);
       expect(event.goal).toBeGreaterThan(0);
-      const ats = event.milestones.map((m) => m.at);
+      const ats = event.milestones.map((m: { at: number }) => m.at);
       expect([...ats].sort((a, b) => a - b)).toEqual(ats);
       expect(Math.max(...ats)).toBeLessThanOrEqual(event.goal);
     }
   });
 
   it('never opens two windows across each other', () => {
-    const sorted = [...EVENTS].sort((a, b) => a.startsAt - b.startsAt);
+    const sorted = [...eventsInPlay(Date.UTC(2026, 8, 19))]
+      .sort((a, b) => a.startsAt - b.startsAt);
     for (let i = 1; i < sorted.length; i++) {
       expect(sorted[i].startsAt).toBeGreaterThanOrEqual(sorted[i - 1].endsAt);
     }
+  });
+
+  it('starts the week on Monday 00:00 UTC, whatever day it is asked', () => {
+    // 2026-09-14 is a Monday. Every instant from it up to the next Monday
+    // has to resolve to it, including the last millisecond.
+    const monday = Date.UTC(2026, 8, 14);
+    expect(eventWeekStart(monday)).toBe(monday);
+    expect(eventWeekStart(monday + EVENT_WEEK_MS - 1)).toBe(monday);
+    expect(eventWeekStart(monday + EVENT_WEEK_MS)).toBe(monday + EVENT_WEEK_MS);
+    // Sunday is the END of the week, not the start - the off-by-one that
+    // `getUTCDay` returning 0 for Sunday invites.
+    expect(new Date(monday + 6 * 86_400_000).getUTCDay()).toBe(0);
+    expect(eventWeekStart(monday + 6 * 86_400_000)).toBe(monday);
+  });
+
+  it('tiles the weeks edge to edge and gives each its own id', () => {
+    const monday = Date.UTC(2026, 8, 14);
+    const thisWeek = eventForWeek(monday);
+    const nextWeek = eventForWeek(monday + EVENT_WEEK_MS);
+    expect(thisWeek.endsAt).toBe(nextWeek.startsAt);
+    // Different ids are the whole reset mechanism: progress is keyed by id,
+    // so a shared one would carry last week's points into this week.
+    expect(thisWeek.id).not.toBe(nextWeek.id);
+    expect(thisWeek.id).toBe('verdigris-2026-09-14');
+  });
+
+  it('never runs out of event, however far ahead the clock is', () => {
+    for (const year of [2026, 2030, 2040]) {
+      const event = eventsInPlay(Date.UTC(year, 5, 17))[1];
+      expect(event.startsAt).toBeLessThanOrEqual(Date.UTC(year, 5, 17));
+      expect(event.endsAt).toBeGreaterThan(Date.UTC(year, 5, 17));
+    }
+  });
+
+  it('keeps last week so its earned rungs can still be claimed', () => {
+    // A rung reached on Sunday night, opened on Monday: the window has shut
+    // and normalize must not have pruned the id out from under it.
+    const monday = Date.UTC(2026, 8, 14);
+    const lastWeek = eventForWeek(monday - EVENT_WEEK_MS);
+    const state = createDefaultTimedEventState();
+    state.progress[lastWeek.id] = lastWeek.goal;
+    const restored = normalizeTimedEventState(state, eventsInPlay(monday));
+    expect(restored.progress[lastWeek.id]).toBe(lastWeek.goal);
+    expect(unclaimedMilestones(restored, lastWeek).length)
+      .toBe(lastWeek.milestones.length);
+    // Two weeks on it is gone, so a save cannot accumulate them forever.
+    const later = normalizeTimedEventState(state, eventsInPlay(monday + EVENT_WEEK_MS));
+    expect(later.progress[lastWeek.id]).toBeUndefined();
   });
 
   it('counts down as a running clock, and stops at zero', () => {
