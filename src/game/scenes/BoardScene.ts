@@ -181,8 +181,9 @@ import {
   rushCostGems,
   MAX_DISPENSER_TIER,
   COLLECT_MULTIPLIERS,
+  honourableMultiplier,
   maxCollectMultiplier,
-  multiplierFitsChain,
+  msUntilCharges,
   type CollectMultiplier
 } from '../dispensers/Dispensers';
 import type { DispenserState } from '../dispensers/Dispensers';
@@ -3530,20 +3531,41 @@ TAP THE EVENT CARD TO SPEND IT`
       this.refreshActionTray('BOARD FULL\nSELECT AN ITEM TO SELL');
       return;
     }
-    // The multiplier steps DOWN to whatever is affordable: capped by the
-    // player's level, by what the reservoir still holds, and by the energy on
-    // hand. A x4 player with two charges left collects at x2 rather than
-    // being refused outright.
-    const ceiling = Math.min(this.collectMultiplier, maxCollectMultiplier(playerLevel(this.orderState)));
-    const usable = COLLECT_MULTIPLIERS.filter(
-      (m) => m <= ceiling && m <= view.spawner.charges
-        && canSpendEnergy(this.energy, m * ENERGY_COST_PER_COLLECT)
-        // A chain too short to pay a multiplier back is not offered it, so
-        // the energy charged here always matches what the source returns.
-        && multiplierFitsChain(view.spawner.typeId, m)
-    );
-    const multiplier: CollectMultiplier = usable[usable.length - 1] ?? 1;
+    // A SHALLOW RESERVOIR IS A WAIT, NOT A DOWNGRADE.
+    //
+    // This used to step the multiplier down to whatever the charges could
+    // afford, which quietly broke the one guarantee the feature makes: x4
+    // must never hand back a tier 1 or a tier 2. A source recharges one
+    // charge at a time and reads as ready the moment it has ONE, so tapping
+    // a glass source that had just come back collected at x1 and returned
+    // Raw Sand - with the badge still showing x4.
+    //
+    // It is structural rather than an edge case: every family's capacity is
+    // two more than a multiple of four (wood 30, mineral 10, glass 18), so
+    // draining at x4 always ends on a forced x2, and the refill after it
+    // starts at x1.
+    //
+    // Throughput is unchanged by waiting - four charges spent is four
+    // charges either way - so the source simply is not ready for x4 until
+    // it holds four.
+    // Both sides are already members of the union, so the smaller is too.
+    const ceiling = Math.min(
+      this.collectMultiplier, maxCollectMultiplier(playerLevel(this.orderState))
+    ) as CollectMultiplier;
+    // The CHAIN is still allowed to degrade it, because a chain too short to
+    // pay a multiplier back can never grow one.
+    const multiplier = honourableMultiplier(view.spawner.typeId, ceiling);
     const collectCost = multiplier * ENERGY_COST_PER_COLLECT;
+    if (view.spawner.charges < multiplier) {
+      const wait = msUntilCharges(view.spawner, multiplier, Date.now());
+      view.refresh();
+      this.refreshActionTray(
+        `x${multiplier} NEEDS ${multiplier} DROPS  ·  HAS ${view.spawner.charges}`
+        + `
+READY IN ${formatCountdown(wait)}  ·  OR LOWER THE MULTIPLIER`
+      );
+      return;
+    }
     // Energy is checked BEFORE collecting but spent only after the source
     // actually yields, per DISPENSER_ENERGY_RESEARCH rule 2 - a full board
     // or a dry source must never burn energy. Checking first also avoids

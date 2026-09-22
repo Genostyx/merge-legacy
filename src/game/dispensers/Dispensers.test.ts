@@ -6,10 +6,13 @@ import {
   capacityForTier,
   collectDispenser,
   cooldownForTier,
+  honourableMultiplier,
+  msUntilCharges,
   makeDispenser,
   mergeDispenserPair,
   refillDispenser,
   rechargeMsForFamily,
+  type Dispenser,
   rushCostGems,
   syncDispenser,
   outputTierDistribution,
@@ -283,5 +286,45 @@ describe('energy multiplier', () => {
     expect(maxCollectMultiplier(1)).toBe(1);
     expect(maxCollectMultiplier(5)).toBe(2);
     expect(maxCollectMultiplier(15)).toBe(4);
+  });
+});
+
+describe('a shallow reservoir is a wait, not a downgrade', () => {
+  const glass = (charges: number): Dispenser => ({
+    id: 'glass-test', typeId: 'glass', tier: 1, charges, readyAt: 0
+  });
+
+  it('never returns below the multiplier floor, at any roll', () => {
+    // THE GUARANTEE: x4 must never hand back a tier 1 or a tier 2. It held
+    // inside this function all along - what broke it was the caller stepping
+    // the multiplier down to what the charges could afford.
+    for (const roll of [0, 0.25, 0.5, 0.75, 0.99]) {
+      expect(collectDispenser(glass(18), 0, roll, 4)!.tier).toBeGreaterThanOrEqual(3);
+      expect(collectDispenser(glass(18), 0, roll, 2)!.tier).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('degrades for a short chain, which is permanent, and nothing else', () => {
+    // The Decagon's chain is one tier long, so it can never honour x4.
+    expect(honourableMultiplier('decagon', 4)).toBe(1);
+    // Glass has nine, so it always can - however empty it happens to be.
+    expect(honourableMultiplier('glass', 4)).toBe(4);
+  });
+
+  it('counts the wait to a multiplier the reservoir cannot yet pay', () => {
+    const cooldown = cooldownForTier('glass', 1);
+    // One charge in hand and the timer just reset: the next lands a full
+    // cooldown out, and the two after it a cooldown apart each.
+    const d: Dispenser = { id: 'g', typeId: 'glass', tier: 1, charges: 1, readyAt: cooldown };
+    expect(msUntilCharges(d, 1, 0)).toBe(0);
+    expect(msUntilCharges(d, 2, 0)).toBe(cooldown);
+    expect(msUntilCharges(d, 4, 0)).toBe(cooldown * 3);
+  });
+
+  it('reports an impossible wait rather than a finite wrong one', () => {
+    // Nothing should ask this, but a multiplier past the reservoir's whole
+    // capacity must not look like it is merely a few ticks away.
+    expect(msUntilCharges({ id: 'd', typeId: 'decagon', tier: 1, charges: 0, readyAt: 0 }, 9_999, 0))
+      .toBe(Infinity);
   });
 });

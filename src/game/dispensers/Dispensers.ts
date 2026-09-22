@@ -195,6 +195,48 @@ export function syncDispenser(d: Dispenser, now: number = Date.now()): void {
   d.readyAt = d.charges >= capacity ? 0 : d.readyAt + chargesElapsed * cooldown;
 }
 
+/**
+ * The multiplier a source can actually HONOUR, given only its chain.
+ *
+ * Charges are deliberately not consulted. A reservoir too shallow to pay a
+ * multiplier right now is a WAIT, not a downgrade - see `msUntilCharges` and
+ * the collect path in BoardScene. A chain too short to pay it is permanent,
+ * and that is the only thing worth degrading for.
+ */
+export function honourableMultiplier(
+  typeId: string, multiplier: CollectMultiplier
+): CollectMultiplier {
+  let effective: CollectMultiplier = multiplier;
+  while (effective > 1 && !multiplierFitsChain(typeId, effective)) {
+    effective = (effective / 2) as CollectMultiplier;
+  }
+  return effective;
+}
+
+/**
+ * How long until the reservoir holds `needed` charges. 0 if it already does.
+ *
+ * Exists because "ready" used to mean one charge, which is what let a x4 tap
+ * collect at x1 and hand back a tier 1: the source lit up after a single
+ * recharge tick and the multiplier quietly stepped down to what it could
+ * afford. A source is now only ready for the multiplier the player has
+ * selected, and this is the countdown it shows until then.
+ */
+export function msUntilCharges(
+  d: Dispenser, needed: number, now: number = Date.now()
+): number {
+  syncDispenser(d, now);
+  if (d.charges >= needed) return 0;
+  // More than it can ever hold - the caller must not offer this multiplier.
+  if (needed > capacityForTier(d.typeId, d.tier)) return Infinity;
+  const perTick = Math.max(1, dropsPerChargeForTier(d.typeId, d.tier));
+  const ticks = Math.ceil((needed - d.charges) / perTick);
+  // The first tick is whatever is left on the running timer; the rest are
+  // whole cooldowns after it.
+  const firstTick = Math.max(0, d.readyAt - now);
+  return firstTick + (ticks - 1) * cooldownForTier(d.typeId, d.tier);
+}
+
 export function isReady(d: Dispenser, now: number = Date.now()): boolean {
   syncDispenser(d, now);
   return d.charges > 0;
@@ -388,10 +430,7 @@ export function collectDispenser(
   // caller filters too, but the guarantee belongs here: this is the function
   // that decides what comes out, and a rule enforced only at the call site is
   // a rule the next call site will not know about.
-  let effective: CollectMultiplier = multiplier;
-  while (effective > 1 && !multiplierFitsChain(d.typeId, effective)) {
-    effective = (effective / 2) as CollectMultiplier;
-  }
+  const effective = honourableMultiplier(d.typeId, multiplier);
   const steps = Math.round(Math.log2(effective));
   const spend = Math.min(d.charges, effective);
   const tierRoll = rollOutputTier(d.typeId, d.tier, roll) + steps;
