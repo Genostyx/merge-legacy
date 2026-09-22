@@ -110,41 +110,74 @@ export const LEGACY_SCHEMA = 1;
  * So the speed track runs from a quarter of his machine's rate to a hundred
  * times it, and then stops - at which point torque takes over.
  */
-export const LEGACY_BASE_RPH = 20;
 /**
- * The speed the player can actually reach. A hundred thousand an hour is
- * what the teeth could survive - see above - but driving gear one that
- * hard finishes the whole machine in minutes: at 354 an hour, six hours
- * away crossed 22 of the 23 milestones in the base machine.
+ * The reference rate `legacySpeed` measures against - "how many times
+ * stock is this machine running at" - not the rate it starts at. Gear one
+ * starts at one rotation an hour and climbs a rotation per level.
  */
-export const LEGACY_MAX_RPH = 200;
+export const LEGACY_BASE_RPH = 250;
+/**
+ * The speed the player can actually reach, and it is the real ceiling again.
+ *
+ * This was cut to 200 because driving gear one hard "finishes the whole
+ * machine in minutes" - true of the machine it was written for, which had
+ * eight gears and twenty-three milestones between them. The train now runs
+ * to a hundred gears at a ratio tuned so the LAST one turns once in 17.5
+ * years at exactly this speed, so there is no longer anything to empty:
+ * even here, gear 60 needs half a day for one rotation and gear 80 needs
+ * two months.
+ */
+export const LEGACY_MAX_RPH = 100_000;
 
 /**
- * Each level is 19% faster, which reaches the cap in 35 of them - and
- * LEVEL ZERO IS STOPPED.
+ * ONE LEVEL IS ONE ROTATION AN HOUR, and LEVEL ZERO IS STOPPED.
  *
- * An unlocked machine nobody has powered is standing still: no rotations,
+ * The track used to be 36 levels of +19% each. The trouble with a
+ * multiplier is that the number it moves has to be read to be believed:
+ * at a hundred thousand rotations an hour a 19% step is nineteen thousand
+ * rotations, and the fourteen levels it was later cut to could not
+ * subdivide that at all.
+ *
+ * A level is now worth exactly one rotation an hour, so the readout moves
+ * by a whole legible unit on every single purchase, and the cap falls out
+ * of the arithmetic rather than being imposed on it: 100,000 levels,
+ * 100,000 rotations an hour.
+ *
+ * An unlocked machine nobody has powered is standing still - no rotations,
  * no turns accruing, nothing for the panel to animate. The first upgrade
- * is what starts it, at the base rate, which makes that purchase the most
- * legible one in the whole track.
+ * is what starts it, at one rotation an hour.
+ *
+ * Starting it at the base rate instead was tried and is wrong: the level
+ * then has to be offset from the speed, and 100,000 levels of +1 run the
+ * last 249 of them past the cap, where they cost credits and change
+ * nothing. The identity has to be exact for the two numbers to be the
+ * same number.
  */
-const LEGACY_SPEED_STEP = 1.19;
-export const LEGACY_MAX_LEVEL = 14;
+export const LEGACY_MAX_LEVEL = 100_000;
 
 /**
- * 4:1, not the reference's 10:1 and not the 3:1 this shipped with.
+ * SOLVED BACKWARDS FROM THE LAST GEAR, not chosen and then lived with.
  *
- * The ratio is the entire pacing control, and it compounds. At 10:1 the
- * eighth gear needs ten million turns of the first and the machine is
- * decoration. At 3:1 it needed 2,187 - six hours - and the whole thing
- * emptied in a single session away.
+ * The constraint is that gear 100 completes one full rotation in 17.5
+ * years with gear one at its 100,000/hr cap. That is the whole machine's
+ * pacing in a single statement, and it has exactly one ratio:
  *
- * At 4:1 the eighth gear needs 16,384: about a month at the starting
- * speed, three and a half days if the player buys every upgrade. The
- * torque gears past it then run to years on their own, which is the
- * long tail the machine is for.
+ *   ratio^99 = 17.5 years x 100,000/hr = 15,330,000,000 turns of gear one
+ *   ratio    = 1.267314
+ *
+ * Every earlier attempt set the ratio first and discovered what it did to
+ * the far end afterwards. At 4:1 - the value this held - gear 100 needs
+ * 4^99 turns, and only FIFTEEN gears can complete a rotation in a year at
+ * full speed; the other eighty-five are ornaments with prices attached.
+ * At 10:1, the reference machine's ratio, the last gear outlives the
+ * universe, which is the joke that machine is built to tell and not a
+ * thing to ship.
+ *
+ * The cost of a shallow ratio is that gear 2 is only 1.27x slower than
+ * gear 1 rather than 4x, so the near end of the train runs at close to a
+ * common speed and the slowdown only becomes legible deep in it.
  */
-export const LEGACY_GEAR_RATIO = 4;
+export const LEGACY_GEAR_RATIO = 1.267314;
 
 /**
  * Rotation milestones, PER GEAR, thinning as the chain deepens.
@@ -266,12 +299,13 @@ export function syncLegacyGears(state: LegacyMachineState): void {
   }
 }
 
-/** Gear one's actual rate, in rotations per hour. */
+/**
+ * Gear one's actual rate, in rotations per hour - which IS its level.
+ * See LEGACY_MAX_LEVEL for why the two are the same number.
+ */
 export function legacyRotationsPerHour(level: number): number {
   if (level <= 0) return 0;
-  if (level >= LEGACY_MAX_LEVEL) return LEGACY_MAX_RPH;
-  return Math.min(LEGACY_MAX_RPH,
-    Math.round(LEGACY_BASE_RPH * LEGACY_SPEED_STEP ** (level - 1)));
+  return Math.min(LEGACY_MAX_RPH, level);
 }
 
 /**
@@ -317,31 +351,104 @@ export function buyLegacyGear(state: LegacyMachineState): void {
   syncLegacyGears(state);
 }
 
+/**
+ * The last upgrade's price, which is the one the curve is built from.
+ *
+ * Both are the top of the ORIGINAL 36-level track - `250*(l+1)*(1+l*0.45)`
+ * and `4 + l*2` at level 35 - so the most expensive speed purchase in the
+ * game costs exactly what it always did. Only the number of steps between
+ * here and the bottom has changed.
+ */
+const LEGACY_TOP_UPGRADE_CREDITS = 150_750;
+const LEGACY_TOP_UPGRADE_GEMS = 74;
+
+/**
+ * PRICED FROM THE TOP DOWN, not the bottom up.
+ *
+ * Anchoring the first upgrade and multiplying outwards is what produced a
+ * curve that was flat for its first ten thousand levels - the whole range
+ * has to fit above the starting price, so the early steps cannot move.
+ * Dividing down from the last upgrade instead puts the cost where the
+ * income is: gem and credit income both scale about 400x across this
+ * track, and a back-loaded price tracks that, where a front-loaded one
+ * charges most at the point the player earns least.
+ *
+ * At this divisor the first upgrade is ~7 credits and the hundred
+ * thousandth is 150,750. The gem divisor is derived rather than chosen, so
+ * the first upgrade lands on the original's 4 gems.
+ */
+const LEGACY_UPGRADE_DECAY = 1.0001;
+const LEGACY_UPGRADE_GEM_DECAY =
+  (LEGACY_TOP_UPGRADE_GEMS / 4) ** (1 / (LEGACY_MAX_LEVEL - 1));
+
 export function legacyUpgradeCost(level: number): { credits: number; gems: number } {
+  // `level` is what gear one is on now, so this is the price of the step
+  // that takes it to `level + 1` - the last of which is `MAX_LEVEL - 1`.
+  const stepsFromTop = Math.max(0, LEGACY_MAX_LEVEL - 1 - level);
   return {
-    credits: Math.round(250 * (level + 1) * (1 + level * 0.45)),
-    gems: 4 + level * 2
+    credits: Math.max(1, Math.round(
+      LEGACY_TOP_UPGRADE_CREDITS / LEGACY_UPGRADE_DECAY ** stepsFromTop)),
+    gems: Math.max(1, Math.round(
+      LEGACY_TOP_UPGRADE_GEMS / LEGACY_UPGRADE_GEM_DECAY ** stepsFromTop))
   };
 }
 
 /**
- * A new gear costs what the LAST one is worth, near enough.
+ * PRICE IS ITS OWN LADDER NOW, uncoupled from the turn ratio.
  *
- * Each added gear is three times slower than the one before it, so its
- * price triples too - the ladder stays at a constant number of claims per
- * purchase instead of getting cheaper in real terms the deeper it goes.
+ * It used to be `120,000 * ratio^(level - 8)`: the price tracked the
+ * gear's worth exactly, rebased around the eight gears that were once
+ * free. Two things broke that. The eight free gears are gone - every
+ * gear is bought now, starting from none - so there is nothing to rebase
+ * around and the floor was doing all the work, flattening the first four
+ * gears to an identical 250c and making gear 2 cheaper than starting
+ * gear 1. And the turn ratio has since been solved backwards from gear
+ * 100, so it is 1.267314 and no longer a sane thing to price against:
+ * a gear that is 27% slower than the last cannot cost 27% more when
+ * there are a hundred of them.
+ *
+ * So: 250c for the first gear, 1.10 a rung.
+ *
+ * Deliberately SHALLOWER than the turn ratio, which is the one thing the
+ * original got wrong by tying them together. The span from gear 1 to gear
+ * 100 is the multiple raised to the 99th, so tracking worth at 1.267
+ * makes that span 15 BILLION times - either gear 1 costs pennies or gear
+ * 100 costs 3.7 trillion, and there is no anchor that avoids both. At
+ * 1.618 it is worse still: the price passes MAX_SAFE_INTEGER at gear 66,
+ * 34 gears before the machine runs out of pacing.
+ *
+ * At 1.10 the whole ladder comes to 34.45M against the speed track's
+ * 1.51B, so gear one's speed stays the machine's main cost and the gears
+ * are what that speed is spent on - while every gear from the first is
+ * still a purchase rather than a rounding error.
  */
+const LEGACY_GEAR_FIRST_CREDITS = 250;
+const LEGACY_GEAR_PRICE_STEP = 1.10;
+
+/**
+ * Gems on the same shape, for the same reason.
+ *
+ * These were `40 + (level - 8) * 25` - linear, and rebased around the
+ * eight gears that used to come free, so the ladder sat flat at 2 gems
+ * through gear 8 and then stepped to 40 at gear 9. That step marked the
+ * first gear you could BUY, and there is no such gear any more; every one
+ * is bought, from the first.
+ *
+ * Geometric from 4 gems - what the first speed upgrade costs, so the
+ * machine's two first purchases agree - at a rate that lands gear 100 on
+ * 2,315, which is what the original linear ladder charged there. Same
+ * deep-end cost, no discontinuity on the way.
+ */
+const LEGACY_GEAR_FIRST_GEMS = 4;
+const LEGACY_GEAR_GEM_STEP = 1.0663;
+
 export function legacyTorqueCost(level: number): { credits: number; gems: number } {
-  // REBASED BY THE EIGHT THAT USED TO BE FREE, so the ninth gear still
-  // costs what it was tuned to cost and only the new early rungs are
-  // filled in. The ratio is unchanged, which is the point: a gear's
-  // price tracks its worth, and an early gear is worth very little, so
-  // the first ones are nearly free and that is correct rather than
-  // generous. A floor keeps them from printing as single digits.
-  const step = level - LEGACY_PRE_BOUGHT_GEARS;
+  // `level` is the number of gears already owned, so level 0 prices the
+  // FIRST gear.
   return {
-    credits: Math.max(250, Math.round(120_000 * LEGACY_GEAR_RATIO ** step)),
-    gems: Math.max(2, 40 + step * 25)
+    credits: Math.round(LEGACY_GEAR_FIRST_CREDITS * LEGACY_GEAR_PRICE_STEP ** level),
+    gems: Math.max(1, Math.round(
+      LEGACY_GEAR_FIRST_GEMS * LEGACY_GEAR_GEM_STEP ** level))
   };
 }
 

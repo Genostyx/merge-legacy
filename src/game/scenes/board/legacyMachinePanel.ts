@@ -41,6 +41,9 @@ import {
  */
 const GEAR_TEXTURE = 'legacy-gear';
 
+/** The gear count the train's size and spacing were tuned at. */
+const LEGACY_REFERENCE_GEARS = 12;
+
 /** What the row calls the thing that is about to land on the board. */
 function rewardLabel(reward: LegacyReward): string {
   return reward.kind === 'crate'
@@ -115,8 +118,6 @@ export function openLegacyMachine(scene: BoardScene): void {
   const bg = scene.add.graphics();
   bg.fillGradientStyle(0x0d1012, 0x151819, 0x1a1410, 0x090909, 1);
   bg.fillRect(0, 0, w, h);
-  bg.fillStyle(Theme.currencyXp, 0.07);
-  bg.fillRect(0, 0, w, Math.min(120 * s, h * 0.2));
 
   const title = scene.add.text(w / 2, 30 * s, 'LEGACY MACHINE', {
     resolution: textResolution, fontFamily: Theme.fontHeading,
@@ -142,6 +143,24 @@ export function openLegacyMachine(scene: BoardScene): void {
   // panel is rebuilt under them - a claim redraws the reward list, and the
   // machine must not stutter every time it does.
   const art = scene.add.container(0, 0);
+  // THE BAND THE TRAIN LIVES IN, as a mask.
+  //
+  // It is a backstop, not the layout: the spacing below fits the train
+  // to this band, so nothing should reach the edges. It catches the
+  // case where it does rather than letting the far gears draw through
+  // the title.
+  //
+  // The band is most of the panel. It used to start at 0.165 to clear
+  // a tinted header that is no longer there, and stop at 0.67 above a
+  // stack of controls that had drifted a hundred pixels off the floor
+  // - so the machine was squeezed into the middle third of its own
+  // screen while the space above and below it sat empty.
+  const bandTop = 68 * s;
+  const bandMaskShape = scene.make.graphics({});
+  bandMaskShape.fillStyle(0xffffff);
+  bandMaskShape.fillRect(0, bandTop, w, h * 0.78 - bandTop);
+  const bandMask = bandMaskShape.createGeometryMask();
+  art.setMask(bandMask);
   const gears: Phaser.GameObjects.Image[] = [];
   let spin: Phaser.Time.TimerEvent | null = null;
 
@@ -194,7 +213,19 @@ export function openLegacyMachine(scene: BoardScene): void {
     // wheel meshes the next and the line zigzags as it climbs, which is
     // both what the reference machine does and the only arrangement
     // where the count on screen is the count you own.
-    const spans = 0.1467 * (stages - 1) + 1;
+    // A FIXED SIZE, NOT ONE DERIVED FROM THE COUNT.
+    //
+    // This was `0.1467 * (stages - 1) + 1`, so the span grew with the
+    // train and `near` shrank to compensate - every purchase made the
+    // whole machine smaller, which is the opposite of what buying a
+    // gear should feel like. The old barrel was a fixed 26 plates and
+    // never changed size for exactly this reason.
+    //
+    // Sized against GLASS_REFERENCE_GEARS instead: the count the
+    // spacing was tuned at. Fewer than that and the train simply sits
+    // shorter; more and it runs on past the top, which is the machine
+    // getting LONGER rather than finer.
+    const spans = 0.1467 * (LEGACY_REFERENCE_GEARS - 1) + 1;
     // THE BAND STOPS CLEAR OF THE HEADER. 0.56 was tuned for the old
     // dense stack, whose real extent was shorter than its nominal span;
     // a chain with this spacing uses the whole budget and ran the top
@@ -208,13 +239,33 @@ export function openLegacyMachine(scene: BoardScene): void {
     // legible and that pulled the stacks apart - the reference
     // machine packs its wheels nearly touching, and the interlock
     // is the whole of what it reads as.
-    const step = toothed * 0.17;
-    const baseY = h * 0.58;
+    // THE SPACING TIGHTENS WITH THE COUNT, THE WHEELS DO NOT.
+    //
+    // These are different axes and collapsing them was the mistake:
+    // making the gears smaller per purchase shrank the machine, which
+    // is wrong. Packing them closer is what the reference does - a
+    // hundred gears there is a dense cylinder about three diameters
+    // long, every wheel the same size, just face to face.
+    //
+    // So the step is whatever fits the band, capped at the spacing
+    // that looked right at the reference count. Twelve gears keep the
+    // train they had; a hundred close up into a barrel.
+    const baseY = h * 0.68;
+    const headroom = baseY - bandTop - near / 2;
+    const step = Math.min(
+      toothed * 0.17,
+      headroom / Math.max(1, stages - 1)
+    );
 
     for (let i = stages - 1; i >= 0; i--) {
       // Receding, so the far end is smaller - the only depth cue left
       // once the train is square to the screen.
-      const shrink = 0.982 ** i;
+      // A CONSTANT TOTAL RECEDE, not a constant per-gear one. At
+      // 0.982 each, twelve gears lose 18% and a hundred lose 84% -
+      // the far end of a long train vanished. Spreading the same
+      // depth across however many there are keeps the angle reading
+      // the same whatever the count.
+      const shrink = 0.78 ** (i / Math.max(1, stages - 1));
       const side = i % 2 ? 1 : -1;
       const gear = scene.add.image(
         w * 0.5 + side * toothed * 0.45 * shrink,
@@ -286,10 +337,16 @@ export function openLegacyMachine(scene: BoardScene): void {
     // now, so the readout, the upgrade and the claims are a HUD over it -
     // stacked up from the floor, which also means a long claim list grows
     // into the space it has rather than off the end of it.
-    // Clear of the footer line.
-    const listBottom = h - 46 * s;
-    const upgradeY = listBottom - 92 * s;
-    const barY = upgradeY - 52 * s;
+    // ON THE FLOOR. These were stacked off `h - 46` back when a claim
+    // list sat under them; the list is gone (see below) and nothing
+    // replaced it, so the buttons were floating with a hundred empty
+    // pixels beneath and the machine was cramped above them.
+    //
+    // Measured off the footer line instead, which is the real bottom
+    // of the panel: buttons are 50 tall and centred on `upgradeY`, and
+    // the bar carries a caption 16 under it.
+    const upgradeY = h - 58 * s;
+    const barY = upgradeY - 53 * s;
     const countY = barY - 34 * s;
     // SAY WHAT THE ROW IS. "G1 1,400" is a label and a number with no
     // relationship stated - the player has to guess the number counts
@@ -315,6 +372,11 @@ export function openLegacyMachine(scene: BoardScene): void {
     // `gears` here is the ARRAY OF WHEELS from `buildGears`, which is
     // why the count is no longer called that - it used to shadow it.
     const gearCount = legacyGearCount(state);
+    // Their own layer, because they share the train's mask and the rest
+    // of `content` - buttons, bar, footer - must not be clipped.
+    const labelLayer = scene.add.container(0, 0);
+    labelLayer.setMask(bandMask);
+    content.add(labelLayer);
     // OUTSIDE THE TRAIN, not against each rim. The wheels overlap, so a
     // wheel's own outer edge is over its neighbours - a label there sits
     // on spokes and teeth and is the hardest thing on the panel to read.
@@ -329,7 +391,7 @@ export function openLegacyMachine(scene: BoardScene): void {
       if (!wheel) continue;
       // Even gears sit on the left shaft - see `side` in `buildGears`.
       const onLeft = i % 2 === 0;
-      content.add(scene.add.text(
+      labelLayer.add(scene.add.text(
         onLeft ? trainLeft - 6 * s : trainRight + 6 * s,
         wheel.y,
         `GEAR ${i + 1}  ${compactTurns(state.turns[i] ?? 0)}`,
@@ -455,13 +517,21 @@ export function openLegacyMachine(scene: BoardScene): void {
       content.add(zone);
     };
 
-    // LENGTH. Always available - it is the machine's first purchase and
-    // never runs out.
+    // LENGTH. The first gear is always available - it is the machine's
+    // first purchase - but the second one waits until gear one is
+    // actually turning.
+    //
+    // Nothing is banked while the machine is stopped, so a player who
+    // bought gears before starting it was spending on gears that could
+    // not move. The order also has to hold for the prices to read
+    // correctly: gear 2 costs 275c against 7c to start gear 1, which is
+    // only sensible if starting comes first.
+    const stopped = gearsOwned > 0 && state.gearOneLevel === 0;
     buyButton(
       w / 2 - half / 2 - 4 * s,
-      `ADD GEAR ${gearsOwned + 1}`,
+      stopped ? 'START GEAR 1 FIRST' : `ADD GEAR ${gearsOwned + 1}`,
       legacyTorqueCost(state.torqueLevel),
-      true,
+      !stopped,
       () => buyLegacyGear(scene.legacyMachine)
     );
 

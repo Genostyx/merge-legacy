@@ -21,12 +21,22 @@ function machineWithGears(gears: number): LegacyMachineState {
 }
 
 describe('machine clock', () => {
-  it('keeps credit and gem prices without charging energy at any speed level', () => {
-    for (let level = 0; level < LEGACY_MAX_LEVEL; level++) {
-      expect(legacyUpgradeCost(level)).toEqual({
-        credits: Math.round(250 * (level + 1) * (1 + level * 0.45)),
-        gems: 4 + level * 2
-      });
+  it('prices speed from the top down, never charging energy or going backwards', () => {
+    // The last upgrade is the anchor: the top of the original 36-level
+    // track, so the most expensive speed purchase costs what it always did.
+    expect(legacyUpgradeCost(LEGACY_MAX_LEVEL - 1)).toEqual({ credits: 150_750, gems: 74 });
+    // And the first lands on the original's opening gem price.
+    expect(legacyUpgradeCost(0).gems).toBe(4);
+    // Not against level 1: below ~11,000c a step is worth under half a
+    // credit, so neighbouring levels round to the same price.
+    expect(legacyUpgradeCost(0).credits).toBeLessThan(legacyUpgradeCost(10_000).credits);
+    let previous = legacyUpgradeCost(0);
+    for (let level = 1; level < LEGACY_MAX_LEVEL; level++) {
+      const cost = legacyUpgradeCost(level);
+      expect(Object.keys(cost).sort()).toEqual(['credits', 'gems']);
+      expect(cost.credits).toBeGreaterThanOrEqual(previous.credits);
+      expect(cost.gems).toBeGreaterThanOrEqual(previous.gems);
+      previous = cost;
     }
   });
   it('reaches the advertised speed cap at the final speed upgrade', () => {
@@ -69,7 +79,10 @@ describe('repeatable final rewards', () => {
 
   it('repeats shipping rewards once per rotation on the final gear', () => {
     const state = machineWithGears(8);
-    state.turns[0] = 3 * 4 ** 7;
+    // Driven off the real ratio, not a hardcoded 4 - these count
+    // ROTATIONS OF A DEEP GEAR, so the turns of gear one they need
+    // move whenever the ratio does.
+    state.turns[0] = 3 * LEGACY_GEAR_RATIO ** 7;
     syncLegacyGears(state);
     const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 7);
     expect(claims.map(entry => entry.milestone)).toEqual([1, 2, 3]);
@@ -78,7 +91,10 @@ describe('repeatable final rewards', () => {
 
   it('pays multiple offline cycles once and retains the counter across saving', () => {
     const state = machineWithGears(8);
-    state.gearOneLevel = LEGACY_MAX_LEVEL;
+    // 200/hr, which is what the cap used to be - the point of this test is
+    // that a few repeat cycles pay once each, and at the real cap (100,000)
+    // six hours is 1,500 of them.
+    state.gearOneLevel = 200;
     state.lastTickAt = 1000;
     const now = 1000 + 6 * 3_600_000;
     const produced = advanceLegacyMachine(state, now).filter(entry => entry.gear === 0);
@@ -104,7 +120,7 @@ describe('repeatable final rewards', () => {
     // read `torqueLevel = 1` back when that meant one ON TOP of a free
     // eight.
     const state = machineWithGears(9);
-    state.turns[0] = 2 * 4 ** 8;
+    state.turns[0] = 2 * LEGACY_GEAR_RATIO ** 8;
     syncLegacyGears(state);
     expect(legacyRepeatInterval(8)).toBe(1);
     expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 8)
