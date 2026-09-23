@@ -36,6 +36,14 @@ export interface LegacyMachineState {
    * The base gears have always been turning, so theirs stay 0.
    */
   gearStartTurns: number[];
+  /**
+   * Whole rotations of gear one already paid out as coins.
+   *
+   * Turns are a FLOAT - they accrue from elapsed hours - so the payout has
+   * to remember where it got to. Deriving it from the total would either
+   * pay a part-rotation twice or never pay it at all.
+   */
+  creditsPaidTurns: number;
   /** When the machine was last wound forward. 0 until it is started. */
   lastTickAt: number;
   /** Save shape, so migration knows what it is looking at. */
@@ -57,7 +65,12 @@ export interface LegacyMachineState {
  */
 export type LegacyReward =
   | { kind: 'crate'; tier: CrateTier }
-  | { kind: 'producer'; producerId: ResourceProducerId };
+  | { kind: 'producer'; producerId: ResourceProducerId }
+  /**
+   * Straight into the wallet, never onto the board. Gear one pays this and
+   * nothing else - see LEGACY_CREDITS_PER_TURN.
+   */
+  | { kind: 'credits'; amount: number };
 
 /**
  * The machine is earned, not reached.
@@ -180,6 +193,48 @@ export const LEGACY_MAX_LEVEL = 100_000;
 export const LEGACY_GEAR_RATIO = 1.267314;
 
 /**
+ * GEAR ONE IS A WAGE. One coin per rotation, and nothing else.
+ *
+ * It used to hand out pouches, baskets and bronze crates on a milestone
+ * track like every other gear, which made the fastest gear in the machine
+ * a source of ITEMS - the one thing the main board is already full of -
+ * and made its output lumpy when it is the one gear that turns
+ * continuously.
+ *
+ * A coin a rotation makes it a rate instead of a schedule, and the rate is
+ * the number already on the panel: rotations per hour IS coins per hour.
+ *
+ * Deliberately not scaled by gear one's level, because the level already
+ * IS the rate. Paying more per rotation as well would square it.
+ */
+export const LEGACY_CREDITS_PER_TURN = 1;
+
+/**
+ * GEARS PER RUNG of the reward ladder, and why it is not one.
+ *
+ * The ladder used to be indexed by gear number, which worked only because
+ * 4:1 made gear number mean rarity: gear 8 needed 16,384 turns of gear
+ * one, so a shipping container there was one per 3.4 days against the old
+ * 200/hr ceiling.
+ *
+ * Two things broke that at once. The ceiling went back to 100,000/hr,
+ * worth 500x on its own, and the ratio came down to 1.267314 so a gear is
+ * barely slower than the one before it. Together, gear 8's shipping
+ * container went from one per 3.4 days to nineteen thousand an hour.
+ *
+ * So the eight authored rows are spread across the train instead. 10.5
+ * gears a rung puts the shipping row at GEAR 65, where one rotation costs
+ * 4.1M turns of gear one - one container per 3.4 days with gear one run at
+ * 50,000/hr.
+ *
+ * Anchored at 50,000 rather than at the 100,000 cap on purpose: the speed
+ * curve is back-loaded hard enough that 50,000/hr costs 10.1M credits and
+ * the last 2x costs 1.5 BILLION, so the cap is a place almost nobody
+ * stands. Anchoring there would anchor to a hypothetical.
+ */
+export const LEGACY_REWARD_GEARS_PER_RUNG = 10.5;
+
+/**
  * Rotation milestones, PER GEAR, thinning as the chain deepens.
  *
  * A single shared list is what made the old five-gear version dishonest: it
@@ -198,8 +253,27 @@ export const LEGACY_MILESTONES: readonly (readonly number[])[] = [
   [1]
 ];
 
+/**
+ * The authored row a gear draws its rewards from.
+ *
+ * Gear one (index 0) has no row at all - it pays coins. Everything after it
+ * walks the remaining rows a rung every LEGACY_REWARD_GEARS_PER_RUNG gears,
+ * so the ladder is spread across the train by rarity instead of sitting in
+ * its first eight gears.
+ */
+export function legacyRewardRow(gear: number): number {
+  if (gear <= 0) return 0;
+  return Math.min(
+    LEGACY_REWARDS.length - 1,
+    1 + Math.floor((gear - 1) / LEGACY_REWARD_GEARS_PER_RUNG)
+  );
+}
+
 export function legacyMilestones(gear: number): readonly number[] {
-  return LEGACY_MILESTONES[gear] ?? [1];
+  // Gear one's rotations are paid as coins, continuously, so it has no
+  // milestones to reach - see `legacyCreditsOwed`.
+  if (gear <= 0) return [];
+  return LEGACY_MILESTONES[legacyRewardRow(gear)] ?? [1];
 }
 
 export function createDefaultLegacyMachine(): LegacyMachineState {
@@ -210,6 +284,7 @@ export function createDefaultLegacyMachine(): LegacyMachineState {
     claimed: Array.from({ length: LEGACY_BASE_GEARS }, () => []),
     repeatPaid: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
     gearStartTurns: Array.from({ length: LEGACY_BASE_GEARS }, () => 0),
+    creditsPaidTurns: 0,
     schema: LEGACY_SCHEMA,
     lastTickAt: 0
   };
@@ -263,6 +338,16 @@ export function normalizeLegacyMachine(raw: unknown): LegacyMachineState {
   // written before a ratio change would otherwise keep its old numbers and
   // the train would disagree with itself.
   syncLegacyGears(state);
+  // A SAVE FROM BEFORE GEAR ONE PAID COINS IS ALREADY SQUARE.
+  //
+  // Defaulting this to 0 would treat every rotation the machine has ever
+  // made as unpaid and hand over the lot on the first tick - a month-old
+  // save would open on a six-figure windfall it never earned. Absent means
+  // "paid up to here", not "paid nothing".
+  const paid = candidate.creditsPaidTurns;
+  state.creditsPaidTurns = Number.isFinite(paid)
+    ? Math.max(0, Math.floor(paid as number))
+    : Math.floor(state.turns[0] ?? 0);
   // Old saves keep their progress without back-paying cycles from before
   // repeatable rewards existed. Time away since the saved tick still earns.
   // A SAVE FROM BEFORE `gearStartTurns` KEEPS EVERY GEAR AT 0, so nothing
@@ -487,7 +572,29 @@ export function advanceLegacyMachine(
 
   const produced = claimableLegacyMilestones(state);
   for (const entry of produced) markLegacyClaimed(state, entry.gear, entry.milestone);
+  // Gear one's wage, as one entry rather than one per rotation - at the top
+  // speed that is 100,000 an hour, and the caller animates these.
+  const credits = legacyCreditsOwed(state);
+  if (credits > 0) {
+    produced.unshift({ gear: 0, milestone: 0, reward: { kind: 'credits', amount: credits } });
+  }
   return produced;
+}
+
+/**
+ * Coins gear one has turned for and not yet been paid, and the payout marker
+ * moved past them.
+ *
+ * Whole rotations only. A part-rotation is not a rotation, and rounding it
+ * would pay out faster than the machine turns.
+ */
+export function legacyCreditsOwed(state: LegacyMachineState): number {
+  if (legacyGearCount(state) <= 0) return 0;
+  const whole = Math.floor(state.turns[0] ?? 0);
+  const owed = whole - state.creditsPaidTurns;
+  if (owed <= 0) return 0;
+  state.creditsPaidTurns = whole;
+  return owed * LEGACY_CREDITS_PER_TURN;
 }
 
 /** Rotations gear one will complete over a span, for the panel's copy. */
@@ -578,7 +685,7 @@ function deepGearReward(): LegacyReward {
 }
 
 export function legacyReward(gear: number, milestone: number): LegacyReward {
-  const row = LEGACY_REWARDS[gear];
+  const row = LEGACY_REWARDS[legacyRewardRow(gear)];
   if (!row) return deepGearReward();
   const index = legacyMilestones(gear).indexOf(milestone);
   return row[index] ?? row[row.length - 1];
@@ -587,12 +694,18 @@ export function legacyReward(gear: number, milestone: number): LegacyReward {
 /** After the first-time sequence, its final reward repeats each interval. */
 export function legacyRepeatInterval(gear: number): number {
   const milestones = legacyMilestones(gear);
+  // GEAR ONE HAS NO INTERVAL. Its milestone list is empty - it pays a wage,
+  // not rewards - and reading off the end of that returned NaN, which then
+  // poisoned every `turns / interval` it reached.
+  if (milestones.length === 0) return Infinity;
   return milestones[milestones.length - 1];
 }
 
 export function claimableLegacyMilestones(state: LegacyMachineState): Array<{ gear: number; milestone: number; reward: LegacyReward }> {
   const claims: Array<{ gear: number; milestone: number; reward: LegacyReward }> = [];
-  for (let gear = 0; gear < legacyGearCount(state); gear++) {
+  // FROM GEAR TWO. Gear one pays coins per rotation rather than rewards at
+  // milestones, which `advanceLegacyMachine` settles on its own.
+  for (let gear = 1; gear < legacyGearCount(state); gear++) {
     // TOLERATES A SHORT ARRAY. The gear count is derived from the torque
     // level, so anything that raises torque without calling
     // `syncLegacyGears` - a hand-edited save, a debug poke - leaves the

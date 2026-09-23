@@ -10,12 +10,14 @@ import {
   legacyUnlocked,
   type LegacyReward
 } from '../../legacy/LegacyMachine';
+import { addCoins } from '../../economy/Economy';
 import { PROJECT_STAGES } from './config';
 
 /** Under this there is nothing worth interrupting the player for. */
 const MIN_AWAY_MS = 60_000;
 
 function rewardName(reward: LegacyReward): string {
+  if (reward.kind === 'credits') return `${reward.amount.toLocaleString()} CREDITS`;
   return reward.kind === 'crate'
     ? CRATE_LABELS[reward.tier]
     : RESOURCE_PRODUCERS[reward.producerId].label.toUpperCase();
@@ -23,6 +25,9 @@ function rewardName(reward: LegacyReward): string {
 
 /** One key per distinct thing, so identical rewards stack into a count. */
 function rewardKey(reward: LegacyReward): string {
+  // Gear one's wage arrives as ONE entry already totalled, so it is its own
+  // key rather than a thing to count - "1 x 412,000 CREDITS", not "412,000 x".
+  if (reward.kind === 'credits') return 'credits';
   return reward.kind === 'crate' ? `crate:${reward.tier}` : `producer:${reward.producerId}`;
 }
 
@@ -69,7 +74,12 @@ export function showLegacyAway(scene: BoardScene): void {
   // rewards exist whether or not the player reads the box or the game is
   // closed again while it is open.
   for (const entry of produced) {
-    if (entry.reward.kind === 'crate') {
+    if (entry.reward.kind === 'credits') {
+      // STRAIGHT TO THE WALLET. Gear one at full speed turns 100,000 times an
+      // hour, so this cannot become tiles on a board with thirty cells.
+      addCoins(scene.economy, entry.reward.amount);
+      scene.updateCurrencyText();
+    } else if (entry.reward.kind === 'crate') {
       scene.awardCrate(entry.reward.tier, 'LEGACY MACHINE');
     } else {
       scene.enqueueForcedSpawn({
@@ -146,7 +156,10 @@ export function showLegacyAway(scene: BoardScene): void {
     const cy = panelY - panelH / 2 + 68 * s + cell / 2 + row * (cell + 14 * s);
 
     const art = cell * 0.62;
-    if (entry.reward.kind === 'crate') {
+    if (entry.reward.kind === 'credits') {
+      // The name already reads "412,000 CREDITS" - the currency chip in the
+      // header is where the number lives, so the tile needs no art of its own.
+    } else if (entry.reward.kind === 'crate') {
       overlay.add(crateArt(scene, entry.reward.tier, art * CRATE_DRAWN.width)
         .setPosition(cx, cy));
     } else {

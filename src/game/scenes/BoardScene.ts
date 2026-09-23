@@ -3747,8 +3747,14 @@ READY IN ${formatCountdown(wait)}  ·  OR LOWER THE MULTIPLIER`
     const produced = advanceLegacyMachine(this.legacyMachine, Date.now());
     if (!produced.length) return;
     for (const entry of produced) {
-      if (entry.reward.kind === 'crate') this.awardCrate(entry.reward.tier, 'LEGACY MACHINE');
-      else {
+      if (entry.reward.kind === 'credits') {
+        // STRAIGHT TO THE WALLET. Gear one turns up to 100,000 times an hour,
+        // so its wage cannot become tiles on a thirty-cell board.
+        addCoins(this.economy, entry.reward.amount);
+        this.updateCurrencyText();
+      } else if (entry.reward.kind === 'crate') {
+        this.awardCrate(entry.reward.tier, 'LEGACY MACHINE');
+      } else {
         this.enqueueForcedSpawn({
           kind: 'resource-producer',
           producerId: entry.reward.producerId,

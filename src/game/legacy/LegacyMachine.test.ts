@@ -4,7 +4,9 @@ import { advanceLegacyMachine, normalizeLegacyMachine, legacyRotationsPerHour,
   createDefaultLegacyMachine, claimableLegacyMilestones, markLegacyClaimed,
   nextLegacyMilestone, syncLegacyGears, legacyRepeatInterval,
   buyLegacyGear, legacyGearCount, LEGACY_GEAR_RATIO,
-  LEGACY_PRE_BOUGHT_GEARS, type LegacyMachineState } from './LegacyMachine';
+  LEGACY_PRE_BOUGHT_GEARS, legacyRewardRow, legacyCreditsOwed,
+  LEGACY_CREDITS_PER_TURN, LEGACY_REWARD_GEARS_PER_RUNG,
+  legacyMilestones, legacyReward, type LegacyMachineState } from './LegacyMachine';
 
 /**
  * A machine that already owns `gears` gears.
@@ -59,32 +61,112 @@ describe('machine clock', () => {
   });
 });
 
-describe('repeatable final rewards', () => {
-  it('keeps the first-time sequence and repeats only its final reward', () => {
-    const state = machineWithGears(8);
-    state.turns[0] = 1200;
-    syncLegacyGears(state);
-    const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 0);
-    expect(claims.map(entry => entry.milestone)).toEqual([1, 5, 25, 100, 400, 800, 1200]);
-    expect(claims.slice(-2).map(entry => entry.reward)).toEqual([
-      { kind: 'crate', tier: 'bronze' }, { kind: 'crate', tier: 'bronze' }
-    ]);
-    for (const entry of claims) markLegacyClaimed(state, entry.gear, entry.milestone);
-    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 0)).toEqual([]);
-    expect(state.claimed[0]).toEqual([1, 5, 25, 100, 400]);
-    expect(state.repeatPaid[0]).toBe(3);
-    state.turns[0] = 1400;
-    expect(nextLegacyMilestone(state, 0)).toEqual({ milestone: 1600, progress: 0.5 });
+/** Turns of gear one that put `gear` on `own` rotations of its own. */
+function turnsFor(gear: number, own: number): number {
+  return own * LEGACY_GEAR_RATIO ** gear;
+}
+
+describe('gear one is a wage', () => {
+  it('pays a coin per whole rotation and never the same one twice', () => {
+    const state = machineWithGears(1);
+    state.turns[0] = 3.9;
+    // Whole rotations only - a part rotation is not a rotation, and rounding
+    // it would pay out faster than the machine turns.
+    expect(legacyCreditsOwed(state)).toBe(3 * LEGACY_CREDITS_PER_TURN);
+    expect(legacyCreditsOwed(state)).toBe(0);
+    state.turns[0] = 3.99;
+    expect(legacyCreditsOwed(state)).toBe(0);
+    state.turns[0] = 5;
+    expect(legacyCreditsOwed(state)).toBe(2 * LEGACY_CREDITS_PER_TURN);
   });
 
-  it('repeats shipping rewards once per rotation on the final gear', () => {
+  it('pays nothing while the machine has no gears', () => {
+    const state = createDefaultLegacyMachine();
+    state.turns[0] = 500;
+    expect(legacyCreditsOwed(state)).toBe(0);
+  });
+
+  it('has no milestones of its own', () => {
+    // It used to pay pouches, baskets and bronze crates on a track. The
+    // wage replaced all of it, so there is nothing left to reach.
+    expect(legacyMilestones(0)).toEqual([]);
+    const state = machineWithGears(4);
+    state.turns[0] = 5_000;
+    syncLegacyGears(state);
+    expect(claimableLegacyMilestones(state).filter((e) => e.gear === 0)).toEqual([]);
+  });
+
+  it('reports the wage through advance, as one entry rather than thousands', () => {
+    const state = machineWithGears(1);
+    state.gearOneLevel = 250;
+    state.lastTickAt = 1000;
+    const produced = advanceLegacyMachine(state, 1000 + 3_600_000);
+    const wage = produced.filter((e) => e.reward.kind === 'credits');
+    expect(wage).toHaveLength(1);
+    expect(wage[0].reward).toEqual({ kind: 'credits', amount: 250 });
+  });
+
+  it('treats a save from before the wage as already paid up', () => {
+    // Defaulting the marker to 0 would hand a month-old save every rotation
+    // it ever made, as a windfall it never earned.
+    const restored = normalizeLegacyMachine({ turns: [1250], torqueLevel: 8 });
+    expect(restored.creditsPaidTurns).toBe(1250);
+    expect(legacyCreditsOwed(restored)).toBe(0);
+  });
+});
+
+describe('the reward ladder is spread by rarity', () => {
+  it('starts the authored rows at gear two, a rung every 10.5 gears', () => {
+    expect(legacyRewardRow(0)).toBe(0);
+    expect(legacyRewardRow(1)).toBe(1);
+    expect(legacyRewardRow(1 + Math.ceil(LEGACY_REWARD_GEARS_PER_RUNG))).toBe(2);
+  });
+
+  it('puts the shipping container at gear 65 and not before', () => {
+    // THE ANCHOR. One rotation of gear 65 costs 4.1M turns of gear one,
+    // which is one container per 3.4 days with gear one at 50,000/hr - the
+    // rate gear 8 gave at 4:1 against the old 200/hr ceiling.
+    expect(legacyReward(63, 1)).not.toEqual({ kind: 'crate', tier: 'shipping' });
+    expect(legacyReward(64, 1)).toEqual({ kind: 'crate', tier: 'shipping' });
+    expect(legacyReward(99, 1)).toEqual({ kind: 'crate', tier: 'shipping' });
+  });
+});
+
+describe('repeatable final rewards', () => {
+  it('keeps the first-time sequence and repeats only its final reward', () => {
+    // GEAR TWO, because gear one pays a wage and has no track at all.
+    // Its row's interval is 100, so 400 of its own rotations is the
+    // first-time four plus three repeats.
     const state = machineWithGears(8);
+    state.turns[0] = turnsFor(1, 400);
+    syncLegacyGears(state);
+    const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 1);
+    expect(claims.map(entry => entry.milestone)).toEqual([1, 5, 25, 100, 200, 300, 400]);
+    expect(claims.slice(-2).map(entry => entry.reward)).toEqual([
+      { kind: 'crate', tier: 'silver' }, { kind: 'crate', tier: 'silver' }
+    ]);
+    for (const entry of claims) markLegacyClaimed(state, entry.gear, entry.milestone);
+    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 1)).toEqual([]);
+    expect(state.claimed[1]).toEqual([1, 5, 25, 100]);
+    expect(state.repeatPaid[1]).toBe(4);
+    state.turns[0] = turnsFor(1, 450);
+    syncLegacyGears(state);
+    // Halfway, to float tolerance - the turn count is derived through
+    // 1.267314^gear, so it does not land on exact halves.
+    const next = nextLegacyMilestone(state, 1)!;
+    expect(next.milestone).toBe(500);
+    expect(next.progress).toBeCloseTo(0.5, 10);
+  });
+
+  it('repeats shipping rewards once per rotation on the shipping gears', () => {
+    const state = machineWithGears(65);
     // Driven off the real ratio, not a hardcoded 4 - these count
     // ROTATIONS OF A DEEP GEAR, so the turns of gear one they need
     // move whenever the ratio does.
-    state.turns[0] = 3 * LEGACY_GEAR_RATIO ** 7;
+    // A hair over, because turnsFor(64, 3) lands just under 3 in floats.
+    state.turns[0] = turnsFor(64, 3) * (1 + 1e-12);
     syncLegacyGears(state);
-    const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 7);
+    const claims = claimableLegacyMilestones(state).filter(entry => entry.gear === 64);
     expect(claims.map(entry => entry.milestone)).toEqual([1, 2, 3]);
     expect(claims.every(entry => entry.reward.kind === 'crate' && entry.reward.tier === 'shipping')).toBe(true);
   });
@@ -97,33 +179,34 @@ describe('repeatable final rewards', () => {
     state.gearOneLevel = 200;
     state.lastTickAt = 1000;
     const now = 1000 + 6 * 3_600_000;
-    const produced = advanceLegacyMachine(state, now).filter(entry => entry.gear === 0);
-    expect(produced.map(entry => entry.milestone)).toEqual([1, 5, 25, 100, 400, 800, 1200]);
+    const produced = advanceLegacyMachine(state, now).filter(entry => entry.gear === 1);
+    expect(produced.map(entry => entry.milestone)).toEqual([1, 5, 25, 100, 200, 300, 400, 500, 600, 700, 800, 900]);
     const restored = normalizeLegacyMachine(JSON.parse(JSON.stringify(state)));
-    expect(advanceLegacyMachine(restored, now)).toEqual([]);
-    expect(claimableLegacyMilestones(restored)).toEqual([]);
-    expect(restored.repeatPaid[0]).toBe(3);
-    expect(advanceLegacyMachine(restored, now + 2 * 3_600_000).filter(entry => entry.gear === 0)
-      .map(entry => entry.milestone)).toEqual([1600]);
+    // Only the wage is outstanding on a second pass at the same instant -
+    // no rotation has been added, so no milestone can have been reached.
+    expect(advanceLegacyMachine(restored, now).filter(e => e.reward.kind !== 'credits')).toEqual([]);
+    expect(restored.repeatPaid[1]).toBe(9);
+    expect(advanceLegacyMachine(restored, now + 2 * 3_600_000).filter(entry => entry.gear === 1)
+      .map(entry => entry.milestone)).toEqual([1000, 1100, 1200]);
   });
 
   it('preserves old saves without retroactive repeat payouts', () => {
     const state = normalizeLegacyMachine({ turns: [1250], claimed: [[1, 5, 25, 100, 400]] });
     expect(state.turns[0]).toBe(1250);
-    expect(state.repeatPaid[0]).toBe(3);
+    // Gear one has no track, so it can owe nothing and repeat nothing.
+    expect(state.repeatPaid[0]).toBe(0);
     expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 0)).toEqual([]);
-    expect(nextLegacyMilestone(state, 0)).toEqual({ milestone: 1600, progress: 0.125 });
   });
 
   it('handles torque gears with the same repeating shipping interval', () => {
-    // Nine gears, so index 8 is the deep one under test. This used to
-    // read `torqueLevel = 1` back when that meant one ON TOP of a free
-    // eight.
-    const state = machineWithGears(9);
-    state.turns[0] = 2 * LEGACY_GEAR_RATIO ** 8;
+    // Sixty-six gears, so index 65 is a shipping gear - the row whose
+    // interval is one rotation. Index 8 used to be that row, back when the
+    // ladder sat in the machine's first eight gears.
+    const state = machineWithGears(66);
+    state.turns[0] = turnsFor(65, 2) * (1 + 1e-12);
     syncLegacyGears(state);
-    expect(legacyRepeatInterval(8)).toBe(1);
-    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 8)
+    expect(legacyRepeatInterval(65)).toBe(1);
+    expect(claimableLegacyMilestones(state).filter(entry => entry.gear === 65)
       .map(entry => entry.milestone)).toEqual([1, 2]);
   });
 });

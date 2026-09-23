@@ -46,6 +46,7 @@ const LEGACY_REFERENCE_GEARS = 12;
 
 /** What the row calls the thing that is about to land on the board. */
 function rewardLabel(reward: LegacyReward): string {
+  if (reward.kind === 'credits') return `${reward.amount.toLocaleString()} CREDITS`;
   return reward.kind === 'crate'
     ? CRATE_LABELS[reward.tier]
     : RESOURCE_PRODUCERS[reward.producerId].label.toUpperCase();
